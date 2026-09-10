@@ -1,7 +1,7 @@
 """
 SM_Automation Entry Point
 """
-
+from common.logger import logger
 from pathlib import Path
 
 
@@ -15,7 +15,7 @@ def main() -> None:
     print("SM_Automation")
     print("=" * 50)
     print(f"Project Root : {project_root}")
-    print("Application Started.")
+    logger.info("Application Started.")
     print("=" * 50)
 
 
