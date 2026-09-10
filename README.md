@@ -16,3 +16,18 @@ Features
 - Grafana
 - Prometheus
 - REST API
+
+
+SM_Automation
+│
+├── src
+│
+├── config
+│
+├── tests
+│
+├── logs
+│
+├── reports
+│
+└── docs
