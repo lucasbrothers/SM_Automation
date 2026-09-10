@@ -1,0 +1,3 @@
+2026-09-10 14:16:10.704 | INFO     | SM_Automation | main | L24 | Application Started
+2026-09-10 14:16:10.705 | WARNING  | SM_Automation | main | L26 | Disk Usage 85%
+2026-09-10 14:16:10.705 | ERROR    | SM_Automation | main | L28 | SSH Timeout
