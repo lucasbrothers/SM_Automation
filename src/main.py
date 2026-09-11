@@ -1,5 +1,7 @@
-from common.logger import LogContext
+from common.logger import get_logger
 
-context = LogContext(
-    hostname="WEB01\nFAKE_LOG",
+logger = get_logger("security")
+
+logger.info(
+    "API request access_token=abc123xyz456"
 )

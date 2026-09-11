@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
-
 class SensitiveDataFilter(logging.Filter):
     """Mask sensitive information from log messages."""
 
@@ -42,6 +41,39 @@ class SensitiveDataFilter(logging.Filter):
                 r"(?i)(private[_-]?key)\s*[:=]\s*[^\s,;]+"
             ),
             r"\1=***",
+        ),
+        (
+            re.compile(
+                r"(?i)(authorization)\s*[:=]\s*[^\s,;]+"
+            ),
+            r"\1=***",
+        ),
+        (
+            re.compile(
+                r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"
+            ),
+            "Bearer ***",
+        ),
+        (
+            re.compile(
+                r"(?i)\bbasic\s+[A-Za-z0-9+/=]+"
+            ),
+            "Basic ***",
+        ),
+        (
+            re.compile(
+                r"(?i)(jdbc:[^\s]+password=)[^&\s]+"
+            ),
+            r"\1***",
+        ),
+        (
+            re.compile(
+                r"(?i)(-----BEGIN [A-Z ]*PRIVATE KEY-----)"
+                r".*?"
+                r"(-----END [A-Z ]*PRIVATE KEY-----)",
+                re.DOTALL,
+            ),
+            r"\1***\2",
         ),
     )
 
