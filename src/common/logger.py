@@ -1,11 +1,152 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
 import logging.handlers
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
 
+class SensitiveDataFilter(logging.Filter):
+    """Mask sensitive information from log messages."""
+
+    _PATTERNS = (
+        (
+            re.compile(
+                r"(?i)(password|passwd|pwd)\s*[:=]\s*[^\s,;]+"
+            ),
+            r"\1=***",
+        ),
+        (
+            re.compile(
+                r"(?i)(token|access_token|refresh_token)\s*[:=]\s*[^\s,;]+"
+            ),
+            r"\1=***",
+        ),
+        (
+            re.compile(
+                r"(?i)(secret|client_secret)\s*[:=]\s*[^\s,;]+"
+            ),
+            r"\1=***",
+        ),
+        (
+            re.compile(
+                r"(?i)(api[_-]?key)\s*[:=]\s*[^\s,;]+"
+            ),
+            r"\1=***",
+        ),
+        (
+            re.compile(
+                r"(?i)(private[_-]?key)\s*[:=]\s*[^\s,;]+"
+            ),
+            r"\1=***",
+        ),
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Mask sensitive information in the log record."""
+        message = record.getMessage()
+
+        for pattern, replacement in self._PATTERNS:
+            message = pattern.sub(replacement, message)
+
+        record.msg = message
+        record.args = ()
+
+        return True
+
+
+@dataclass
+class LogContext:
+    """Store execution context for application logging."""
+
+    hostname: str = "-"
+    ip: str = "-"
+    os: str = "-"
+    sr_number: str = "-"
+    operator: str = "-"
+
+    def __post_init__(self) -> None:
+        """Normalize and validate context values."""
+        self.hostname = self._normalize(self.hostname)
+        self.ip = self._normalize(self.ip)
+        self.os = self._normalize(self.os)
+        self.sr_number = self._normalize(self.sr_number)
+        self.operator = self._normalize(self.operator)
+
+        self._validate_ip()
+
+    @staticmethod
+    def _normalize(value: str | None) -> str:
+        """Normalize an optional context value.
+
+        Args:
+            value: Context value.
+
+        Returns:
+            str: Normalized value.
+        """
+        if value is None:
+            return "-"
+
+        value = str(value).strip()
+
+        if not value:
+            return "-"
+
+        return value
+
+    def _validate_ip(self) -> None:
+        """Validate the IP address when provided.
+
+        Raises:
+            ValueError: If the IP address is invalid.
+        """
+        if self.ip == "-":
+            return
+
+        try:
+            ipaddress.ip_address(self.ip)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid IP address: {self.ip}"
+            ) from exc
+
+    def to_dict(self) -> dict[str, str]:
+        """Convert the log context to a dictionary.
+
+        Returns:
+            dict[str, str]: Log context values.
+        """
+        return {
+            "hostname": self.hostname,
+            "ip": self.ip,
+            "os": self.os,
+            "sr_number": self.sr_number,
+            "operator": self.operator,
+        }
+
+
+class ContextFormatter(logging.Formatter):
+    """Format log records with optional execution context."""
+
+    DEFAULT_CONTEXT = {
+        "hostname": "-",
+        "ip": "-",
+        "os": "-",
+        "sr_number": "-",
+        "operator": "-",
+    }
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format a log record with default context values."""
+        for key, value in self.DEFAULT_CONTEXT.items():
+            if not hasattr(record, key):
+                setattr(record, key, value)
+
+        return super().format(record)
 class LoggerManager:
     """SM_Automation 중앙 Logger 관리자."""
 
@@ -99,7 +240,7 @@ class LoggerManager:
 
         date_format = "%Y-%m-%d %H:%M:%S"
 
-        return logging.Formatter(
+        return ContextFormatter(
             fmt=log_format,
             datefmt=date_format,
         )
@@ -120,6 +261,7 @@ class LoggerManager:
 
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
+        console_handler.addFilter(SensitiveDataFilter())
 
         return console_handler
 
@@ -155,6 +297,7 @@ class LoggerManager:
 
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(SensitiveDataFilter())
 
         return file_handler
 
@@ -186,38 +329,51 @@ class LoggerManager:
 
         return logger
 
-    def get_logger(self, name: str | None = None) -> logging.Logger:
+    def get_logger(
+        self,
+        name: str | None = None,
+        context: LogContext | None = None,
+    ) -> logging.Logger | logging.LoggerAdapter:
         """Return a configured application logger.
 
         Args:
             name: Optional logger name.
+            context: Optional execution context.
 
         Returns:
-            logging.Logger: Configured logger instance.
+            logging.Logger | logging.LoggerAdapter:
+                Configured logger or logger adapter with context.
         """
         if self.logger is None:
             self._configure_logger()
 
         if name is None or name == "SM_Automation":
-            return self.logger
-
-        if name.startswith("SM_Automation."):
+            logger_name = "SM_Automation"
+        elif name.startswith("SM_Automation."):
             logger_name = name
         else:
             logger_name = f"SM_Automation.{name}"
 
-        return logging.getLogger(logger_name) 
+        logger = logging.getLogger(logger_name)
+
+        if context is None:
+            return logger
+
+        return self._create_context_logger(
+            logger_name,
+            context,
+        )
 
     def _create_context_logger(
         self,
         name: str,
-        context: dict[str, str | None],
+        context: LogContext,
     ) -> logging.LoggerAdapter:
         """Create a logger adapter with execution context.
 
         Args:
             name: Logger name.
-            context: Execution context fields.
+            context: Execution context.
 
         Returns:
             logging.LoggerAdapter: Logger adapter with context.
@@ -226,8 +382,8 @@ class LoggerManager:
 
         return logging.LoggerAdapter(
             logger,
-            extra=context,
-        )  
+            extra=context.to_dict(),
+        )
 
 
     def shutdown(self) -> None:
@@ -248,15 +404,23 @@ class LoggerManager:
 
 
 
-def get_logger(name: str | None = None) -> logging.Logger:
+def get_logger(
+    name: str | None = None,
+    context: LogContext | None = None,
+) -> logging.Logger | logging.LoggerAdapter:
     """Return a configured application logger.
 
     Args:
         name: Optional logger name.
+        context: Optional execution context.
 
     Returns:
-        logging.Logger: Configured logger instance.
+        logging.Logger | logging.LoggerAdapter:
+            Configured logger or logger adapter with context.
     """
     manager = LoggerManager()
 
-    return manager.get_logger(name)
+    return manager.get_logger(
+        name=name,
+        context=context,
+    )

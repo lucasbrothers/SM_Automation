@@ -1,24 +1,15 @@
-from common.logger import LoggerManager
+from common.logger import LogContext
+from common.logger import get_logger
 
-
-manager = LoggerManager()
-
-logger = manager._create_context_logger(
-    "account",
-    {
-        "hostname": "WEB01",
-        "ip": "10.10.10.10",
-        "os": "Linux",
-        "sr_number": "SR-20260911-001",
-        "operator": "D25950",
-    },
+context = LogContext(
+    hostname="WEB01",
+    ip="2001:db8::10",
+    os="Linux",
 )
 
-logger.info("Account created")
+logger = get_logger(
+    "account",
+    context=context,
+)
 
-print(f"Logger name: {logger.logger.name}")
-print(f"Hostname: {logger.extra['hostname']}")
-print(f"IP: {logger.extra['ip']}")
-print(f"OS: {logger.extra['os']}")
-print(f"SR number: {logger.extra['sr_number']}")
-print(f"Operator: {logger.extra['operator']}")
+logger.info("Default value test")
