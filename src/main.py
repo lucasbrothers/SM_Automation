@@ -1,31 +1,24 @@
-"""
-SM_Automation Entry Point
-"""
-from asyncio.log import logger
-
 from common.logger import LoggerManager
-from pathlib import Path
 
 
-def main() -> None:
-    """
-    Main Function
-    """
-    project_root = Path(__file__).resolve().parent.parent
+manager = LoggerManager()
 
-    print("=" * 50)
-    print("SM_Automation")
-    print("=" * 50)
-    print("Project Root : {project_root}")
-    print("=" * 50)
+logger = manager._create_context_logger(
+    "account",
+    {
+        "hostname": "WEB01",
+        "ip": "10.10.10.10",
+        "os": "Linux",
+        "sr_number": "SR-20260911-001",
+        "operator": "D25950",
+    },
+)
 
-    logger = LoggerManager().get_logger()
+logger.info("Account created")
 
-    logger.info("Application Started")
-
-    logger.warning("Disk Usage 85%")
-
-    logger.error("SSH Timeout")
-
-if __name__ == "__main__":
-    main()
+print(f"Logger name: {logger.logger.name}")
+print(f"Hostname: {logger.extra['hostname']}")
+print(f"IP: {logger.extra['ip']}")
+print(f"OS: {logger.extra['os']}")
+print(f"SR number: {logger.extra['sr_number']}")
+print(f"Operator: {logger.extra['operator']}")

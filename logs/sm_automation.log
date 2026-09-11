@@ -1,3 +1,17 @@
 2026-09-10 14:16:10.704 | INFO     | SM_Automation | main | L24 | Application Started
 2026-09-10 14:16:10.705 | WARNING  | SM_Automation | main | L26 | Disk Usage 85%
 2026-09-10 14:16:10.705 | ERROR    | SM_Automation | main | L28 | SSH Timeout
+2026-09-11 09:08:47.340 | INFO     | SM_Automation.file_test | <module> | L16 | File logging test
+2026-09-11 09:08:47.340 | WARNING  | SM_Automation.file_test | <module> | L17 | Warning logging test
+2026-09-11 09:08:47.340 | ERROR    | SM_Automation.file_test | <module> | L18 | Error logging test
+2026-09-11 09:11:20.938 | INFO     | SM_Automation | <module> | L8 | Logger configuration test
+2026-09-11 09:11:20.943 | WARNING  | SM_Automation | <module> | L9 | Warning configuration test
+2026-09-11 09:11:20.944 | ERROR    | SM_Automation | <module> | L10 | Error configuration test
+2026-09-11 09:15:23.378 | INFO     | SM_Automation.__main__ | <module> | L6 | Application started
+2026-09-11 09:15:23.378 | WARNING  | SM_Automation.__main__ | <module> | L7 | Warning test
+2026-09-11 09:15:23.378 | ERROR    | SM_Automation.__main__ | <module> | L8 | Error test
+2026-09-11 09:17:18.261 | INFO     | SM_Automation.__main__ | <module> | L6 | Before shutdown
+2026-09-11 09:22:24.860 | INFO     | SM_Automation.test | <module> | L19 | First test message
+2026-09-11 09:22:24.860 | INFO     | SM_Automation.test | <module> | L20 | Second test message
+2026-09-11 09:22:24.861 | INFO     | SM_Automation.another | <module> | L21 | Third test message
+2026-09-11 09:24:31.945 | INFO     | SM_Automation.account | <module> | L17 | Account created
