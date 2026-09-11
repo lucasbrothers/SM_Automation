@@ -768,3 +768,58 @@ def test_logger_and_handler_levels():
 
     assert stream_handlers[0].level == logging.INFO
     assert file_handlers[0].level == logging.INFO
+
+def test_log_format_field_order():
+    """Verify the order of required fields in a formatted log record."""
+    manager = LoggerManager()
+
+    context = LogContext(
+        hostname="server01",
+        ip="192.168.0.10",
+        os="Linux",
+        sr_number="SR-12345",
+        operator="admin",
+    )
+
+    logger = manager.get_logger(
+        "format_order_test",
+        context=context,
+    )
+
+    logger.info("format validation message")
+
+    manager.shutdown()
+
+    log_file = manager.log_directory / "sm_automation.log"
+    content = log_file.read_text(encoding="utf-8")
+
+    lines = [
+        line
+        for line in content.splitlines()
+        if "format validation message" in line
+    ]
+
+    assert len(lines) == 1
+
+    line = lines[0]
+
+    expected_fields = [
+        "| INFO",
+        "| SM_Automation.format_order_test",
+        "|",
+        "host=server01",
+        "ip=192.168.0.10",
+        "os=Linux",
+        "sr=SR-12345",
+        "operator=admin",
+        "format validation message",
+    ]
+
+    positions = [
+        line.find(field)
+        for field in expected_fields
+    ]
+
+    assert all(position >= 0 for position in positions)
+    assert positions == sorted(positions)
+
