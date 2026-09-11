@@ -44,7 +44,7 @@ class SensitiveDataFilter(logging.Filter):
         ),
         (
             re.compile(
-                r"(?i)(authorization)\s*[:=]\s*[^\s,;]+"
+            r"(?i)(authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
             ),
             r"\1=***",
         ),
@@ -86,6 +86,44 @@ class SensitiveDataFilter(logging.Filter):
 
         record.msg = message
         record.args = ()
+
+        if record.exc_info is not None:
+            exception_type = record.exc_info[0]
+            exception_value = record.exc_info[1]
+            exception_traceback = record.exc_info[2]
+
+            if exception_value is not None:
+                exception_message = str(exception_value)
+
+                for pattern, replacement in self._PATTERNS:
+                    exception_message = pattern.sub(
+                        replacement,
+                        exception_message,
+                    )
+
+                if exception_message != str(exception_value):
+                    try:
+                        masked_exception = exception_type(
+                            exception_message
+                        )
+
+                        masked_exception.__traceback__ = (
+                            exception_traceback
+                        )
+
+                        record.exc_info = (
+                            exception_type,
+                            masked_exception,
+                            exception_traceback,
+                        )
+
+                        record.exc_text = None
+                    except Exception:
+                        record.exc_info = (
+                            exception_type,
+                            exception_value,
+                            exception_traceback,
+                        )
 
         return True
 
@@ -222,7 +260,14 @@ class ContextFormatter(logging.Formatter):
             if not hasattr(record, key):
                 setattr(record, key, value)
 
-        return super().format(record)
+        formatted = super().format(record)
+
+        for pattern, replacement in SensitiveDataFilter._PATTERNS:
+            formatted = pattern.sub(replacement, formatted)
+
+        return formatted
+
+
 class LoggerManager:
     """SM_Automation 중앙 Logger 관리자."""
 
