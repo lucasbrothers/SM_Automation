@@ -57,7 +57,6 @@ class SensitiveDataFilter(logging.Filter):
 
         return True
 
-
 @dataclass
 class LogContext:
     """Store execution context for application logging."""
@@ -68,25 +67,57 @@ class LogContext:
     sr_number: str = "-"
     operator: str = "-"
 
+    _MAX_LENGTHS = {
+        "hostname": 255,
+        "ip": 45,
+        "os": 50,
+        "sr_number": 100,
+        "operator": 100,
+    }
+
     def __post_init__(self) -> None:
         """Normalize and validate context values."""
-        self.hostname = self._normalize(self.hostname)
-        self.ip = self._normalize(self.ip)
-        self.os = self._normalize(self.os)
-        self.sr_number = self._normalize(self.sr_number)
-        self.operator = self._normalize(self.operator)
+        self.hostname = self._normalize(
+            "hostname",
+            self.hostname,
+        )
+        self.ip = self._normalize(
+            "ip",
+            self.ip,
+        )
+        self.os = self._normalize(
+            "os",
+            self.os,
+        )
+        self.sr_number = self._normalize(
+            "sr_number",
+            self.sr_number,
+        )
+        self.operator = self._normalize(
+            "operator",
+            self.operator,
+        )
 
         self._validate_ip()
 
-    @staticmethod
-    def _normalize(value: str | None) -> str:
-        """Normalize an optional context value.
+    @classmethod
+    def _normalize(
+        cls,
+        field_name: str,
+        value: str | None,
+    ) -> str:
+        """Normalize and validate a context value.
 
         Args:
+            field_name: Context field name.
             value: Context value.
 
         Returns:
-            str: Normalized value.
+            str: Normalized context value.
+
+        Raises:
+            ValueError: If the value contains invalid characters
+                or exceeds the maximum length.
         """
         if value is None:
             return "-"
@@ -95,6 +126,19 @@ class LogContext:
 
         if not value:
             return "-"
+
+        if any(ord(char) < 32 for char in value):
+            raise ValueError(
+                f"Invalid control character in {field_name}."
+            )
+
+        max_length = cls._MAX_LENGTHS[field_name]
+
+        if len(value) > max_length:
+            raise ValueError(
+                f"{field_name} exceeds the maximum length "
+                f"of {max_length} characters."
+            )
 
         return value
 

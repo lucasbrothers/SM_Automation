@@ -33,3 +33,4 @@
 2026-09-11 10:03:12.513 | INFO     | SM_Automation.account | <module> | L17 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-20260911-001 | operator=D25950 | Context validation test
 2026-09-11 10:03:41.760 | INFO     | SM_Automation.account | <module> | L17 | host=- | ip=- | os=- | sr=- | operator=- | Default value test
 2026-09-11 10:04:23.094 | INFO     | SM_Automation.account | <module> | L15 | host=WEB01 | ip=2001:db8::10 | os=Linux | sr=- | operator=- | Default value test
+2026-09-11 10:20:28.271 | INFO     | SM_Automation.account | <module> | L17 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-20260911-001 | operator=D25950 | Security context test
