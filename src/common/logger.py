@@ -265,6 +265,10 @@ class ContextFormatter(logging.Formatter):
         for pattern, replacement in SensitiveDataFilter._PATTERNS:
             formatted = pattern.sub(replacement, formatted)
 
+        formatted = formatted.replace("\r\n", "\\n")
+        formatted = formatted.replace("\r", "\\r")
+        formatted = formatted.replace("\n", "\\n")
+
         return formatted
 
 

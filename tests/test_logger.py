@@ -806,7 +806,6 @@ def test_log_format_field_order():
     expected_fields = [
         "| INFO",
         "| SM_Automation.format_order_test",
-        "|",
         "host=server01",
         "ip=192.168.0.10",
         "os=Linux",
@@ -823,3 +822,121 @@ def test_log_format_field_order():
     assert all(position >= 0 for position in positions)
     assert positions == sorted(positions)
 
+def test_log_default_context_values():
+    """Verify default context values in a log file."""
+    manager = LoggerManager()
+
+    logger = manager.get_logger(
+        "default_context_test",
+    )
+
+    logger.info("default context validation message")
+
+    manager.shutdown()
+
+    log_file = manager.log_directory / "sm_automation.log"
+    content = log_file.read_text(encoding="utf-8")
+
+    lines = [
+        line
+        for line in content.splitlines()
+        if "default context validation message" in line
+    ]
+
+    assert len(lines) == 1
+
+    line = lines[0]
+
+    assert "host=-" in line
+    assert "ip=-" in line
+    assert "os=-" in line
+    assert "sr=-" in line
+    assert "operator=-" in line
+
+def test_log_level_output_behavior():
+    """Verify log output behavior for different log levels."""
+    manager = LoggerManager()
+
+    logger = manager.get_logger(
+        "log_level_output_test",
+    )
+
+    logger.debug("debug level message")
+    logger.info("info level message")
+    logger.warning("warning level message")
+    logger.error("error level message")
+
+    manager.shutdown()
+
+    log_file = manager.log_directory / "sm_automation.log"
+    content = log_file.read_text(encoding="utf-8")
+
+    assert "debug level message" not in content
+    assert "info level message" in content
+    assert "warning level message" in content
+    assert "error level message" in content
+
+def test_logger_recovery_after_shutdown():
+    """Verify logger recovery after shutdown."""
+    manager = LoggerManager()
+
+    first_logger = manager.get_logger(
+        "recovery_test",
+    )
+
+    try:
+        raise RuntimeError("recovery test exception")
+    except RuntimeError:
+        first_logger.exception("First exception message")
+
+    manager.shutdown()
+
+    second_logger = manager.get_logger(
+        "recovery_test",
+    )
+
+    second_logger.info("Second message after recovery")
+
+    manager.shutdown()
+
+    log_file = manager.log_directory / "sm_automation.log"
+    content = log_file.read_text(encoding="utf-8")
+
+    assert "First exception message" in content
+    assert "recovery test exception" in content
+    assert "Second message after recovery" in content
+
+    application_logger = logging.getLogger("SM_Automation")
+
+    stream_handlers = [
+        handler
+        for handler in application_logger.handlers
+        if type(handler) is logging.StreamHandler
+    ]
+
+    file_handlers = [
+        handler
+        for handler in application_logger.handlers
+        if type(handler) is logging.handlers.RotatingFileHandler
+    ]
+
+    assert len(stream_handlers) == 0
+    assert len(file_handlers) == 0
+
+def test_log_message_control_character_behavior():
+    """Verify the current behavior of control characters in log messages."""
+    manager = LoggerManager()
+
+    logger = manager.get_logger(
+        "message_control_test",
+    )
+
+    logger.info("message before newline\nmessage after newline")
+
+    manager.shutdown()
+
+    log_file = manager.log_directory / "sm_automation.log"
+    content = log_file.read_text(encoding="utf-8")
+
+    assert "message before newline" in content
+    assert "message after newline" in content

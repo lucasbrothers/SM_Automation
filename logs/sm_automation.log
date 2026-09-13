@@ -104,3 +104,27 @@
 2026-09-11 15:46:12.410 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
 2026-09-11 15:46:12.414 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
 2026-09-11 15:46:12.416 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
+2026-09-14 06:14:17.273 | INFO     | SM_Automation.test | test_logger_without_context | L239 | host=- | ip=- | os=- | sr=- | operator=- | Logger without context test
+2026-09-14 06:14:17.275 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
+2026-09-14 06:14:17.284 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
+2026-09-14 06:14:17.286 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
+2026-09-14 06:16:42.214 | INFO     | SM_Automation.test | test_logger_without_context | L239 | host=- | ip=- | os=- | sr=- | operator=- | Logger without context test
+2026-09-14 06:16:42.216 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
+2026-09-14 06:16:42.225 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
+2026-09-14 06:16:42.227 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
+2026-09-14 06:18:21.035 | INFO     | SM_Automation.test | test_logger_without_context | L239 | host=- | ip=- | os=- | sr=- | operator=- | Logger without context test
+2026-09-14 06:18:21.037 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
+2026-09-14 06:18:21.046 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
+2026-09-14 06:18:21.048 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
+2026-09-14 06:19:04.192 | INFO     | SM_Automation.test | test_logger_without_context | L239 | host=- | ip=- | os=- | sr=- | operator=- | Logger without context test
+2026-09-14 06:19:04.194 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
+2026-09-14 06:19:04.202 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
+2026-09-14 06:19:04.204 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
+2026-09-14 06:19:57.170 | INFO     | SM_Automation.test | test_logger_without_context | L239 | host=- | ip=- | os=- | sr=- | operator=- | Logger without context test
+2026-09-14 06:19:57.172 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
+2026-09-14 06:19:57.179 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
+2026-09-14 06:19:57.182 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
+2026-09-14 06:25:09.535 | INFO     | SM_Automation.test | test_logger_without_context | L239 | host=- | ip=- | os=- | sr=- | operator=- | Logger without context test
+2026-09-14 06:25:09.537 | INFO     | SM_Automation.test | test_logger_with_context | L262 | host=WEB01 | ip=10.10.10.10 | os=Linux | sr=SR-001 | operator=D25950 | Logger with context test
+2026-09-14 06:25:09.547 | INFO     | SM_Automation.context_test | test_logger_context_is_applied_to_log_record | L379 | host=server01 | ip=192.168.10.20 | os=RHEL8 | sr=SR-20260911-001 | operator=admin | Context logging test
+2026-09-14 06:25:09.550 | INFO     | SM_Automation.default_context_test | test_logger_without_context_uses_default_values | L406 | host=- | ip=- | os=- | sr=- | operator=- | Default context test
