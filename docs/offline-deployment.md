@@ -7,7 +7,6 @@
 
 ```text
 src/sw/
-  postgresql-18.6-3-windows-x64.exe
   python-wheels/
     paramiko-*.whl
     psycopg-*.whl
@@ -18,9 +17,9 @@ src/sw/
     ...
 ```
 
-현재 저장소에는 PostgreSQL 설치 파일이 포함되어 있습니다. Python wheel은
-인터넷이 가능한 준비 PC에서 미리 내려받아 `src/sw/python-wheels`에 넣어야
-완전한 오프라인 설치가 됩니다.
+PostgreSQL은 운영 PC에 별도로 설치합니다. Python wheel은 인터넷이 가능한
+준비 PC에서 미리 내려받아 `src/sw/python-wheels`에 넣어야 완전한 오프라인
+Python 설치가 됩니다.
 
 ## 오프라인 패키지 준비
 
@@ -43,13 +42,7 @@ src/sw/
 .\scripts\install_offline_bundle.ps1
 ```
 
-PostgreSQL을 설치하려면 다음처럼 실행합니다.
-
-```powershell
-.\scripts\install_offline_bundle.ps1 -InstallPostgreSQL
-```
-
-PostgreSQL 설치 프로그램 화면에서 다음 값을 사용합니다.
+PostgreSQL은 공식 설치 프로그램으로 별도 설치하고 다음 값을 사용합니다.
 
 - 설치 위치: 고객사 승인 로컬 경로
 - 포트: `5432`
@@ -74,6 +67,25 @@ PostgreSQL 설치가 끝난 뒤 관리자 비밀번호와 애플리케이션 비
     -DatabaseName sm_automation `
     -ApplicationUser sm_automation
 ```
+
+이 명령은 [CMDB 스키마](../config/cmdb-schema.sql)를 로컬 `sm_automation`
+데이터베이스에 적용합니다. 현재 스키마에는 다음 테이블이 포함됩니다.
+
+- `assets`, `network_endpoints`, `operating_systems`
+- `owners`, `asset_owners`
+- `business_services`, `asset_business_services`
+- `account_inventory`, `asset_accounts`
+- `security_audits`, `config_values`
+
+스키마 적용 여부는 로컬 PostgreSQL에서 다음 명령으로 확인합니다.
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" `
+    -h localhost -p 5432 -U postgres -d sm_automation `
+    -c "\dt"
+```
+
+출력에 위 테이블들이 표시되면 로컬 CMDB 스키마가 생성된 상태입니다.
 
 ## 로컬 PostgreSQL 권장 보안 설정
 
