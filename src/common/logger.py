@@ -237,9 +237,24 @@ class LoggerManager:
             self._create_log_directory()
             self.logger: logging.Logger | None = None
             self.log_file: Path | None = None
+            self.log_level = logging.INFO
             self._configured = False
             self._initialized = True
 
+
+    def configure(self, *, level: str = "INFO", directory: Path | None = None) -> None:
+        """Apply startup settings before obtaining loggers or after shutdown."""
+        levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        if not isinstance(level, str) or level not in levels:
+            raise ValueError("Invalid log level.")
+        with self._lock:
+            if self._configured:
+                raise RuntimeError("Shutdown the logger before changing settings.")
+            target = Path(directory) if directory is not None else self.log_directory
+            target.mkdir(parents=True, exist_ok=True)
+            self.log_directory = target
+            self.log_level = getattr(logging, level)
+            self.log_file = None
 
     def _find_project_root(self) -> Path:
         """Locate the project root independently of the checkout name."""
@@ -307,7 +322,7 @@ class LoggerManager:
         """
         console_handler = logging.StreamHandler()
 
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(self.log_level)
         console_handler.setFormatter(formatter)
         console_handler.addFilter(SensitiveDataFilter())
 
@@ -343,7 +358,7 @@ class LoggerManager:
             encoding="utf-8",
         )
 
-        file_handler.setLevel(logging.INFO)
+        file_handler.setLevel(self.log_level)
         file_handler.setFormatter(formatter)
         file_handler.addFilter(SensitiveDataFilter())
 
@@ -367,7 +382,7 @@ class LoggerManager:
                 console_handler.close()
                 self.log_file = None
                 raise
-            logger.setLevel(logging.INFO)
+            logger.setLevel(self.log_level)
             logger.propagate = False
             logger.addHandler(console_handler)
             logger.addHandler(file_handler)

@@ -1,0 +1,6 @@
+{
+  "environment": "development",
+  "logging": {"level": "INFO", "directory": "../logs"},
+  "inventory": {"server_file": "servers.txt"},
+  "ssh": {"timeout": 30, "max_workers": 10}
+}

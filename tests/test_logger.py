@@ -29,6 +29,24 @@ def test_logger_manager_is_singleton():
     assert manager1 is manager2
 
 
+def test_startup_settings_apply_to_handlers(isolated_logger, tmp_path):
+    isolated_logger.configure(level="DEBUG", directory=tmp_path / "configured")
+    logger = isolated_logger.get_logger("configured")
+    logger.debug("configured debug message")
+    assert logger.getEffectiveLevel() == logging.DEBUG
+    assert "configured debug message" in isolated_logger.log_file.read_text(encoding="utf-8")
+    with pytest.raises(RuntimeError, match="Shutdown"):
+        isolated_logger.configure(level="ERROR")
+    isolated_logger.shutdown()
+    isolated_logger.configure(level="ERROR")
+    logger = isolated_logger.get_logger("configured")
+    logger.warning("filtered warning")
+    logger.error("configured error message")
+    content = isolated_logger.log_file.read_text(encoding="utf-8")
+    assert "filtered warning" not in content
+    assert "configured error message" in content
+
+
 def test_log_context_default_values():
     """Verify default values of LogContext."""
     context = LogContext()

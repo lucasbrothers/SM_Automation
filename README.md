@@ -2,6 +2,12 @@
 
 Enterprise System Management Automation
 
+## Development Setup
+
+- [다른 PC에서 개발 이어가기](docs/pc-handoff.md)
+- [설정 관리 사용법](docs/configuration.md)
+- Python 3.14.7, dependencies pinned in `requirements-dev.txt`.
+
 ## Design Context
 
 - [중앙 OS 관리 시스템 설계 — 프로젝트 인계](docs/central-os-design-context.md)
