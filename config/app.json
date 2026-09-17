@@ -2,5 +2,14 @@
   "environment": "development",
   "logging": {"level": "INFO", "directory": "../logs"},
   "inventory": {"server_file": "servers.txt"},
-  "ssh": {"timeout": 30, "max_workers": 10}
+  "ssh": {"timeout": 30, "max_workers": 10},
+  "cmdb": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 5432,
+    "database": "sm_automation",
+    "user": "sm_automation",
+    "password_env": "SM_AUTOMATION_CMDB_PASSWORD",
+    "sslmode": "verify-full"
+  }
 }

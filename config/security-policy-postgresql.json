@@ -1,0 +1,73 @@
+{
+  "policy_id": "postgresql-cmdb-security-baseline",
+  "component": "postgresql",
+  "versions": ["13+"],
+  "status": "recommended-baseline",
+  "security_controls": {
+    "network": {
+      "listen_addresses": "private-management-address-only",
+      "port": 5432,
+      "public_exposure": false,
+      "firewall": "allow-only-management-network"
+    },
+    "transport_security": {
+      "ssl": true,
+      "ssl_min_protocol_version": "TLSv1.2",
+      "client_certificate_authentication": "optional-by-policy",
+      "sslmode_for_application": "verify-full"
+    },
+    "authentication": {
+      "pg_hba": "deny-by-default",
+      "local_admin_auth": "peer-or-approved-certificate",
+      "remote_authentication": "scram-sha-256",
+      "trust_authentication": false,
+      "password_storage": "scram-sha-256"
+    },
+    "roles": {
+      "owner_role": "NOLOGIN",
+      "application_role": "LOGIN-restricted",
+      "migration_role": "separate-and-time-bound",
+      "superuser_for_application": false,
+      "createdb_for_application": false,
+      "createrole_for_application": false,
+      "public_schema_create": false
+    },
+    "database": {
+      "owner": "dedicated-non-login-owner",
+      "default_transaction_isolation": "read committed",
+      "search_path": "pg_catalog, public",
+      "extensions": "allowlist-only"
+    },
+    "logging": {
+      "logging_collector": true,
+      "log_connections": true,
+      "log_disconnections": true,
+      "log_checkpoints": true,
+      "log_lock_waits": true,
+      "log_line_prefix": "%m [%p] %u@%d %r ",
+      "central_forwarding": "when_available"
+    },
+    "audit": {
+      "ddl_and_privilege_changes": "audit",
+      "administrative_activity": "audit",
+      "pg_audit": "optional-when-approved"
+    },
+    "backup_and_recovery": {
+      "backup_encryption": true,
+      "backup_access": "restricted",
+      "restore_test": "periodic",
+      "point_in_time_recovery": "required-for-production",
+      "replication_tls": true
+    },
+    "secrets": {
+      "application_password_source": "external-secret-manager-or-environment",
+      "repository_storage": "never-store-password-or-private-key",
+      "rotation": "scheduled-and-audited"
+    },
+    "schema": {
+      "migration_source": "config/cmdb-schema.sql",
+      "destructive_migrations": "approval-required",
+      "row_deletion": "audit-and-restrict"
+    }
+  }
+}

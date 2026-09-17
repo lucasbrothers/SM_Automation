@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from security.policy import evaluate_report
+from security.registry import PolicyRegistryError, load_policy, policy_path_for
 
 
 def _read_json(path: Path) -> object:
@@ -25,17 +26,27 @@ def main() -> int:
         description="Evaluate a security audit report against an explicit policy."
     )
     parser.add_argument("--audit-report", required=True, help="Security audit JSON report")
-    parser.add_argument("--policy-file", required=True, help="Security policy JSON file")
+    policy_group = parser.add_mutually_exclusive_group(required=True)
+    policy_group.add_argument("--policy-file", help="Security policy JSON file")
+    policy_group.add_argument("--os", help="Target operating system, for example rhel")
+    parser.add_argument("--version", help="Target OS version when using --os")
     parser.add_argument("--report-file", help="Optional compliance report JSON path")
     args = parser.parse_args()
 
     try:
         audit_report = _read_json(Path(args.audit_report))
-        policy = _read_json(Path(args.policy_file))
+        if args.policy_file:
+            policy = load_policy(args.policy_file)
+        elif not args.version:
+            raise PolicyRegistryError("--version is required when using --os.")
+        else:
+            policy = load_policy(
+                policy_path_for(args.os, args.version, ROOT / "config")
+            )
         if not isinstance(audit_report, list) or not isinstance(policy, dict):
             raise ValueError("Audit report must be a list and policy must be an object.")
         results = evaluate_report(audit_report, policy)
-    except ValueError as exc:
+    except (PolicyRegistryError, ValueError) as exc:
         print(f"Input error: {exc}", file=sys.stderr)
         return 2
 

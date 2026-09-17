@@ -22,10 +22,41 @@
 | inventory.server_file | servers.txt | 다음 단계에서 읽을 서버 목록 파일 |
 | ssh.timeout | 30 | 연결 제한 시간(초), 정수 1~300 |
 | ssh.max_workers | 10 | 동시 작업 수, 정수 1~100 |
+| cmdb.enabled | false | PostgreSQL CMDB 사용 여부 |
+| cmdb.host | localhost | PostgreSQL 호스트 또는 사설 주소 |
+| cmdb.port | 5432 | PostgreSQL 포트 |
+| cmdb.database | sm_automation | CMDB 데이터베이스 이름 |
+| cmdb.user | sm_automation | 애플리케이션 전용 DB 사용자 |
+| cmdb.password_env | SM_AUTOMATION_CMDB_PASSWORD | DB 비밀번호 환경변수 이름 |
+| cmdb.sslmode | verify-full | PostgreSQL TLS 인증 모드 |
 
 누락된 항목에는 기본값을 적용하지만 파일 자체가 없으면 오류로 처리한다.
 알 수 없는 항목과 중복 키도 거부하여 설정 오타를 발견할 수 있도록 한다.
-비밀번호·토큰·개인키 내용을 넣는 항목은 제공하지 않는다.
+비밀번호·토큰·개인키 내용을 넣는 항목은 제공하지 않는다. CMDB 비밀번호도
+`cmdb.password_env`에 지정한 환경변수 또는 외부 Secret Manager에서만 읽는다.
+
+현재 원격 PostgreSQL 검증:
+
+```powershell
+py -3 scripts/verify_remote_postgresql.py `
+	--host 192.168.192.131 `
+	--user postgres `
+	--database postgres
+```
+
+스크립트는 비밀번호를 숨겨서 입력받고, 기본적으로 연결 정보만 확인합니다.
+스키마 생성이 승인된 경우에만 `--apply-schema`를 추가합니다.
+
+향후 로컬 PostgreSQL을 동일 환경으로 구성할 때는 다음 PowerShell 스크립트를
+실행합니다. 관리자 비밀번호와 CMDB 애플리케이션 계정 비밀번호를 별도로
+입력받으며, 저장소에는 저장하지 않습니다.
+
+```powershell
+.\scripts\setup_local_postgresql.ps1 `
+	-PostgresHost localhost `
+	-DatabaseName sm_automation `
+	-ApplicationUser sm_automation
+```
 시간 제한과 작업 수의 범위는 현재 애플리케이션의 초기 정책이다.
 
 ## 시작 순서

@@ -20,6 +20,13 @@ class AppConfig:
     server_file: Path
     ssh_timeout: int
     max_workers: int
+    cmdb_enabled: bool
+    cmdb_host: str
+    cmdb_port: int
+    cmdb_database: str
+    cmdb_user: str
+    cmdb_password_env: str
+    cmdb_sslmode: str
 
 
 def _unique_object(pairs):
@@ -49,6 +56,12 @@ def _choice(value, name, allowed):
 def _integer(value, name, minimum, maximum):
     if type(value) is not int or not minimum <= value <= maximum:
         raise ConfigError(f"{name} must be an integer from {minimum} to {maximum}.")
+    return value
+
+
+def _boolean(value, name):
+    if type(value) is not bool:
+        raise ConfigError(f"{name} must be a boolean.")
     return value
 
 
@@ -82,11 +95,16 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         raise ConfigError("Cannot read configuration as valid UTF-8 JSON.") from None
     if not isinstance(data, dict):
         raise ConfigError("Configuration must be an object.")
-    if data.keys() - {"environment", "logging", "inventory", "ssh"}:
+    if data.keys() - {"environment", "logging", "inventory", "ssh", "cmdb"}:
         raise ConfigError("Unsupported configuration section.")
     logs = _section(data, "logging", {"level", "directory"})
     inventory = _section(data, "inventory", {"server_file"})
     ssh = _section(data, "ssh", {"timeout", "max_workers"})
+    cmdb = _section(
+        data,
+        "cmdb",
+        {"enabled", "host", "port", "database", "user", "password_env", "sslmode"},
+    )
     return AppConfig(
         environment=_choice(data.get("environment", "development"), "environment",
                             {"development", "test", "production"}),
@@ -98,4 +116,11 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                           "inventory.server_file", source.parent),
         ssh_timeout=_integer(ssh.get("timeout", 30), "ssh.timeout", 1, 300),
         max_workers=_integer(ssh.get("max_workers", 10), "ssh.max_workers", 1, 100),
+        cmdb_enabled=_boolean(cmdb.get("enabled", False), "cmdb.enabled"),
+        cmdb_host=cmdb.get("host", "localhost"),
+        cmdb_port=_integer(cmdb.get("port", 5432), "cmdb.port", 1, 65535),
+        cmdb_database=cmdb.get("database", "sm_automation"),
+        cmdb_user=cmdb.get("user", "sm_automation"),
+        cmdb_password_env=cmdb.get("password_env", "SM_AUTOMATION_CMDB_PASSWORD"),
+        cmdb_sslmode=cmdb.get("sslmode", "verify-full"),
     )

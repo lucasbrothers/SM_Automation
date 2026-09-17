@@ -1,0 +1,38 @@
+{
+  "package_name": "SM_Automation Windows Controller",
+  "platform": "windows-x64",
+  "offline": true,
+  "required_installers": [
+    {
+      "path": "src/sw/postgresql-18.6-3-windows-x64.exe",
+      "component": "PostgreSQL Server 18.6",
+      "required": true,
+      "install_order": 10
+    }
+  ],
+  "python_packages": [
+    {
+      "package": "paramiko",
+      "version": "4.0.0",
+      "artifact_directory": "src/sw/python-wheels",
+      "required": true,
+      "install_order": 20
+    },
+    {
+      "package": "psycopg[binary]",
+      "version": "3.2.13",
+      "artifact_directory": "src/sw/python-wheels",
+      "required": true,
+      "install_order": 20
+    }
+  ],
+  "configuration": {
+    "file": "config/app.local.json",
+    "cmdb_host": "localhost",
+    "cmdb_database": "sm_automation",
+    "password_source": "SM_AUTOMATION_CMDB_PASSWORD"
+  },
+  "offline_python_prepare_script": "scripts/prepare_offline_python_packages.ps1",
+  "schema": "config/cmdb-schema.sql",
+  "setup_script": "scripts/setup_local_postgresql.ps1"
+}

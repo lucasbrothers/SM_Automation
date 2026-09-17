@@ -7,6 +7,9 @@ RHEL 8은 `config/security-policy-rhel8.json`, RHEL 9는
 `config/security-policy-windows2022.json`을 사용합니다. 정책 기준을 추가하거나
 변경할 때는 이 문서가 아니라 해당 JSON 파일을 수정합니다.
 
+정책 선택부터 수집, 평가, 변경 계획, 승인 적용, rollback의 전체 구조는
+[보안 정책 권고 아키텍처](security-architecture.md)를 참고합니다.
+
 아래 값은 현재 Linux 테스트 환경을 위한 권고 기준입니다. 고객사 승인이나
 최종 운영 보안 기준을 대신하지 않습니다.
 
@@ -28,6 +31,10 @@ RHEL 8은 `config/security-policy-rhel8.json`, RHEL 9는
 - [Windows Server 2022 정책](../config/security-policy-windows2022.json)
 
 각 기준에는 적용 대상 플랫폼과 버전이 함께 기록됩니다.
+
+정책 파일은 `security-policy-<os><version>.json` 규칙으로 관리합니다. 새
+플랫폼은 예를 들어 Windows 기준을 `config/security-policy-windows2022.json`
+처럼 별도 추가하고 Policy Registry에 등록합니다.
 
 | 구분 | 주요 권고 기준 |
 | --- | --- |
@@ -98,6 +105,16 @@ py -3 scripts/security_compliance.py `
 - `0`: 모든 inventory 대상이 정책을 준수합니다.
 - `1`: 하나 이상의 정책 위반이 발견되었습니다.
 - `2`: 입력 파일 또는 결과 처리 오류입니다.
+
+정책 파일을 직접 지정하지 않고 OS와 버전으로 자동 선택할 수도 있습니다.
+
+```powershell
+py -3 scripts/security_compliance.py `
+    --audit-report reports/security-audit.json `
+    --os rhel `
+    --version 9 `
+    --report-file reports/security-compliance.json
+```
 
 정책 평가기는 읽기 전용이며 SSH 설정이나 계정을 변경하지 않습니다. 설정을
 변경하는 조치 작업은 별도 승인과 rollback 계획 후에 구현해야 합니다.
