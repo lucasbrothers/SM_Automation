@@ -38,13 +38,12 @@ def _sshd_settings(sshd_output: str) -> dict[str, str]:
 
 def audit_linux_server(client: SSHClient) -> SecurityAuditResult:
     """Collect a read-only Linux security baseline through an existing SSH client."""
-    passwd_output = client.execute("sudo getent passwd")
-    sshd_output = client.execute(
-        "sudo sh -c 'sshd -T 2>/dev/null | "
-        "grep -E \"^(permitrootlogin|passwordauthentication|pubkeyauthentication) \" || true'"
-    )
+    passwd_output = client.execute("sudo -n getent passwd")
+    sshd_output = client.execute("sudo -n sshd -T")
+    if len(_sshd_settings(sshd_output)) != 3:
+        raise ValueError("Required SSH audit observations are missing.")
     config_mode = client.execute(
-        "sudo stat -c '%a %U %G' /etc/ssh/sshd_config"
+        "sudo -n stat -c '%a %U %G' /etc/ssh/sshd_config"
     ).strip()
     return SecurityAuditResult(
         root_accounts=_root_accounts(passwd_output),

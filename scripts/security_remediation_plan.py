@@ -55,6 +55,8 @@ def main() -> int:
         actions = server["actions"]
         action_count += len(actions)
         print(f"[{server['status'].upper()}] {server['hostname']} ({server['ip']})")
+        for reason in server["reasons"]:
+            print(f"       blocked: {reason}")
         for action in actions:
             print(
                 f"       set {action['parameter']}: "
@@ -62,7 +64,7 @@ def main() -> int:
             )
     print(f"Plan: {report_path}")
     print(f"Summary: {action_count} action(s) required")
-    return 0
+    return 1 if any(server["status"] == "blocked" for server in plan) else 0
 
 
 if __name__ == "__main__":

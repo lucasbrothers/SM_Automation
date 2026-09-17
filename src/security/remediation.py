@@ -2,33 +2,42 @@ from __future__ import annotations
 
 from typing import Any
 
+from security.policy import evaluate_record
+
 
 def build_remediation_plan(
-    records: list[dict[str, Any]],
-    policy: dict[str, Any],
+    records: list[dict[str, Any]], policy: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Build a non-destructive plan for SSH settings outside the policy."""
+    """Plan only observed SSH changes; incomplete audits cannot authorize writes."""
+    if not isinstance(records, list) or not records:
+        raise ValueError("Audit report must contain at least one record")
     allowed_settings = policy.get("allowed_sshd_settings", {})
-    plans: list[dict[str, Any]] = []
+    plans = []
     for record in records:
-        actions: list[dict[str, str]] = []
-        actual_settings = record.get("sshd_settings", {})
-        for name, allowed_values in allowed_settings.items():
-            if not isinstance(allowed_values, list) or not allowed_values:
-                raise ValueError(f"Policy values for {name} must be a nonempty list")
-            actual = actual_settings.get(name)
-            recommended = allowed_values[0]
-            if actual not in allowed_values:
-                actions.append({
-                    "type": "set_sshd_option",
-                    "parameter": name,
-                    "current": str(actual),
-                    "recommended": recommended,
-                })
+        evaluation = evaluate_record(record, policy)
+        actual = record.get("sshd_settings", {})
+        reasons = []
+        if record.get("status") != "passed":
+            reasons.append("Audit did not complete")
+        if not record.get("hostname") or not record.get("ip"):
+            reasons.append("Target identity is missing")
+        if policy.get("os") not in (None, "rhel", "linux") or not allowed_settings:
+            reasons.append("No supported SSH apply policy")
+        if any(name not in {"permitrootlogin", "pubkeyauthentication"} for name in allowed_settings):
+            reasons.append("Policy contains settings without an apply adapter")
+        if any(not isinstance(actual.get(name), str) or not actual[name] for name in allowed_settings):
+            reasons.append("Required SSH observations are missing")
+        actions = []
+        if not reasons:
+            for name, values in allowed_settings.items():
+                if actual[name] not in values:
+                    actions.append({"type": "set_sshd_option", "parameter": name,
+                                    "current": actual[name], "recommended": values[0]})
         plans.append({
-            "hostname": record.get("hostname"),
-            "ip": record.get("ip"),
-            "status": "action_required" if actions else "compliant",
-            "actions": actions,
+            "hostname": record.get("hostname"), "ip": record.get("ip"),
+            "status": "blocked" if reasons else ("action_required" if actions else "no_changes"),
+            "scope": "sshd_settings", "actions": actions, "reasons": reasons,
+            "compliance_status": evaluation["status"],
+            "unevaluated_controls": evaluation["unevaluated_controls"],
         })
     return plans

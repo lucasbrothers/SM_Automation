@@ -51,14 +51,21 @@ def main() -> int:
         return 2
 
     failed = 0
+    not_evaluated = 0
     for result in results:
         if result["status"] == "passed":
             print(f"[PASS] {result['hostname']} ({result['ip']})")
+        elif result["status"] == "not_evaluated":
+            not_evaluated += 1
+            print(f"[NOT_EVALUATED] {result['hostname']} ({result['ip']})")
         else:
             failed += 1
             print(f"[FAIL] {result['hostname']} ({result['ip']})")
             for finding in result["findings"]:
                 print(f"       {finding}")
+
+        for check in result["unevaluated_controls"]:
+            print(f"       not evaluated: {check}")
 
     if args.report_file:
         report_path = Path(args.report_file).resolve()
@@ -73,8 +80,8 @@ def main() -> int:
             print(f"Report write failed: {exc}", file=sys.stderr)
             return 2
 
-    print(f"Summary: {len(results) - failed} compliant, {failed} non-compliant")
-    return 1 if failed else 0
+    print(f"Summary: {len(results) - failed - not_evaluated} compliant, {failed} non-compliant, {not_evaluated} not evaluated")
+    return 1 if failed or not_evaluated else 0
 
 
 if __name__ == "__main__":

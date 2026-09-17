@@ -60,7 +60,7 @@ class Inventory:
                     except ValueError as exc:
                         raise InventoryError(f"Invalid IP address at line {row_index}: {ip_value}") from exc
 
-                    key = (hostname, ip_value)
+                    key = hostname.casefold()
                     if key in seen:
                         raise InventoryError(f"Duplicate server record: {hostname} {ip_value}")
                     seen.add(key)

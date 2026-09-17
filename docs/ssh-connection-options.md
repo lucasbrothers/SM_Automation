@@ -59,8 +59,7 @@ Example command flow:
 
 ```python
 client.execute("id")
-client.execute("sudo su -")
-client.execute("id")
+client.execute("sudo -n id")
 ```
 
 ## Check the complete inventory
@@ -184,7 +183,7 @@ py -3 scripts/security_compliance.py `
 ```
 
 Exit code `0` means all servers comply; exit code `1` means at least one
-finding exists. Parameter meanings and recommended values are summarized in
+finding or an unevaluated control exists. Parameter meanings and recommended values are summarized in
 `docs/security-policy.md`.
 
 ## Security notes
@@ -193,3 +192,25 @@ finding exists. Parameter meanings and recommended values are summarized in
 - Prefer SSH private keys and external secret storage.
 - Do not log raw credentials or output containing sensitive values.
 - Keep root privilege escalation explicit and auditable.
+
+
+## Trusted host keys (required before first connection)
+
+All SSH commands, including public-key distribution, load the controller account's
+`~/.ssh/known_hosts` and use `RejectPolicy`. On Windows this normally resolves to
+`C:/Users/<controller-account>/.ssh/known_hosts`. Run unattended jobs under the
+account whose trusted-host file was provisioned.
+
+Obtain the target host public key/fingerprint from the server console or another
+approved channel. Verify it independently, then provision the approved public key
+in OpenSSH known_hosts format using the inventory IP as the host field. For a
+non-default port, use `[IP]:port`. Host keys are separate from the user login key.
+A key collected over the same untrusted network is not sufficient verification.
+Unknown or changed host keys fail the connection; the application never accepts
+or replaces them automatically.
+
+Security audit/apply commands require approved noninteractive sudo access
+(`sudo -n`). Each `execute()` opens a separate command channel: running `sudo su -`
+in one call does not elevate a later call. Use an explicit sudo command for each
+operation. The apply workflow verifies a fresh SSH login and `sudo -n true` before
+reporting success; consult the security architecture for supported file layouts.

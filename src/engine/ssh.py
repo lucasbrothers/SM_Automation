@@ -53,7 +53,8 @@ class SSHClient:
     def connect(self) -> None:
         """Open an SSH connection to the target host."""
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
         kwargs: dict[str, object] = {
             "hostname": self.ip,
@@ -66,7 +67,11 @@ class SSHClient:
         if self.password is not None:
             kwargs["password"] = self.password
 
-        client.connect(**kwargs)
+        try:
+            client.connect(**kwargs)
+        except Exception:
+            client.close()
+            raise
         self._client = client
 
     def execute(self, command: str) -> str:
@@ -81,6 +86,7 @@ class SSHClient:
         if client is None:
             raise SSHCommandError("SSH connection is not initialized.")
 
+        stdin = stdout = stderr = None
         try:
             stdin, stdout, stderr = client.exec_command(command, timeout=self.timeout)
             output = stdout.read().decode("utf-8", errors="replace")

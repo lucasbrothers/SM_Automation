@@ -19,3 +19,13 @@ unsupported value
         "passwordauthentication": "yes",
         "pubkeyauthentication": "yes",
     }
+
+
+def test_missing_sshd_observations_fail_audit():
+    import pytest
+    from security.audit import audit_linux_server
+    class Client:
+        def execute(self, command):
+            return ""
+    with pytest.raises(ValueError, match="observations"):
+        audit_linux_server(Client())

@@ -102,8 +102,8 @@ py -3 scripts/security_compliance.py `
 
 종료 코드:
 
-- `0`: 모든 inventory 대상이 정책을 준수합니다.
-- `1`: 하나 이상의 정책 위반이 발견되었습니다.
+- `0`: 보고서의 모든 대상에 대해 요청된 정책 검사가 완료되었고 위반이 없습니다.
+- `1`: 정책 위반 또는 미평가 항목이 있습니다. 빈 보고서는 입력 오류입니다.
 - `2`: 입력 파일 또는 결과 처리 오류입니다.
 
 정책 파일을 직접 지정하지 않고 OS와 버전으로 자동 선택할 수도 있습니다.
@@ -116,8 +116,10 @@ py -3 scripts/security_compliance.py `
     --report-file reports/security-compliance.json
 ```
 
-정책 평가기는 읽기 전용이며 SSH 설정이나 계정을 변경하지 않습니다. 설정을
-변경하는 조치 작업은 별도 승인과 rollback 계획 후에 구현해야 합니다.
+정책 평가기는 읽기 전용이며 SSH 설정이나 계정을 변경하지 않습니다.
+`security_controls`와 Windows/AIX 전용 평가는 아직 구현되지 않았으므로
+`not_evaluated` 및 `unevaluated_controls`로 표시합니다. RHEL의 SSH 검사만
+통과했다고 전체 기준을 준수한 것으로 표시하지 않습니다.
 
 ## 변경 계획 생성
 
@@ -131,9 +133,10 @@ py -3 scripts/security_remediation_plan.py `
     --report-file reports/security-remediation-plan.json
 ```
 
-생성된 계획에는 현재값, 권고값, 변경 대상 파라미터가 기록됩니다. 실제
-적용 기능은 고객사 승인, 변경 전 백업, 설정 검증, rollback 절차를 확정한
-후 별도 구현합니다.
+생성된 계획에는 hostname, IP, 현재값, 권고값, `scope=sshd_settings`가 기록됩니다.
+감사 실패나 필수 관측값 누락은 `blocked`로 표시하고 변경 작업을 생성하지 않습니다.
+계획 생성 명령은 차단된 서버가 있으면 종료 코드 `1`을 반환합니다. `no_changes`는
+지원하는 SSH 옵션에 변경이 없다는 뜻이며 전체 정책 준수를 뜻하지 않습니다.
 
 ## 승인된 변경 적용
 
@@ -149,10 +152,17 @@ py -3 scripts/security_apply.py `
     --apply
 ```
 
-적용 시 대상 서버의 `/etc/ssh/sshd_config`를 시간표시 백업으로 저장하고,
-`sshd -t` 설정 검증을 통과한 경우에만 SSH 데몬을 reload합니다. 검증 실패
-시 기존 설정을 복원합니다. 적용 후에는 `inventory_ssh_check.py
---check-root`와 `security_audit.py`를 다시 실행해야 합니다.
+적용 전에 전체 계획의 hostname·IP·상태·옵션을 검증하고, 원격 현재값이 계획과
+같은지 다시 확인합니다. 예전 형식의 계획은 새로 생성해야 합니다. 단일 Linux/systemd
+설정 파일만 자동 적용하며 활성 `Include`/`Match`가 있으면 변경을 거부합니다.
+
+서버별 원본을 `/etc/ssh/.sm_automation.<고유값>/sshd_config`에 한 번 백업한 뒤
+모든 옵션을 함께 적용합니다. 구문과 유효값 검사, reload, 새 SSH 연결 및 비대화형
+sudo 확인을 모두 통과해야 성공입니다. 실패 시 원본 복구를 시도하며, 실패한 복구는
+수동 복구 필요 상태로 보고합니다. 기본 결과 파일은 `reports/security-apply.json`이며
+`--report-file`로 지정할 수 있습니다. 적용 후 `security_audit.py`를 다시 실행해
+최신 감사 보고서를 생성합니다. 자세한 지원 범위와 복구 제한은
+[보안 아키텍처](security-architecture.md#검토-후-반영한-실행-보호-절차)를 확인합니다.
 
 ## AIX 7.1 평가
 

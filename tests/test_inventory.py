@@ -59,3 +59,10 @@ def test_inventory_rejects_duplicate_entries(tmp_path):
 
     with pytest.raises(InventoryError, match="Duplicate"):
         inventory.load(server_file)
+
+
+def test_same_hostname_with_different_ip_is_rejected(tmp_path):
+    path = tmp_path / "servers.csv"
+    path.write_text("hostname,ip,os\nWEB01,192.0.2.1,Linux\nweb01,192.0.2.2,Linux\n", encoding="utf-8")
+    with pytest.raises(InventoryError, match="Duplicate"):
+        Inventory().load(path)

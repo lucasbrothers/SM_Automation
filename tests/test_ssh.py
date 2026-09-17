@@ -25,6 +25,9 @@ class FakeStream:
 
 def test_ssh_client_uses_paramiko_for_remote_command(monkeypatch):
     class FakeSSH:
+        def load_system_host_keys(self):
+            self.loaded = True
+
         def set_missing_host_key_policy(self, policy):
             self.policy = policy
 
@@ -43,16 +46,20 @@ def test_ssh_client_uses_paramiko_for_remote_command(monkeypatch):
 
     fake_client = FakeSSH()
     monkeypatch.setattr("engine.ssh.paramiko.SSHClient", lambda: fake_client)
-    monkeypatch.setattr("engine.ssh.paramiko.AutoAddPolicy", lambda: object())
 
     client = SSHClient("WEB01", "10.10.10.1", user="D25950", timeout=15)
     result = client.execute("uname -a")
 
     assert result == "ok\n"
+    assert fake_client.loaded
+    assert isinstance(fake_client.policy, __import__("paramiko").RejectPolicy)
 
 
 def test_ssh_client_raises_on_failed_command(monkeypatch):
     class FakeSSH:
+        def load_system_host_keys(self):
+            self.loaded = True
+
         def set_missing_host_key_policy(self, policy):
             pass
 
@@ -67,7 +74,6 @@ def test_ssh_client_raises_on_failed_command(monkeypatch):
 
     fake_client = FakeSSH()
     monkeypatch.setattr("engine.ssh.paramiko.SSHClient", lambda: fake_client)
-    monkeypatch.setattr("engine.ssh.paramiko.AutoAddPolicy", lambda: object())
 
     client = SSHClient("WEB02", "10.10.10.2")
 
@@ -131,3 +137,32 @@ def test_distribute_public_key_rejects_multiline_key():
             "ssh-rsa AAAA\nmalicious-command",
             password="Abllife1!",
         )
+
+
+def test_exec_failure_preserves_original_error():
+    class BrokenTransport:
+        def exec_command(self, *args, **kwargs):
+            raise OSError("transport failed")
+    client = SSHClient("TEST", "192.0.2.1")
+    client._client = BrokenTransport()
+    with pytest.raises(SSHCommandError, match="transport failed") as error:
+        client.execute("true")
+    assert isinstance(error.value.__cause__, OSError)
+
+
+def test_connection_failure_closes_transport(monkeypatch):
+    class BrokenClient:
+        closed = False
+        def load_system_host_keys(self):
+            pass
+        def set_missing_host_key_policy(self, policy):
+            assert isinstance(policy, __import__("paramiko").RejectPolicy)
+        def connect(self, **kwargs):
+            raise OSError("untrusted or unavailable")
+        def close(self):
+            self.closed = True
+    transport = BrokenClient()
+    monkeypatch.setattr("engine.ssh.paramiko.SSHClient", lambda: transport)
+    with pytest.raises(OSError):
+        SSHClient("TEST", "192.0.2.1").connect()
+    assert transport.closed
