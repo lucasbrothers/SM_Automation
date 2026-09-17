@@ -8,124 +8,53 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
+
 class SensitiveDataFilter(logging.Filter):
     """Mask sensitive information from log messages."""
 
     _PATTERNS = (
         (
             re.compile(
-                r"(?i)(password|passwd|pwd)\s*[:=]\s*[^\s,;]+"
-            ),
-            r"\1=***",
-        ),
-        (
-            re.compile(
-                r"(?i)(token|access_token|refresh_token)\s*[:=]\s*[^\s,;]+"
-            ),
-            r"\1=***",
-        ),
-        (
-            re.compile(
-                r"(?i)(secret|client_secret)\s*[:=]\s*[^\s,;]+"
-            ),
-            r"\1=***",
-        ),
-        (
-            re.compile(
-                r"(?i)(api[_-]?key)\s*[:=]\s*[^\s,;]+"
-            ),
-            r"\1=***",
-        ),
-        (
-            re.compile(
-                r"(?i)(private[_-]?key)\s*[:=]\s*[^\s,;]+"
-            ),
-            r"\1=***",
-        ),
-        (
-            re.compile(
-            r"(?i)(authorization)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
-            ),
-            r"\1=***",
-        ),
-        (
-            re.compile(
-                r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"
-            ),
-            "Bearer ***",
-        ),
-        (
-            re.compile(
-                r"(?i)\bbasic\s+[A-Za-z0-9+/=]+"
-            ),
-            "Basic ***",
-        ),
-        (
-            re.compile(
-                r"(?i)(jdbc:[^\s]+password=)[^&\s]+"
-            ),
-            r"\1***",
-        ),
-        (
-            re.compile(
-                r"(?i)(-----BEGIN [A-Z ]*PRIVATE KEY-----)"
-                r".*?"
+                r"(-----BEGIN [A-Z ]*PRIVATE KEY-----).*?"
                 r"(-----END [A-Z ]*PRIVATE KEY-----)",
-                re.DOTALL,
+                re.DOTALL | re.IGNORECASE,
             ),
             r"\1***\2",
         ),
+        (
+            re.compile(
+                r"(?i)(?<![\w-])([\"']?"
+                r"(?:password|passwd|pwd|access_token|refresh_token|token|"
+                r"client_secret|secret|api[_-]?key|private[_-]?key|authorization)"
+                r"[\"']?)\s*[:=]\s*"
+                r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|"
+                r"(?:bearer|basic)\s+[^\s,;&|}\]]+|[^\s,;&|}\]]+)",
+            ),
+            r"\1=***",
+        ),
+        (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer ***"),
+        (re.compile(r"(?i)\bbasic\s+[A-Za-z0-9+/=]+"), "Basic ***"),
     )
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Mask sensitive information in the log record."""
-        message = record.getMessage()
-
-        for pattern, replacement in self._PATTERNS:
+    @classmethod
+    def mask(cls, message: str) -> str:
+        """Redact supported credential assignments and authentication values."""
+        for pattern, replacement in cls._PATTERNS:
             message = pattern.sub(replacement, message)
+        return message
 
-        record.msg = message
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Redact rendered text without reconstructing exception objects."""
+        record.msg = self.mask(record.getMessage())
         record.args = ()
-
-        if record.exc_info is not None:
-            exception_type = record.exc_info[0]
-            exception_value = record.exc_info[1]
-            exception_traceback = record.exc_info[2]
-
-            if exception_value is not None:
-                exception_message = str(exception_value)
-
-                for pattern, replacement in self._PATTERNS:
-                    exception_message = pattern.sub(
-                        replacement,
-                        exception_message,
-                    )
-
-                if exception_message != str(exception_value):
-                    try:
-                        masked_exception = exception_type(
-                            exception_message
-                        )
-
-                        masked_exception.__traceback__ = (
-                            exception_traceback
-                        )
-
-                        record.exc_info = (
-                            exception_type,
-                            masked_exception,
-                            exception_traceback,
-                        )
-
-                        record.exc_text = None
-                    except Exception:
-                        record.exc_info = (
-                            exception_type,
-                            exception_value,
-                            exception_traceback,
-                        )
-
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = self.mask(record.exc_text)
+        if record.stack_info:
+            record.stack_info = self.mask(record.stack_info)
         return True
+
 
 @dataclass
 class LogContext:
@@ -197,7 +126,11 @@ class LogContext:
         if not value:
             return "-"
 
-        if any(ord(char) < 32 for char in value):
+        if any(
+            ord(char) < 32 or 127 <= ord(char) <= 159
+            or char in "\u2028\u2029"
+            for char in value
+        ):
             raise ValueError(
                 f"Invalid control character in {field_name}."
             )
@@ -262,24 +195,28 @@ class ContextFormatter(logging.Formatter):
 
         formatted = super().format(record)
 
-        for pattern, replacement in SensitiveDataFilter._PATTERNS:
-            formatted = pattern.sub(replacement, formatted)
+        formatted = SensitiveDataFilter.mask(formatted)
 
         formatted = formatted.replace("\r\n", "\\n")
         formatted = formatted.replace("\r", "\\r")
         formatted = formatted.replace("\n", "\\n")
 
-        return formatted
+        return "".join(
+            f"\\x{ord(char):02x}" if ord(char) < 32 or 127 <= ord(char) <= 159
+            else f"\\u{ord(char):04x}" if char in "\u2028\u2029"
+            else char
+            for char in formatted
+        )
 
 
 class LoggerManager:
-    """SM_Automation 중앙 Logger 관리자."""
+    """Manage application logging through a single shared instance."""
 
     _instance: LoggerManager | None = None
     _lock = Lock()
 
     def __new__(cls) -> LoggerManager:
-        """LoggerManager의 Singleton 인스턴스를 생성한다."""
+        """Return the singleton manager instance."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -293,39 +230,25 @@ class LoggerManager:
         The Singleton instance may be initialized multiple times,
         but the actual initialization is performed only once.
         """
-        if getattr(self, "_initialized", False):
-            return
-
-        self._initialized = True
-        self._configured = False
-
-        self.project_root = self._find_project_root()
-        self._create_log_directory()
-
-        self.logger: logging.Logger | None = None
-        self.log_file: Path | None = None
+        with self._lock:
+            if getattr(self, "_initialized", False):
+                return
+            self.project_root = self._find_project_root()
+            self._create_log_directory()
+            self.logger: logging.Logger | None = None
+            self.log_file: Path | None = None
+            self._configured = False
+            self._initialized = True
 
 
     def _find_project_root(self) -> Path:
-        """SM_Automation 프로젝트 루트 디렉터리를 찾는다.
-
-        Returns:
-            Path: 프로젝트 루트 디렉터리 경로.
-
-        Raises:
-            RuntimeError: 프로젝트 루트를 찾지 못한 경우.
-        """
-        current_path = Path(__file__).resolve()
-
-        for parent in current_path.parents:
-            if parent.name == "SM_Automation":
-                return parent
-
-        raise RuntimeError("SM_Automation 프로젝트 루트 디렉터리를 찾을 수 없습니다.")
+        """Locate the project root independently of the checkout name."""
+        return Path(__file__).resolve().parents[2]
 
     def _create_log_directory(self) -> Path:
+        """Create the application's log directory."""
         if self.project_root is None:
-            raise RuntimeError("프로젝트 루트 디렉터리가 설정되지 않았습니다.")
+            raise RuntimeError("Project root is not configured.")
 
         log_directory = self.project_root / "logs"
 
@@ -336,7 +259,7 @@ class LoggerManager:
             )
         except OSError as exc:
             raise OSError(
-                f"로그 디렉터리를 생성할 수 없습니다: {log_directory}"
+                f"Cannot create log directory: {log_directory}"
             ) from exc
 
         self.log_directory = log_directory
@@ -432,27 +355,25 @@ class LoggerManager:
         Returns:
             logging.Logger: Configured application logger.
         """
-        logger = logging.getLogger("SM_Automation")
-
-        if self._configured:
+        with self._lock:
+            logger = logging.getLogger("SM_Automation")
+            if self._configured:
+                return logger
+            formatter = self._create_formatter()
+            console_handler = self._create_console_handler(formatter)
+            try:
+                file_handler = self._create_file_handler(formatter)
+            except Exception:
+                console_handler.close()
+                self.log_file = None
+                raise
+            logger.setLevel(logging.INFO)
+            logger.propagate = False
+            logger.addHandler(console_handler)
+            logger.addHandler(file_handler)
             self.logger = logger
+            self._configured = True
             return logger
-
-        logger.setLevel(logging.INFO)
-        logger.propagate = False
-
-        formatter = self._create_formatter()
-
-        console_handler = self._create_console_handler(formatter)
-        file_handler = self._create_file_handler(formatter)
-
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
-
-        self.logger = logger
-        self._configured = True
-
-        return logger
 
     def get_logger(
         self,
@@ -469,8 +390,7 @@ class LoggerManager:
             logging.Logger | logging.LoggerAdapter:
                 Configured logger or logger adapter with context.
         """
-        if self.logger is None:
-            self._configure_logger()
+        self._configure_logger()
 
         if name is None or name == "SM_Automation":
             logger_name = "SM_Automation"
@@ -517,15 +437,15 @@ class LoggerManager:
         This method removes and closes all handlers from the
         application logger.
         """
-        logger = logging.getLogger("SM_Automation")
-
-        for handler in logger.handlers[:]:
-            logger.removeHandler(handler)
-            handler.close()
-
-        self.logger = None
-        self._configured = False     
-
+        with self._lock:
+            logger = logging.getLogger("SM_Automation")
+            try:
+                for handler in logger.handlers[:]:
+                    logger.removeHandler(handler)
+                    handler.close()
+            finally:
+                self.logger = None
+                self._configured = False
 
 
 

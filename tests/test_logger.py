@@ -8,6 +8,19 @@ from common.logger import SensitiveDataFilter
 from common.logger import get_logger
 
 
+@pytest.fixture(autouse=True)
+def isolated_logger(tmp_path, monkeypatch):
+    """Isolate singleton state, handlers and log files for every test."""
+    previous = LoggerManager._instance
+    if previous is not None:
+        previous.shutdown()
+    monkeypatch.setattr(LoggerManager, "_instance", None)
+    monkeypatch.setattr(LoggerManager, "_find_project_root", lambda self: tmp_path)
+    manager = LoggerManager()
+    yield manager
+    manager.shutdown()
+
+
 def test_logger_manager_is_singleton():
     """Verify that LoggerManager returns the same instance."""
     manager1 = LoggerManager()
@@ -940,3 +953,181 @@ def test_log_message_control_character_behavior():
 
     assert "message before newline" in content
     assert "message after newline" in content
+
+
+@pytest.mark.parametrize("message, secrets", [
+    ('{"password": "top secret", "token": "abc123"}', ("top secret", "abc123")),
+    ("{'client_secret': 'top secret'}", ("top secret",)),
+    ('password="top secret"', ("top secret",)),
+    ('Authorization: Basic dXNlcjpwYXNz', ("dXNlcjpwYXNz",)),
+    ('{"Authorization": "Bearer abc123"}', ("abc123",)),
+    ('jdbc:db?password=hidden&token=abc123', ("hidden", "abc123")),
+    ('-----BEGIN PRIVATE KEY-----\nprivatepayload\n-----END PRIVATE KEY-----',
+     ("privatepayload",)),
+])
+def test_structured_credentials_are_masked(message, secrets):
+    record = logging.makeLogRecord({"msg": message})
+    SensitiveDataFilter().filter(record)
+    for secret in secrets:
+        assert secret not in record.getMessage()
+    assert "***" in record.getMessage()
+
+
+def test_exception_chain_and_custom_constructor_are_preserved(isolated_logger, capsys):
+    class LoginError(Exception):
+        def __init__(self, code, detail):
+            super().__init__(code, detail)
+
+    logger = isolated_logger.get_logger("exception_chain")
+    try:
+        try:
+            raise ValueError('password="inner secret"')
+        except ValueError as cause:
+            raise LoginError(403, "Authorization: Basic encodedsecret") from cause
+    except LoginError as exc:
+        original_args = exc.args
+        logger.exception("Login failed")
+        assert exc.args == original_args
+    content = isolated_logger.log_file.read_text(encoding="utf-8")
+    console = capsys.readouterr().err
+    for output in (content, console):
+        assert "inner secret" not in output
+        assert "encodedsecret" not in output
+        assert "ValueError" in output
+        assert "LoginError" in output
+        assert "direct cause" in output
+        assert len(output.splitlines()) == 1
+
+
+@pytest.mark.parametrize("control", ["\n", "\r", "\t", "\x00", "\x1b", "\x85", "\u2028"])
+def test_control_characters_cannot_inject_log_lines(isolated_logger, control):
+    isolated_logger.get_logger("controls").info("before%safter", control)
+    content = isolated_logger.log_file.read_text(encoding="utf-8")
+    assert len(content.splitlines()) == 1
+    assert control not in content.rstrip("\n")
+    assert "before" in content and "after" in content
+
+
+def test_concurrent_configuration_has_one_handler_pair(isolated_logger):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    barrier = Barrier(8)
+    def write_message(index):
+        barrier.wait(timeout=10)
+        manager = LoggerManager()
+        manager.get_logger("concurrent").info("worker-message-%s", index)
+        return manager
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        managers = list(executor.map(write_message, range(8)))
+    assert all(manager is isolated_logger for manager in managers)
+    assert len([h for h in isolated_logger.logger.handlers
+                if type(h) in (logging.StreamHandler,
+                               logging.handlers.RotatingFileHandler)]) == 2
+    content = isolated_logger.log_file.read_text(encoding="utf-8")
+    for index in range(8):
+        assert content.count(f"worker-message-{index}") == 1
+
+
+def test_concurrent_first_initialization_runs_once(isolated_logger, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    monkeypatch.setattr(LoggerManager, "_instance", None)
+    original = LoggerManager._create_log_directory
+    calls = []
+
+    def create_directory(manager):
+        calls.append(manager)
+        return original(manager)
+
+    monkeypatch.setattr(LoggerManager, "_create_log_directory", create_directory)
+    barrier = Barrier(8)
+
+    def initialize(_):
+        barrier.wait(timeout=10)
+        return LoggerManager()
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        managers = list(executor.map(initialize, range(8)))
+    assert len(calls) == 1
+    assert all(manager is managers[0] for manager in managers)
+    assert managers[0]._initialized
+
+
+@pytest.mark.parametrize("control", ["\x7f", "\x85", "\u2028", "\u2029"])
+def test_context_rejects_additional_control_characters(control):
+    with pytest.raises(ValueError, match="Invalid control character"):
+        LogContext(hostname=f"before{control}after")
+
+
+def test_filter_masks_cached_exception_and_stack_text():
+    record = logging.makeLogRecord({
+        "msg": "password=%s",
+        "args": ("messagesecret",),
+        "exc_text": 'ValueError: {"token": "exceptionsecret"}',
+        "stack_info": "stack password=stacksecret",
+    })
+    data_filter = SensitiveDataFilter()
+    data_filter.filter(record)
+    first = (record.msg, record.exc_text, record.stack_info)
+    data_filter.filter(record)
+    assert first == (record.msg, record.exc_text, record.stack_info)
+    assert "messagesecret" not in record.msg
+    assert "exceptionsecret" not in record.exc_text
+    assert "stacksecret" not in record.stack_info
+
+
+def test_initialization_failure_can_retry(isolated_logger, monkeypatch):
+    monkeypatch.setattr(LoggerManager, "_instance", None)
+    with monkeypatch.context() as patch:
+        def fail(self):
+            raise OSError("directory unavailable")
+        patch.setattr(LoggerManager, "_create_log_directory", fail)
+        with pytest.raises(OSError, match="directory unavailable"):
+            LoggerManager()
+    manager = LoggerManager()
+    try:
+        assert manager._initialized
+        assert manager.log_directory.is_dir()
+        manager.get_logger("retry").info("recovered")
+    finally:
+        manager.shutdown()
+
+
+def test_file_handler_failure_can_retry(isolated_logger, monkeypatch):
+    with monkeypatch.context() as patch:
+        def fail(formatter):
+            raise OSError("file unavailable")
+        patch.setattr(isolated_logger, "_create_file_handler", fail)
+        with pytest.raises(OSError, match="file unavailable"):
+            isolated_logger.get_logger()
+    assert not isolated_logger._configured
+    assert not any(type(h) in (logging.StreamHandler,
+                              logging.handlers.RotatingFileHandler)
+                   for h in logging.getLogger("SM_Automation").handlers)
+    isolated_logger.get_logger().info("retry succeeded")
+    assert len([h for h in isolated_logger.logger.handlers
+                if type(h) in (logging.StreamHandler,
+                               logging.handlers.RotatingFileHandler)]) == 2
+
+
+def test_rotation_preserves_utf8_and_limits_backups(isolated_logger):
+    logger = isolated_logger.get_logger("rotation")
+    handler = next(h for h in isolated_logger.logger.handlers
+                   if isinstance(h, logging.handlers.RotatingFileHandler))
+    assert handler.maxBytes == 10 * 1024 * 1024
+    assert handler.backupCount == 30
+    handler.maxBytes = 400
+    handler.backupCount = 2
+    for index in range(12):
+        logger.info("\ud55c\uae00 log %s password=rotationsecret", index)
+    isolated_logger.shutdown()
+    files = list(isolated_logger.log_directory.glob("sm_automation.log*"))
+    assert len(files) == 3
+    for path in files:
+        content = path.read_text(encoding="utf-8")
+        assert "\ud55c\uae00 log" in content
+        assert "rotationsecret" not in content
+    assert "\ud55c\uae00 log 11" in isolated_logger.log_file.read_text(encoding="utf-8")
