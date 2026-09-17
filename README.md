@@ -6,6 +6,8 @@ Enterprise System Management Automation
 
 - [다른 PC에서 개발 이어가기](docs/pc-handoff.md)
 - [설정 관리 사용법](docs/configuration.md)
+- [SSH 및 보안 정책 사용법](docs/ssh-connection-options.md)
+- [보안 정책 기준표](docs/security-policy.md)
 - Python 3.14.7, dependencies pinned in `requirements-dev.txt`.
 
 ## Design Context

@@ -143,14 +143,18 @@ class SSHKeyDistributor:
         ip: str,
         *,
         user: str = "D25950",
-        password: str,
+        password: str | None = None,
+        key_filename: str | Path | None = None,
         timeout: int = 30,
         port: int = 22,
     ):
+        if password is None and key_filename is None:
+            raise ValueError("password or key_filename is required.")
         self.hostname = hostname
         self.ip = ip
         self.user = user
         self.password = password
+        self.key_filename = key_filename
         self.timeout = timeout
         self.port = port
 
@@ -161,6 +165,7 @@ class SSHKeyDistributor:
             self.ip,
             user=self.user,
             password=self.password,
+            key_filename=self.key_filename,
             timeout=self.timeout,
             port=self.port,
         )
@@ -174,12 +179,15 @@ def distribute_public_key_to_inventory(
     server_file: str | Path,
     public_key: str,
     *,
-    password: str,
+    password: str | None = None,
+    key_filename: str | Path | None = None,
     user: str = "D25950",
     timeout: int = 30,
     port: int = 22,
 ) -> dict[str, str]:
     """Install a public key for every server in the inventory."""
+    if password is None and key_filename is None:
+        raise ValueError("password or key_filename is required.")
     _authorized_keys_command(public_key)
     servers = Inventory().load(server_file)
     results: dict[str, str] = {}
@@ -189,6 +197,7 @@ def distribute_public_key_to_inventory(
             server.ip,
             user=user,
             password=password,
+            key_filename=key_filename,
             timeout=timeout,
             port=port,
         )

@@ -1,0 +1,108 @@
+{
+  "policy_id": "windows-server-2022-security-baseline",
+  "os": "windows",
+  "versions": ["2022"],
+  "status": "recommended-baseline",
+  "notes": [
+    "Validate against the approved customer standard before enforcement.",
+    "This file contains Windows Server 2022 controls only; Linux and AIX controls are not applicable."
+  ],
+  "security_controls": {
+    "windows_firewall": {
+      "profiles": ["Domain", "Private", "Public"],
+      "enabled": true,
+      "inbound_default": "block",
+      "outbound_default": "allow",
+      "note": "Create explicit approved inbound exceptions; do not disable the Windows Firewall service."
+    },
+    "microsoft_defender": {
+      "realtime_monitoring": true,
+      "antispyware": true,
+      "behavior_monitoring": true,
+      "cloud_protection": true,
+      "signature_update": "automatic"
+    },
+    "user_account_control": {
+      "enable_lua": true,
+      "consent_prompt_behavior_admin": "prompt_for_consent_on_secure_desktop",
+      "consent_prompt_behavior_standard_user": "prompt_for_credentials_on_secure_desktop",
+      "secure_desktop": true
+    },
+    "password_policy": {
+      "minimum_length": 8,
+      "maximum_age_days": 90,
+      "minimum_age_days": 1,
+      "history_count": 5,
+      "complexity_required": true
+    },
+    "account_lockout_policy": {
+      "threshold": 5,
+      "duration_minutes": 30,
+      "reset_counter_minutes": 30
+    },
+    "rdp": {
+      "enabled": false,
+      "network_level_authentication": true,
+      "encryption_level": "high",
+      "allow_saved_credentials": false,
+      "security_layer": "tls"
+    },
+    "smb": {
+      "smbv1": "disabled",
+      "server_signing_required": true,
+      "client_signing_required": true,
+      "guest_logons": "disabled",
+      "ntlmv1": "disabled"
+    },
+    "tls": {
+      "tls_1_0": "disabled",
+      "tls_1_1": "disabled",
+      "tls_1_2": "enabled",
+      "tls_1_3": "enabled_when_supported",
+      "weak_ciphers": "disabled"
+    },
+    "audit_policy": {
+      "logon_events": "success_and_failure",
+      "account_management": "success_and_failure",
+      "policy_change": "success_and_failure",
+      "privilege_use": "success_and_failure",
+      "system_events": "success_and_failure",
+      "object_access": "success_and_failure",
+      "powershell_script_block_logging": true,
+      "powershell_module_logging": true,
+      "transcription": true
+    },
+    "event_logs": {
+      "application_max_size_mb": 128,
+      "security_max_size_mb": 256,
+      "system_max_size_mb": 128,
+      "retention": "overwrite_as_needed",
+      "forwarding": "centralized_when_available"
+    },
+    "local_accounts": {
+      "guest_account": "disabled",
+      "administrator_account": "renamed_or_disabled_per_customer_policy",
+      "local_account_password_use": "restricted",
+      "remove_unused_accounts": true,
+      "review_before_removal": true
+    },
+    "services": {
+      "disable_if_unused": [
+          "RemoteRegistry"
+      ],
+      "note": "Confirm dependencies before disabling any service. Use the exact installed service name and avoid blanket service removal."
+    },
+    "network_protocols": {
+      "llmnr": "disabled",
+      "netbios_over_tcpip": "disabled_when_not_required",
+      "ipv6": "retain_unless_customer_policy_requires_disable"
+    },
+    "system_hardening": {
+      "secure_boot": "enabled_when_supported",
+      "bitlocker": "enabled_when_supported",
+      "credential_guard": "enabled_when_supported",
+      "windows_update": "automatic_or_centrally_managed",
+      "time_sync": "domain_or_approved_ntp"
+    }
+  }
+}

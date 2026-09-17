@@ -1,0 +1,126 @@
+{
+  "policy_id": "rhel8-security-baseline",
+  "os": "rhel",
+  "versions": [8],
+  "status": "recommended-baseline",
+  "notes": [
+    "Validate against the approved customer standard before enforcement.",
+    "Do not disable firewalld or SELinux without a documented compensating control."
+  ],
+  "allowed_sshd_settings": {
+    "permitrootlogin": ["no", "without-password"],
+    "pubkeyauthentication": ["yes"]
+  },
+  "allowed_sshd_config_modes": ["600"],
+  "required_root_accounts": ["root"],
+  "forbidden_root_accounts": [],
+  "security_controls": {
+    "firewalld": {
+      "service": "firewalld",
+      "enabled": false,
+      "state": "stopped",
+      "basis": "customer-approved baseline"
+    },
+    "selinux": {
+      "config_mode": "disabled",
+      "runtime_mode": "disabled",
+      "basis": "customer-approved baseline"
+    },
+    "password_policy": {
+      "login_defs": {
+        "pass_max_days": 90,
+        "pass_min_days": 1,
+        "pass_warn_age": 7
+      },
+      "pwquality": {
+        "file": "/etc/security/pwquality.conf",
+        "minlen": 8
+      },
+      "mail_dir": {
+        "file": "/etc/login.defs",
+        "state": "not_applicable_or_review_only"
+      }
+    },
+    "login_banners": {
+      "files": ["/etc/issue", "/etc/issue.net", "/etc/motd"],
+      "required_lines": [
+        "*********** W A R N I N G ***********",
+        "This system is available to authorized personnels only of Life Insurance Co.,LTD.",
+        "Your all activities are being monitored and you can be penalized for",
+        "illegal access according to related regulations.",
+        "*************************************"
+      ]
+    },
+    "service_hardening": {
+      "etc_services_edit": "not_authoritative",
+      "reason": "Disable systemd services or sockets and use firewall rules; do not rely on commenting /etc/services entries.",
+      "xinetd_config": "not_applicable_by_default"
+    },
+    "file_permissions": {
+      "exact_modes": {
+        "/etc/hosts.equiv": "000",
+        "/etc/passwd": "644",
+        "/etc/group": "644",
+        "/etc/shadow": "000",
+        "/etc/hosts": "644",
+        "/etc/services": "644",
+        "/etc/profile": "644",
+        "/etc/rsyslog.conf": "644",
+        "/etc/cron.allow": "640",
+        "/etc/cron.deny": "640",
+        "/etc/at.allow": "640",
+        "/etc/at.deny": "640",
+        "/var/log/wtmp": "600",
+        "/var/log/utmp": "600",
+        "/var/log/btmp": "660",
+        "/var/log/lastlog": "640",
+        "/usr/bin/last": "700",
+        "/usr/bin/newgrp": "755",
+        "/usr/bin/at": "755"
+      },
+      "remove_group_write": ["/etc/pam.d/system-auth", "/etc/exports"],
+      "remove_other_read": ["/usr/bin/su", "/etc/cron.d/*"],
+      "remove_other_execute": ["/usr/bin/cc", "/usr/bin/gcc"]
+    },
+    "accounts": {
+      "remove_groups": ["lp", "games"],
+      "remove_users": ["lp", "games", "operator", "ftp"],
+      "review_before_removal": true,
+      "admin_home_other_read": false
+    },
+    "tmpfiles": {
+      "file": "/usr/lib/tmpfiles.d/var.conf",
+      "modes": {
+        "wtmp": "0644",
+        "btmp": "0640",
+        "lastlog": "0644"
+      },
+      "note": "Verify the vendor file path before changing it; do not edit generated or package-managed files blindly."
+    },
+    "pam_su": {
+      "file": "/etc/pam.d/su",
+      "wheel_required": true
+    },
+    "rtc": {
+      "local_rtc": false,
+      "command": "timedatectl set-local-rtc 0"
+    },
+    "faillock": {
+      "authselect_profile": "sssd_or_minimal",
+      "feature": "with-faillock",
+      "deny": 5,
+      "unlock_time": 600,
+      "files": {
+        "/etc/security/faillock.conf": "600"
+      },
+      "note": "Use sssd only when the host actually uses SSSD identity/authentication."
+    },
+    "sssd": {
+      "applicability": "only_when_sssd_is_required",
+      "config_mode": "600",
+      "owner": "root:root",
+      "debug_level": 0,
+      "restart_required": true
+    }
+  }
+}

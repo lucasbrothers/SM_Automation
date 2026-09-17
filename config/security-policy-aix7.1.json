@@ -1,0 +1,119 @@
+{
+  "policy_id": "aix7.1-security-baseline",
+  "os": "aix",
+  "versions": ["7.1"],
+  "status": "recommended-baseline",
+  "notes": [
+    "AIX commands and paths are separate from RHEL policies.",
+    "Validate each change on the target AIX technology level before enforcement.",
+    "Review account removal and firewall changes with the application owner."
+  ],
+  "ssh": {
+    "allowed_authentication": "publickey",
+    "direct_root_login": "disabled",
+    "config_files": ["/etc/ssh/sshd_config", "/etc/ssh/ssh_config"]
+  },
+  "security_controls": {
+    "firewall": {
+      "platform": "aix",
+      "service": "ipsec",
+      "state": "customer_defined",
+      "note": "Do not use systemctl or firewalld. Validate IPsec/filter rules and the approved network architecture."
+    },
+    "selinux": {
+      "applicability": "not_applicable",
+      "note": "SELinux is a Linux control and is not an AIX 7.1 setting."
+    },
+    "password_policy": {
+      "file": "/etc/security/user",
+      "default": {
+        "maxage_weeks": 13,
+        "minage_weeks": 1,
+        "minlen": 8,
+        "pwdwarntime_days": 7,
+        "histexpire_weeks": 26,
+        "histsize": 10,
+        "loginretries": 5,
+        "logindisable": true,
+        "logindelay_seconds": 60
+      },
+      "note": "AIX uses /etc/security/user attributes instead of /etc/login.defs."
+    },
+    "login_banners": {
+      "files": ["/etc/issue", "/etc/motd"],
+      "required_lines": [
+        "*********** W A R N I N G ***********",
+        "This system is available to authorized personnels only of Life Insurance Co.,LTD.",
+        "Your all activities are being monitored and you can be penalized for",
+        "illegal access according to related regulations.",
+        "*************************************"
+      ]
+    },
+    "services": {
+      "config_file": "/etc/inetd.conf",
+      "disabled_services": [
+        "echo",
+        "discard",
+        "daytime",
+        "chargen",
+        "ftp",
+        "telnet",
+        "shell",
+        "login",
+        "exec",
+        "talk",
+        "ntalk"
+      ],
+      "state": "commented_or_disabled",
+      "note": "Use refresh -s inetd after an approved inetd.conf change."
+    },
+    "sudo": {
+      "file": "/etc/sudoers",
+      "wheel_rule": "enabled",
+      "validation_command": "visudo -c"
+    },
+    "file_permissions": {
+      "exact_modes": {
+        "/etc/hosts.equiv": "000",
+        "/etc/passwd": "644",
+        "/etc/group": "644",
+        "/etc/security/passwd": "400",
+        "/etc/security/user": "600",
+        "/etc/security/limits": "600",
+        "/etc/hosts": "644",
+        "/etc/services": "644",
+        "/etc/profile": "644",
+        "/etc/sudoers": "440",
+        "/var/adm/wtmp": "600",
+        "/var/adm/sulog": "600"
+      },
+      "remove_other_write": [
+        "/etc/exports",
+        "/etc/dfs/dfstab",
+        "/etc/cron.allow",
+        "/etc/cron.deny",
+        "/etc/at.allow",
+        "/etc/at.deny"
+      ]
+    },
+    "accounts": {
+      "remove_groups": ["lp", "games"],
+      "remove_users": ["lp", "games", "operator", "ftp"],
+      "review_before_removal": true,
+      "admin_home_other_read": false,
+      "note": "Confirm no application, batch, HACMP, or monitoring dependency before removal."
+    },
+    "rtc": {
+      "local_rtc": false,
+      "note": "Use AIX time synchronization and chdev/tz configuration appropriate to the host."
+    },
+    "pam": {
+      "applicability": "not_applicable_as_rhel_authselect",
+      "note": "AIX uses its own authentication stack; do not apply authselect, faillock, or sssd commands."
+    },
+    "sssd": {
+      "applicability": "not_applicable_by_default",
+      "note": "Use AIX LDAP/registry integration only when approved by the identity architecture."
+    }
+  }
+}
