@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
     QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem,
+    QTreeWidget, QTreeWidgetItem, QComboBox,
 )
 
 from desktop.client import ConnectionSettings, ServerClient
@@ -40,7 +40,9 @@ QPushButton:hover { background: #eaf0fb; border-color: #a9c0e8; }
 QPushButton:disabled { color: #9ca9ba; background: #edf1f6; }
 QPushButton[primary="true"] { background: #2869df; color: white; border: none; font-weight: 600; }
 QPushButton[primary="true"]:hover { background: #1c56bb; }
-QLineEdit, QSpinBox, QPlainTextEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
+QLineEdit, QSpinBox, QPlainTextEdit, QComboBox { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
+QComboBox::drop-down { border: none; width: 26px; }
+QComboBox QAbstractItemView { background: white; selection-background-color: #e6efff; selection-color: #203955; }
 QTableWidget { background: white; border: none; gridline-color: #edf1f6; selection-background-color: #e6efff; selection-color: #203955; }
 QHeaderView::section { background: #f7f9fc; color: #6a7c93; border: none; border-bottom: 1px solid #e1e8f0; padding: 9px; font-size: 9pt; }
 QTableWidget::item { padding: 7px; border-bottom: 1px solid #eff3f7; }
@@ -179,7 +181,7 @@ class Console(QMainWindow):
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
-        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity"]):
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
         nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
@@ -205,7 +207,7 @@ class Console(QMainWindow):
             self.metric_values.append(number)
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
-        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity()
+        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts()
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
@@ -275,14 +277,56 @@ class Console(QMainWindow):
         body.addWidget(label("Closing this console does not stop Linux jobs. Reconnect to see results.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
 
+    def build_accounts(self):
+        page = QWidget(); layout = QVBoxLayout(page)
+        frame, body = card(); body.addWidget(label("Linux accounts", "section"))
+        body.addWidget(label("Targets follow the checkboxes in Connection map. Changes require a complete encrypted backup."))
+        form = QFormLayout(); self.account_action = QComboBox()
+        for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
+            self.account_action.addItem(title, action)
+        form.addRow("Action", self.account_action)
+        self.account_fields = {}
+        for name, title in [("username", "Username"), ("sr", "SR reference"), ("full_name", "Full name"), ("uid", "UID (optional)"), ("gid", "Existing GID (optional)")]:
+            field = QLineEdit(); self.account_fields[name] = field; form.addRow(title, field)
+        body.addLayout(form)
+        def update_fields():
+            action = self.account_action.currentData()
+            for name, field in self.account_fields.items():
+                field.setEnabled(action != "list" if name == "username" else action in ({"create"} if name in {"uid", "gid"} else {"create", "modify"}))
+        self.account_action.currentIndexChanged.connect(update_fields); update_fields()
+        body.addWidget(label("New accounts have no password set. Delete retains the home directory. Lock controls password authentication."))
+        body.addWidget(button("Run account operation", self.run_accounts, True))
+        self.account_table = table(["Server", "Username", "UID", "GID", "Comment", "Home", "Shell"])
+        body.addWidget(self.account_table, 1); layout.addWidget(frame); self.pages.addWidget(page)
+
+    def run_accounts(self):
+        options = {name: field.text().strip() for name, field in self.account_fields.items()}
+        options["action"] = self.account_action.currentData()
+        if options["action"] != "list":
+            hosts = self.checked_hosts()
+            if not hosts or not self.require_client():
+                return
+            if QMessageBox.question(self, "Review account operation", f"{options['action']} {options['username']} on: {', '.join(hosts)}?\nLinux will back up each target first.") != QMessageBox.Yes:
+                return
+        self.start_job("accounts", options=options)
+
+    def display_accounts(self, rows):
+        values = []
+        for row in rows:
+            for account in row.get("result", {}).get("accounts", []):
+                values.append([row["hostname"], *[account[key] for key in ("username", "uid", "gid", "comment", "home", "shell")]])
+        fill_table(self.account_table, values); self.navigate(4)
+        self.status_line.setText(f"Account results: {len(values)} accounts; {sum(row['status'] == 'failed' for row in rows)} failed servers. Details are in Activity.")
+
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
                         "Selected servers and their established TCP peers. All collection runs on Linux.",
                         "OS configuration files and account information, encrypted and retained on Linux.",
-                        "Follow server-side jobs and inspect their results, even after reconnecting."]
+                        "Follow server-side jobs and inspect their results, even after reconnecting.",
+                        "Account changes run on Linux after an encrypted backup."]
         self.subtitle.setText(descriptions[index])
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
@@ -404,7 +448,7 @@ class Console(QMainWindow):
             client = self.client
             self.work(lambda: client.call("inventory.import", csv=content), lambda _: self.reload())
 
-    def start_job(self, kind, all_hosts=False):
+    def start_job(self, kind, all_hosts=False, options=None):
         if not self.require_client():
             return
         hosts = [row["hostname"] for row in self.servers] if all_hosts else self.checked_hosts()
@@ -414,7 +458,7 @@ class Console(QMainWindow):
         def started(job):
             self.active_job = job["id"]; self.loaded_job = None
             self.status_line.setText(f"{kind}: submitted to Linux for {len(hosts)} servers."); self.poll()
-        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts), started)
+        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts, options=options or {}), started)
 
     def poll(self):
         if not self.client or self.poll_busy:
@@ -436,6 +480,9 @@ class Console(QMainWindow):
                 if active["kind"] == "connections":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), self.display_connections)
+                elif active["kind"] == "accounts":
+                    client = self.client
+                    self.work(lambda: client.results(active["id"]), self.display_accounts)
 
     def display_connections(self, rows):
         self.connection_results = rows
@@ -519,6 +566,7 @@ class Console(QMainWindow):
         self.connection_badge.setText("DEMO  /  SYNTHETIC DATA")
         self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
         self.display_connections(connection_rows())
+        fill_table(self.account_table, [["app-linux-01", "ops_example", "2001", "2001", "SR2026-2026-10-08-Example Operator", "/home/ops_example", "/bin/bash"]])
         self.set_jobs([{"id": "demo-backup-001", "kind": "backup", "status": "partial", "total": 4,
                         "done": 4, "failed": 0, "partial": 1, "created_at": "2026-10-08T18:30:00+09:00"}])
         self.status_line.setText("VISUAL MOCKUP  /  Synthetic sample data. No server connection or operational task is running.")
@@ -527,7 +575,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -539,7 +587,7 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity"].index(args.page))
+        window.navigate(["overview", "connections", "backups", "activity", "accounts"].index(args.page))
     if args.mockup:
         def save():
             window.graph.fit_map()

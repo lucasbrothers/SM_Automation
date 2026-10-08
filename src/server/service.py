@@ -10,11 +10,13 @@ import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict
 from dataclasses import asdict, replace
 from datetime import datetime
 from pathlib import Path
 
 from backup.collector import backup_server
+from account.manager import manage_accounts, validate_options
 from core.inventory import ServerRecord
 from engine.ssh import SSHClient
 from monitoring.collector import collect_linux_snapshot
@@ -56,6 +58,7 @@ class ManagementService:
         if not isinstance(self.profiles, dict):
             raise ValueError("SSH profiles must be a JSON object")
         self.lock = threading.RLock()
+        self.account_locks = defaultdict(threading.Lock)
         self.jobs = {}
         self.closed = False
         self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="management")
@@ -86,8 +89,8 @@ class ManagementService:
     def _save(self, job):
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
-    def submit(self, kind, names):
-        if kind not in {"connections", "backup", "monitoring", "security_audit"}:
+    def submit(self, kind, names, options=None):
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "accounts"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -96,6 +99,9 @@ class ManagementService:
         if any(name not in indexed for name in names):
             raise ValueError("A selected server is no longer in the inventory")
         targets = [indexed[name] for name in dict.fromkeys(names)]
+        options = validate_options(options or {}) if kind == "accounts" else {}
+        if kind == "accounts" and any(os_family(row["os"]) != "linux" for row in targets):
+            raise ValueError("Account management currently supports Linux targets")
         with self.lock:
             if self.closed:
                 raise RuntimeError("Server is shutting down")
@@ -103,13 +109,21 @@ class ManagementService:
                 raise RuntimeError("Two jobs are already active; wait for one to finish")
             job = {"id": uuid.uuid4().hex, "kind": kind, "status": "queued", "created_at": now(),
                    "total": len(targets), "done": 0, "failed": 0, "partial": 0,
-                   "targets": targets, "message": "Queued on Linux main server", "results": []}
+                   "targets": targets, "options": options, "message": "Queued on Linux main server", "results": []}
             self.jobs[job["id"]] = job
             self._save(job)
             self.pool.submit(self._run, job, targets)
             return self.summary(job)
 
     def _target(self, job, row):
+        if job["kind"] == "accounts" and job["options"]["action"] != "list":
+            with self.lock:
+                target_lock = self.account_locks[row["ip"]]
+            with target_lock:
+                return self._target_unlocked(job, row)
+        return self._target_unlocked(job, row)
+
+    def _target_unlocked(self, job, row):
         server = ServerRecord(**{key: row[key] for key in ("hostname", "ip", "os")})
         client = None
         try:
@@ -141,6 +155,23 @@ class ManagementService:
                 if family != "linux":
                     raise ValueError("Resource monitoring currently supports Linux targets")
                 result = collect_linux_snapshot(client).to_dict()
+            elif kind == "accounts":
+                options = job["options"]
+                login_user = profile.get("user", self.config.ssh_user)
+                if options["action"] != "list":
+                    if options["username"] == login_user:
+                        raise ValueError("The SSH management account cannot be changed")
+                    before = backup_server(client, server, host_config, self.backups, job["id"],
+                                           lambda text: self._progress(job, text))
+                    if before["status"] != "completed":
+                        return {**row, "status": "failed", "error": "Pre-change backup incomplete; account unchanged", "result": {"backup": before}}
+                    try:
+                        result = manage_accounts(client, options, mode, login_user, self.config.ssh_timeout)
+                    except Exception as exc:
+                        return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
+                    result["backup"] = before
+                else:
+                    result = manage_accounts(client, options, mode, login_user, self.config.ssh_timeout)
             else:
                 if family != "linux":
                     raise ValueError("Security audit currently supports Linux targets")
@@ -198,7 +229,7 @@ class ManagementService:
             content = params["csv"]
             return self.save_inventory(list(csv.DictReader(io.StringIO(content.lstrip("\ufeff")))))
         if method == "job.start":
-            return self.submit(params["kind"], params["hosts"])
+            return self.submit(params["kind"], params["hosts"], params.get("options"))
         if method == "backup.preview":
             path = params["path"]
             if not isinstance(path, str) or not path.endswith((".txt.enc", ".json.enc")):

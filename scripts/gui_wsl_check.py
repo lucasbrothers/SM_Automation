@@ -45,6 +45,11 @@ def main():
                 assert window.connection_table.rowCount() > 0
                 assert window.graph.scene().items()
                 print("PASS: native GUI TLS connect, select-all, job submission, polling, connection table and mind map")
+                window.navigate(4)
+                control = next(item for item in window.findChildren(QPushButton) if item.text() == "Run account operation")
+                control.click(); stage[0] = 2
+            elif stage[0] == 2 and window.account_table.rowCount():
+                print("PASS: native Accounts page submits Linux job and displays real account rows")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
