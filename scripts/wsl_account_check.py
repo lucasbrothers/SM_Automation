@@ -40,6 +40,11 @@ def main():
             job, row = run("password_age", max_days="90")
             assert job["status"] == "completed", row
             assert any("Maximum number" in line and line.strip().endswith("90") for line in row["result"]["output"].splitlines()), row
+            job, row = run("expiry", expiry_date="2030-12-31")
+            assert job["status"] == "completed" and "Dec 31, 2030" in row["result"]["output"], row
+            job, row = run("expiry", expiry_date="never")
+            assert job["status"] == "completed", row
+            assert any("Account expires" in line and "never" in line for line in row["result"]["output"].splitlines()), row
             job, row = run("groups", groups="users")
             assert job["status"] == "completed" and "users" in row["result"]["output"], row
             job, row = run("remove_groups", groups="users")

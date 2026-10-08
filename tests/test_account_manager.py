@@ -72,6 +72,14 @@ def test_password_age_is_numeric_and_bounded():
     assert "chage -M 90 -- example" in command
 
 
+def test_expiry_requires_valid_date_and_supports_clear():
+    for value in ("2030-02-30", "2030-01-01;id", ""):
+        with pytest.raises(ValueError):
+            validate_options({"action": "expiry", "username": "example", "expiry_date": value})
+    options = validate_options({"action": "expiry", "username": "example", "expiry_date": "never"})
+    assert "chage -E -1 -- example" in account_command(options, "root")
+
+
 @pytest.mark.parametrize("uid", [True, -1, "1000;id", "999"])
 def test_invalid_uid(uid):
     with pytest.raises(ValueError):

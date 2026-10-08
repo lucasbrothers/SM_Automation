@@ -15,7 +15,7 @@ Linux가 모든 실제 작업을 수행하며 Windows는 네이티브 GUI와 TLS
 
 ## 완료한 확인
 
-- Linux 기존 회귀 테스트: 207 passed (계정·패치·예약 검증 포함).
+- Linux 기존 회귀 테스트: 208 passed (계정·패치·예약 검증 포함).
 - Windows → Linux 검증 TLS 접속 및 잘못된 토큰 거부.
 - 실제 SSH 연결 수집, 자원 모니터링, Linux 보안 감사 작업 완료.
 - 백업 11개 아티팩트 정상 완료. 설정 tar의 sudoers/sudoers.d 포함 확인 및 계정별 chage 결과 미리보기 확인.
@@ -165,3 +165,10 @@ Activity의 security_audit 결과를 열면 UID 0 계정, SSH 인증 설정, 설
 관측값과 OK/Review/Unavailable을 구분한다. 수집 실패를 정상으로 표시하지 않는다.
 Review는 운영 환경에 맞춰 검토할 안내이며 정책을 적용하지 않는다. SSH 정책 적용 기능은 아직 미구현이다.
 전체 207개 테스트 및 Windows TLS → WSL 연결 수집·자원·보안 감사·백업 실제 경로 통과.
+
+## 2026-10-09 계정 만료일
+
+Accounts의 Set account expiry date에서 YYYY-MM-DD 또는 never를 입력한다. Linux chage -E로 설정/해제하고 chage -l 결과를 반환한다.
+선행 백업 및 관리/시스템 계정 보호를 동일하게 적용한다. 과거 날짜 설정은 다음 로그인을 막을 수 있으므로 날짜를 확인한다.
+WSL 임시 계정에 2030-12-31 설정 후 never 해제를 확인했다. 테스트 계정은 삭제하고 홈을 보존한다.
+전체 208개 테스트 통과. 전역 SSH 정책 적용과 자격 증명 관리는 여전히 후속 범위다.

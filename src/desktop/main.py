@@ -287,6 +287,7 @@ class Console(QMainWindow):
         for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("groups", "Add supplementary groups"), ("remove_groups", "Remove supplementary groups"), ("primary_group", "Change primary group (one name)"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
             self.account_action.addItem(title, action)
         self.account_action.addItem("Set password maximum age", "password_age")
+        self.account_action.addItem("Set account expiry date", "expiry")
         form.addRow("Action", self.account_action)
         self.account_fields = {}
         for name, title in [("username", "Username"), ("sr", "SR reference"), ("full_name", "Full name"), ("uid", "UID (optional)"), ("gid", "Existing GID (optional)")]:
@@ -294,9 +295,13 @@ class Console(QMainWindow):
         body.addLayout(form)
         self.account_fields["groups"] = QLineEdit(); form.addRow("Groups (comma separated)", self.account_fields["groups"])
         self.account_fields["max_days"] = QLineEdit(); form.addRow("Password maximum age (days)", self.account_fields["max_days"])
+        self.account_fields["expiry_date"] = QLineEdit(); self.account_fields["expiry_date"].setPlaceholderText("YYYY-MM-DD or never")
+        form.addRow("Account expiry", self.account_fields["expiry_date"])
         def update_fields():
             action = self.account_action.currentData()
             for name, field in self.account_fields.items():
+                if name == "expiry_date":
+                    field.setEnabled(action == "expiry"); continue
                 if name == "max_days":
                     field.setEnabled(action == "password_age"); continue
                 if name == "groups":

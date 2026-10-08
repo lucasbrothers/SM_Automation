@@ -12,7 +12,7 @@ def validate_options(options):
     if not isinstance(options, dict):
         raise ValueError("Account options must be an object")
     action = options.get("action", "list")
-    if action not in {"list", "create", "modify", "groups", "remove_groups", "primary_group", "password_age", "lock", "unlock", "delete"}:
+    if action not in {"list", "create", "modify", "groups", "remove_groups", "primary_group", "password_age", "expiry", "lock", "unlock", "delete"}:
         raise ValueError("Unknown account action")
     result = {"action": action}
     if action == "list":
@@ -21,6 +21,14 @@ def validate_options(options):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("Use a Linux username of at most 32 lowercase characters")
     result["username"] = username
+    if action == "expiry":
+        value = str(options.get("expiry_date", "")).strip()
+        if value == "never":
+            result["expiry_date"] = "-1"
+        else:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise ValueError("Use YYYY-MM-DD or never for account expiry")
+            result["expiry_date"] = date.fromisoformat(value).isoformat()
     if action == "password_age":
         days = options.get("max_days", "")
         if isinstance(days, bool) or not str(days).isdigit() or not 1 <= int(days) <= 99999:
@@ -82,6 +90,7 @@ def account_command(options, login_user):
             "remove_groups": "; ".join(f"gpasswd -d {user} {shlex.quote(group)}" for group in options.get("groups", [])),
             "primary_group": f"usermod -g {shlex.quote(options.get('groups', [''])[0])} -- {user}",
             "password_age": f"chage -M {options.get('max_days', 99999)} -- {user}; LC_ALL=C chage -l {user}",
+            "expiry": f"chage -E {shlex.quote(options.get('expiry_date', '-1'))} -- {user}; LC_ALL=C chage -l {user}",
         }[action]
         if action in {"groups", "remove_groups", "primary_group"}:
             for group in options["groups"]:
