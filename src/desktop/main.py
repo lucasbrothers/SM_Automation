@@ -300,13 +300,13 @@ class Console(QMainWindow):
         def update_fields():
             action = self.account_action.currentData()
             for name, field in self.account_fields.items():
-                if name == "expiry_date":
-                    field.setEnabled(action == "expiry"); continue
-                if name == "max_days":
-                    field.setEnabled(action == "password_age"); continue
-                if name == "groups":
-                    field.setEnabled(action in {"groups", "remove_groups", "primary_group"}); continue
-                field.setEnabled(action != "list" if name == "username" else action in ({"create"} if name in {"uid", "gid"} else {"create", "modify"}))
+                required = {
+                    "username": action != "list", "sr": action in {"create", "modify"},
+                    "full_name": action in {"create", "modify"}, "uid": action == "create",
+                    "gid": action == "create", "groups": action in {"groups", "remove_groups", "primary_group"},
+                    "max_days": action == "password_age", "expiry_date": action == "expiry",
+                }[name]
+                field.setEnabled(required); form.setRowVisible(field, required)
         self.account_action.currentIndexChanged.connect(update_fields); update_fields()
         body.addWidget(label("New accounts have no password set. Delete retains the home directory. Lock controls password authentication."))
         body.addWidget(button("Run account operation", self.run_accounts, True))
@@ -694,6 +694,9 @@ class Console(QMainWindow):
         self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
         self.display_connections(connection_rows())
         fill_table(self.account_table, [["app-linux-01", "ops_example", "2001", "2001", "SR2026-2026-10-08-Example Operator", "/home/ops_example", "/bin/bash"]])
+        self.account_action.setCurrentIndex(1)
+        for name, value in {"username": "ops_example", "sr": "SR2026", "full_name": "Example Operator", "uid": "2001"}.items():
+            self.account_fields[name].setText(value)
         fill_table(self.patch_table, [["app-linux-01", "openssh-server", "1:9.6p1-3ubuntu13.10", "1:9.6p1-3ubuntu13.14"]])
         self.patch_output.setPlainText("SYNTHETIC PATCH PLAN\n1 package upgraded, 0 removed.\nApply after reviewing the Linux package manager simulation.")
         self.display_schedules([{"id": "demo-schedule", "next_run": "2026-10-09T01:00:00+09:00", "kind": "backup", "hosts": ["app-linux-01", "db-linux-01"], "interval_seconds": 86400, "enabled": True, "message": "Waiting on Linux"}])

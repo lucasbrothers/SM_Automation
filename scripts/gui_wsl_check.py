@@ -50,6 +50,11 @@ def main():
                 control.click(); stage[0] = 2
             elif stage[0] == 2 and window.account_table.rowCount():
                 print("PASS: native Accounts page submits Linux job and displays real account rows")
+                window.account_action.setCurrentIndex(window.account_action.findData("create"))
+                assert window.account_fields["sr"].isVisible() and not window.account_fields["groups"].isVisible()
+                window.account_action.setCurrentIndex(window.account_action.findData("expiry"))
+                assert window.account_fields["expiry_date"].isVisible() and not window.account_fields["sr"].isVisible()
+                window.account_action.setCurrentIndex(window.account_action.findData("list"))
                 window.navigate(5)
                 control = next(item for item in window.findChildren(QPushButton) if item.text() == "Query updates")
                 control.click(); stage[0] = 3
