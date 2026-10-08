@@ -43,7 +43,7 @@ QPushButton[primary="true"]:hover { background: #1c56bb; }
 QLineEdit, QSpinBox, QPlainTextEdit, QComboBox, QDateTimeEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
 QComboBox::drop-down { border: none; width: 26px; }
 QComboBox QAbstractItemView { background: white; selection-background-color: #e6efff; selection-color: #203955; }
-QSpinBox, QDateTimeEdit, QComboBox { padding: 3px 8px; min-height: 22px; }
+QSpinBox, QDateTimeEdit, QComboBox, QLineEdit { padding: 3px 8px; min-height: 22px; }
 QTableWidget { background: white; border: none; gridline-color: #edf1f6; selection-background-color: #e6efff; selection-color: #203955; }
 QHeaderView::section { background: #f7f9fc; color: #6a7c93; border: none; border-bottom: 1px solid #e1e8f0; padding: 9px; font-size: 9pt; }
 QTableWidget::item { padding: 7px; border-bottom: 1px solid #eff3f7; }
@@ -284,6 +284,7 @@ class Console(QMainWindow):
         frame, body = card(); body.addWidget(label("Linux accounts", "section"))
         body.addWidget(label("Targets follow the checkboxes in Connection map. Changes require a complete encrypted backup."))
         form = QFormLayout(); self.account_action = QComboBox()
+        form.setVerticalSpacing(10)
         for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("groups", "Add supplementary groups"), ("remove_groups", "Remove supplementary groups"), ("primary_group", "Change primary group (one name)"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
             self.account_action.addItem(title, action)
         self.account_action.addItem("Set password maximum age", "password_age")
