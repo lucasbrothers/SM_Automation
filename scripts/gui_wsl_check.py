@@ -50,6 +50,17 @@ def main():
                 control.click(); stage[0] = 2
             elif stage[0] == 2 and window.account_table.rowCount():
                 print("PASS: native Accounts page submits Linux job and displays real account rows")
+                window.navigate(5)
+                control = next(item for item in window.findChildren(QPushButton) if item.text() == "Query updates")
+                control.click(); stage[0] = 3
+            elif stage[0] == 3 and window.patch_output.toPlainText():
+                version = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "dpkg-query", "-W", "net-tools"], text=True).split()[1]
+                window.patch_packages.setText("net-tools=" + version)
+                control = next(item for item in window.findChildren(QPushButton) if item.text() == "Preview patch plan")
+                control.click(); stage[0] = 4
+            elif stage[0] == 4 and window.patch_plan_id and window.patch_apply.isEnabled():
+                assert window.patch_table.rowCount() == 1
+                print("PASS: native Patches page queries updates and displays a reviewed exact-version plan")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()

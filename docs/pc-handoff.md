@@ -19,7 +19,7 @@
 - docs/configuration.md: 경로·키·포트·SSH 설정
 - docs/architecture.md: 책임 분리·저장·통신·현재 범위
 - docs/backups.md: 파일/명령 수집 범위와 복호화
-- docs/images/: 실제 GUI 코드로 만든 예시 목업 2장
+- docs/images/: 실제 GUI 코드로 만든 예시 목업
 - deploy/sm-automation.service: systemd 템플릿
 
 ## 새 PC 준비
@@ -60,7 +60,7 @@ DB 소프트웨어를 이 PC에서 제거하거나 DB 데이터를 삭제하지�
 
 - 서버별 SSH 프로필을 추가했다. Linux의 보호된 ssh-profiles.json에 계정/키/포트를 정의하고 GUI/CSV에는 profile 이름만 지정한다. 다른 PC에서 실제 연결을 확인한다.
 - AIX/Windows 실환경 netstat 및 파일/명령 수집 조정.
-- Linux 계정 GUI와 변경 전 암호화 백업을 구현하고 WSL에서 확인했다. 패치/보안 정책 적용 GUI와 AIX/Windows 계정은 후속 범위.
+- Linux 계정 GUI와 변경 전 암호화 백업을 구현하고 WSL에서 확인했다. Debian/Ubuntu 패치 조회·계획·백업 후 적용 GUI도 구현했다. 보안 정책 적용 GUI와 RPM/AIX/Windows 계정·패치는 후속 범위.
 - API는 공통 운영자 토큰 방식. 사용자별 로그인·역할·작업 취소·정기 스케줄은 후속 범위.
 - 수집 결과는 서버당 5,000 연결, 그래프는 서버당 25 peer로 제한. 대용량 최적화는 후속 범위.
 - 백업 전체 복원과 대용량 스트리밍, 키 순환, 보존기간 정리 기능은 후속 범위.

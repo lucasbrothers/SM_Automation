@@ -17,6 +17,7 @@ from pathlib import Path
 
 from backup.collector import backup_server
 from account.manager import manage_accounts, validate_options
+from patch.manager import validate_options as patch_options, list_updates, make_plan, apply_plan
 from core.inventory import ServerRecord
 from engine.ssh import SSHClient
 from monitoring.collector import collect_linux_snapshot
@@ -90,7 +91,7 @@ class ManagementService:
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
     def submit(self, kind, names, options=None):
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "accounts"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "accounts", "patches"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -99,10 +100,19 @@ class ManagementService:
         if any(name not in indexed for name in names):
             raise ValueError("A selected server is no longer in the inventory")
         targets = [indexed[name] for name in dict.fromkeys(names)]
-        options = validate_options(options or {}) if kind == "accounts" else {}
-        if kind == "accounts" and any(os_family(row["os"]) != "linux" for row in targets):
-            raise ValueError("Account management currently supports Linux targets")
+        options = (validate_options(options or {}) if kind == "accounts" else
+                   patch_options(options or {}) if kind == "patches" else {})
+        if kind in {"accounts", "patches"} and any(os_family(row["os"]) != "linux" for row in targets):
+            raise ValueError("Account and patch management currently support Linux targets")
         with self.lock:
+            if kind == "patches" and options["action"] == "apply":
+                plan = self.jobs.get(options["plan_id"], {})
+                if plan.get("kind") != "patches" or plan.get("options", {}).get("action") != "plan" or plan.get("status") != "completed":
+                    raise ValueError("A completed patch plan is required")
+                if sorted(plan["targets"], key=lambda r: r["hostname"]) != sorted(targets, key=lambda r: r["hostname"]):
+                    raise ValueError("Targets changed; create a new patch plan")
+                if (datetime.now().astimezone() - datetime.fromisoformat(plan["created_at"])).total_seconds() > 3600:
+                    raise ValueError("Patch plan expired; create a new plan")
             if self.closed:
                 raise RuntimeError("Server is shutting down")
             if sum(job["status"] in {"queued", "running"} for job in self.jobs.values()) >= 2:
@@ -116,7 +126,7 @@ class ManagementService:
             return self.summary(job)
 
     def _target(self, job, row):
-        if job["kind"] == "accounts" and job["options"]["action"] != "list":
+        if (job["kind"] == "accounts" and job["options"]["action"] != "list") or (job["kind"] == "patches" and job["options"]["action"] == "apply"):
             with self.lock:
                 target_lock = self.account_locks[row["ip"]]
             with target_lock:
@@ -172,6 +182,24 @@ class ManagementService:
                     result["backup"] = before
                 else:
                     result = manage_accounts(client, options, mode, login_user, self.config.ssh_timeout)
+            elif kind == "patches":
+                options = job["options"]
+                if options["action"] == "list":
+                    result = list_updates(client, mode)
+                elif options["action"] == "plan":
+                    result = make_plan(client, options["packages"], mode)
+                else:
+                    with self.lock:
+                        plan = next(item["result"] for item in self.jobs[options["plan_id"]]["results"] if item["hostname"] == row["hostname"])
+                    before = backup_server(client, server, host_config, self.backups, job["id"],
+                                           lambda text: self._progress(job, text))
+                    if before["status"] != "completed":
+                        return {**row, "status": "failed", "error": "Pre-patch backup incomplete; packages unchanged", "result": {"backup": before}}
+                    try:
+                        result = apply_plan(client, plan, mode)
+                    except Exception as exc:
+                        return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
+                    result["backup"] = before
             else:
                 if family != "linux":
                     raise ValueError("Security audit currently supports Linux targets")

@@ -181,7 +181,7 @@ class Console(QMainWindow):
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
-        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts"]):
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
         nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
@@ -207,7 +207,7 @@ class Console(QMainWindow):
             self.metric_values.append(number)
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
-        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts()
+        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches()
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
@@ -318,15 +318,57 @@ class Console(QMainWindow):
         fill_table(self.account_table, values); self.navigate(4)
         self.status_line.setText(f"Account results: {len(values)} accounts; {sum(row['status'] == 'failed' for row in rows)} failed servers. Details are in Activity.")
 
+    def build_patches(self):
+        page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
+        body.addWidget(label("Debian / Ubuntu patches", "section"))
+        body.addWidget(label("Use Connection map to select targets. Query uses existing package metadata."))
+        actions = QHBoxLayout()
+        actions.addWidget(button("Query updates", lambda: self.start_job("patches", options={"action": "list"})))
+        self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("Installed packages, separated by spaces: openssh-server net-tools")
+        actions.addWidget(self.patch_packages, 1)
+        actions.addWidget(button("Preview patch plan", self.plan_patches, True)); body.addLayout(actions)
+        self.patch_table = table(["Server", "Package", "Installed", "Planned version"]); body.addWidget(self.patch_table, 1)
+        self.patch_output = QPlainTextEdit(); self.patch_output.setReadOnly(True); body.addWidget(self.patch_output, 1)
+        self.patch_plan_id = None
+        self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
+        body.addWidget(self.patch_apply)
+        body.addWidget(label("Linux backs up first. No package removals or automatic reboot. Existing configuration files are retained."))
+        layout.addWidget(frame); self.pages.addWidget(page)
+
+    def plan_patches(self):
+        self.patch_plan_id = None; self.patch_apply.setEnabled(False)
+        self.start_job("patches", options={"action": "plan", "packages": self.patch_packages.text().split()})
+
+    def apply_patches(self):
+        if not self.patch_plan_id:
+            return
+        plan_id = self.patch_plan_id
+        self.patch_apply.setEnabled(False); self.patch_plan_id = None
+        self.start_job("patches", options={"action": "apply", "plan_id": plan_id})
+
+    def display_patches(self, rows, job):
+        values, output = [], []
+        for row in rows:
+            result = row.get("result", {})
+            for package in result.get("packages", []):
+                values.append([row["hostname"], package["name"], package["installed"], package["candidate"]])
+            output.append(row["hostname"] + " / " + row["status"] + "\n" + row.get("error", result.get("output", "")))
+            if result.get("reboot_required"):
+                output.append("Reboot required. Restart manually during your maintenance window.")
+        fill_table(self.patch_table, values); self.patch_output.setPlainText("\n\n".join(output)); self.navigate(5)
+        if job.get("options", {}).get("action") == "plan" and job["status"] == "completed":
+            self.patch_plan_id = job["id"]; self.patch_apply.setEnabled(True)
+
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
                         "Selected servers and their established TCP peers. All collection runs on Linux.",
                         "OS configuration files and account information, encrypted and retained on Linux.",
                         "Follow server-side jobs and inspect their results, even after reconnecting.",
-                        "Account changes run on Linux after an encrypted backup."]
+                        "Account changes run on Linux after an encrypted backup.",
+                        "Preview exact versions, then apply the reviewed plan from your Linux main server."]
         self.subtitle.setText(descriptions[index])
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
@@ -483,6 +525,9 @@ class Console(QMainWindow):
                 elif active["kind"] == "accounts":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), self.display_accounts)
+                elif active["kind"] == "patches":
+                    client = self.client
+                    self.work(lambda: client.results(active["id"]), lambda rows: self.display_patches(rows, active))
 
     def display_connections(self, rows):
         self.connection_results = rows
@@ -567,6 +612,8 @@ class Console(QMainWindow):
         self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
         self.display_connections(connection_rows())
         fill_table(self.account_table, [["app-linux-01", "ops_example", "2001", "2001", "SR2026-2026-10-08-Example Operator", "/home/ops_example", "/bin/bash"]])
+        fill_table(self.patch_table, [["app-linux-01", "openssh-server", "1:9.6p1-3ubuntu13.10", "1:9.6p1-3ubuntu13.14"]])
+        self.patch_output.setPlainText("SYNTHETIC PATCH PLAN\n1 package upgraded, 0 removed.\nApply after reviewing the Linux package manager simulation.")
         self.set_jobs([{"id": "demo-backup-001", "kind": "backup", "status": "partial", "total": 4,
                         "done": 4, "failed": 0, "partial": 1, "created_at": "2026-10-08T18:30:00+09:00"}])
         self.status_line.setText("VISUAL MOCKUP  /  Synthetic sample data. No server connection or operational task is running.")
@@ -575,7 +622,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -587,7 +634,7 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity", "accounts"].index(args.page))
+        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches"].index(args.page))
     if args.mockup:
         def save():
             window.graph.fit_map()
