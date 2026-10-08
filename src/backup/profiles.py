@@ -51,7 +51,7 @@ def commands(family: str) -> dict[str, str]:
             "services": "systemctl list-unit-files --no-pager; systemctl list-units --type=service --no-pager",
             "packages": "if command -v rpm >/dev/null; then rpm -qa; else dpkg-query -W; fi",
             "kernel": "sysctl -a",
-            "schedule": "for account in $(cut -d: -f1 /etc/passwd); do printf '\\n===== %s =====\\n' \"$account\"; crontab -l -u \"$account\" 2>&1; done",
+            "schedule": "export LC_ALL=C; failed=0; for account in $(cut -d: -f1 /etc/passwd); do printf '\\n===== %s =====\\n' \"$account\"; output=$(crontab -l -u \"$account\" 2>&1); rc=$?; printf '%s\\n' \"$output\"; if [ \"$rc\" -ne 0 ]; then case \"$output\" in *'no crontab for'*) :;; *) failed=1;; esac; fi; done; exit \"$failed\"",
         }
     if family == "aix":
         return {

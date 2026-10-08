@@ -33,8 +33,11 @@ def backup_server(client, server, config, store, run_id: str, progress=None) -> 
                 extension = "json"
             filename = f"{prefix}/{name}.{extension}.enc"
             store.write_bytes(filename, result.stdout)
+            warnings = [line for line in result.stderr.splitlines() if line.startswith("Missing optional path: ")]
+            unexpected = [line for line in result.stderr.splitlines() if line.strip() and not line.startswith("Missing optional path: ")]
             record.update(path=filename, size=len(result.stdout), exit_code=result.exit_code,
-                          status="completed" if result.exit_code == 0 and not result.stderr.strip() else "partial")
+                          warnings=warnings,
+                          status="completed" if result.exit_code == 0 and not unexpected else "partial")
             store.write_json(f"{prefix}/{name}.metadata.json.enc", {
                 "command": command, "exit_code": result.exit_code, "stderr": result.stderr,
                 "captured_at": datetime.now().astimezone().isoformat(),

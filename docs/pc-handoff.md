@@ -10,7 +10,7 @@
 3. 관리 대상 접속은 SSH를 유지한다. Windows 대상도 OpenSSH를 사용한다.
 4. PostgreSQL을 제거하고 DATA/BACKUP의 내용을 암호화한다.
 5. 체크박스·전체선택 + netstat ESTABLISHED 마인드맵, 전체 대상 OS별 백업을 추가했다.
-6. 테스트는 다른 PC에서 진행한다. 이번 PC에서는 기능/통합 테스트를 실행하지 않았다.
+6. 후속 사용자 지시로 로컬 WSL Ubuntu 통합 테스트를 승인받았다. 결과와 재개 방법은 docs/wsl-progress.md를 따른다.
 
 ## 인계 자료
 
@@ -33,7 +33,7 @@ git switch master
 이미 저장소가 있다면 로컬 변경을 보존한 뒤 `git pull --ff-only origin master`로 갱신한다.
 가상환경은 복사하지 않는다. Linux 서버는 requirements-runtime.txt,
 Windows GUI는 requirements-gui.txt를 사용한다. 이번 GUI 렌더링 환경은 Windows / Python 3.14.7 / PySide6 6.11.2다.
-서버 Linux 실행은 아직 하지 않았다. 폐쇄망 패키지는 대상 OS·Python과 일치하도록 별도 준비한다.
+로컬 WSL Ubuntu에서 root Linux 서비스를 실행하고 Windows GUI 연동을 확인했다. 폐쇄망 패키지는 대상 OS·Python과 일치하도록 별도 준비한다.
 
 새 설치는 deployment.md대로 Linux에서 키와 인증서를 생성한다.
 기존 DATA/BACKUP을 이어받는 경우 원래 master.key가 반드시 필요하다.
@@ -43,7 +43,7 @@ DB 소프트웨어를 이 PC에서 제거하거나 DB 데이터를 삭제하지�
 
 ## 다음 PC에서 최소 확인할 항목
 
-사용자 요청으로 지금은 실행하지 않는다. 다음 PC에서 다음 기능의 정상 여부 위주로 확인한다.
+로컬 WSL에서는 1~4의 핵심 경로를 확인했다. 다른 PC에서는 다음 기능의 정상 여부 위주로 재확인한다.
 
 1. Linux 서비스를 시작하고 Windows가 TLS 7443으로 인증·접속하는지.
 2. GUI에서 서버 목록을 저장하고 Linux DATA의 파일이 암호화되는지.
@@ -70,6 +70,6 @@ DB 소프트웨어를 이 PC에서 제거하거나 DB 데이터를 삭제하지�
 
 > docs/pc-handoff.md와 docs/architecture.md를 먼저 읽으세요. Linux 메인 서버,
 > Windows 네이티브 GUI, 전용 TLS 포트, 대상 SSH, 암호화 DATA/BACKUP 구조를 유지하세요.
-> 2026-10-08에는 테스트를 미뤘습니다. 이제 이 PC에서 최소 기능 확인부터 진행하고
+> 후속 지시로 WSL root 통합 테스트를 진행했습니다. docs/wsl-progress.md에서 결과를 확인하고
 > 서버별 SSH 프로필과 OS별 수집 문제를 보완하세요. 한국어로 단계별 3줄 이내로 설명하고
 > 코드 식별자·주석·docstring은 영어로 작성하세요.

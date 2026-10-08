@@ -316,14 +316,19 @@ class Console(QMainWindow):
         if not settings.host or not settings.ca_file or not settings.token:
             QMessageBox.warning(self, "Connection details", "Server, CA certificate and access token are required."); return
         client = ServerClient(settings)
+        self.connect_to(client)
+
+    def attach_client(self, client, status):
+        settings = client.settings
+        self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
+        self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
+        self.connection_badge.setText("CONNECTED  /  TLS")
+        self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
+        self.status_line.setText("Connected. All operational work executes on Linux."); self.reload()
+
+    def connect_to(self, client):
         self.status_line.setText("Connecting to Linux main server...")
-        def connected(status):
-            self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
-            self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
-            self.connection_badge.setText("CONNECTED  /  TLS")
-            self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
-            self.status_line.setText("Connected. All operational work executes on Linux."); self.reload()
-        self.work(lambda: client.call("status"), connected)
+        self.work(lambda: client.call("status"), lambda status: self.attach_client(client, status))
 
     def disconnect_server(self):
         if self.demo:
