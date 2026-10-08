@@ -286,15 +286,19 @@ class Console(QMainWindow):
         form = QFormLayout(); self.account_action = QComboBox()
         for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("groups", "Add supplementary groups"), ("remove_groups", "Remove supplementary groups"), ("primary_group", "Change primary group (one name)"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
             self.account_action.addItem(title, action)
+        self.account_action.addItem("Set password maximum age", "password_age")
         form.addRow("Action", self.account_action)
         self.account_fields = {}
         for name, title in [("username", "Username"), ("sr", "SR reference"), ("full_name", "Full name"), ("uid", "UID (optional)"), ("gid", "Existing GID (optional)")]:
             field = QLineEdit(); self.account_fields[name] = field; form.addRow(title, field)
         body.addLayout(form)
         self.account_fields["groups"] = QLineEdit(); form.addRow("Groups (comma separated)", self.account_fields["groups"])
+        self.account_fields["max_days"] = QLineEdit(); form.addRow("Password maximum age (days)", self.account_fields["max_days"])
         def update_fields():
             action = self.account_action.currentData()
             for name, field in self.account_fields.items():
+                if name == "max_days":
+                    field.setEnabled(action == "password_age"); continue
                 if name == "groups":
                     field.setEnabled(action in {"groups", "remove_groups", "primary_group"}); continue
                 field.setEnabled(action != "list" if name == "username" else action in ({"create"} if name in {"uid", "gid"} else {"create", "modify"}))

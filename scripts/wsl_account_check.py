@@ -37,6 +37,9 @@ def main():
             assert job["status"] == "completed", row
             created = True
             assert row["result"]["backup"]["status"] == "completed"
+            job, row = run("password_age", max_days="90")
+            assert job["status"] == "completed", row
+            assert any("Maximum number" in line and line.strip().endswith("90") for line in row["result"]["output"].splitlines()), row
             job, row = run("groups", groups="users")
             assert job["status"] == "completed" and "users" in row["result"]["output"], row
             job, row = run("remove_groups", groups="users")

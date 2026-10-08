@@ -64,6 +64,14 @@ def test_primary_group_requires_one_group():
     assert "usermod -g users -- example" in command
 
 
+def test_password_age_is_numeric_and_bounded():
+    for value in (True, 0, "90;id", 100000):
+        with pytest.raises(ValueError):
+            validate_options({"action": "password_age", "username": "example", "max_days": value})
+    command = account_command(validate_options({"action": "password_age", "username": "example", "max_days": "90"}), "root")
+    assert "chage -M 90 -- example" in command
+
+
 @pytest.mark.parametrize("uid", [True, -1, "1000;id", "999"])
 def test_invalid_uid(uid):
     with pytest.raises(ValueError):
