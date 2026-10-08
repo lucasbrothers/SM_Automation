@@ -12,7 +12,7 @@ def validate_options(options):
     if not isinstance(options, dict):
         raise ValueError("Account options must be an object")
     action = options.get("action", "list")
-    if action not in {"list", "create", "modify", "groups", "remove_groups", "lock", "unlock", "delete"}:
+    if action not in {"list", "create", "modify", "groups", "remove_groups", "primary_group", "lock", "unlock", "delete"}:
         raise ValueError("Unknown account action")
     result = {"action": action}
     if action == "list":
@@ -21,12 +21,14 @@ def validate_options(options):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("Use a Linux username of at most 32 lowercase characters")
     result["username"] = username
-    if action in {"groups", "remove_groups"}:
+    if action in {"groups", "remove_groups", "primary_group"}:
         groups = str(options.get("groups", "")).split(",")
         groups = [g.strip() for g in groups]
         if not 1 <= len(groups) <= 32 or any(not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", g) for g in groups):
             raise ValueError("Provide up to 32 existing group names separated by commas")
         result["groups"] = list(dict.fromkeys(groups))
+        if action == "primary_group" and len(result["groups"]) != 1:
+            raise ValueError("Choose exactly one existing primary group")
     if action in {"create", "modify"}:
         for field in ("sr", "full_name"):
             value = str(options.get(field, "")).strip()
@@ -73,8 +75,9 @@ def account_command(options, login_user):
             "delete": f"userdel -- {user}",
             "groups": f"usermod -a -G {shlex.quote(','.join(options.get('groups', [])))} -- {user}",
             "remove_groups": "; ".join(f"gpasswd -d {user} {shlex.quote(group)}" for group in options.get("groups", [])),
+            "primary_group": f"usermod -g {shlex.quote(options.get('groups', [''])[0])} -- {user}",
         }[action]
-        if action in {"groups", "remove_groups"}:
+        if action in {"groups", "remove_groups", "primary_group"}:
             for group in options["groups"]:
                 prefix += f"getent group {shlex.quote(group)} >/dev/null; "
                 if action == "remove_groups":

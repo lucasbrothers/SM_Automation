@@ -56,6 +56,14 @@ def test_group_removal_preserves_other_groups_and_checks_primary():
     assert "usermod -G" not in command
 
 
+def test_primary_group_requires_one_group():
+    with pytest.raises(ValueError):
+        validate_options({"action": "primary_group", "username": "example", "groups": "users,staff"})
+    command = account_command(validate_options({"action": "primary_group", "username": "example", "groups": "users"}), "root")
+    assert "getent group users" in command
+    assert "usermod -g users -- example" in command
+
+
 @pytest.mark.parametrize("uid", [True, -1, "1000;id", "999"])
 def test_invalid_uid(uid):
     with pytest.raises(ValueError):

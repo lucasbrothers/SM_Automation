@@ -42,6 +42,12 @@ def main():
             job, row = run("remove_groups", groups="users")
             assert job["status"] == "completed", row
             assert "users" not in row["result"]["output"].splitlines()[-1].split(), row
+            job, row = run("primary_group", groups="users")
+            assert job["status"] == "completed", row
+            job, row = run("remove_groups", groups="users")
+            assert job["status"] == "failed" and "Cannot remove primary group" in row["error"], row
+            job, row = run("primary_group", groups=username)
+            assert job["status"] == "completed", row
             for action, fields in [("modify", {"sr": "SR-WSL-TEST", "full_name": "Updated Test Account"}), ("lock", {})]:
                 job, row = run(action, **fields)
                 assert job["status"] == "completed", row
