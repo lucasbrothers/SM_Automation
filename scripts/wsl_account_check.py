@@ -37,6 +37,8 @@ def main():
             assert job["status"] == "completed", row
             created = True
             assert row["result"]["backup"]["status"] == "completed"
+            job, row = run("groups", groups="users")
+            assert job["status"] == "completed" and "users" in row["result"]["output"], row
             for action, fields in [("modify", {"sr": "SR-WSL-TEST", "full_name": "Updated Test Account"}), ("lock", {})]:
                 job, row = run(action, **fields)
                 assert job["status"] == "completed", row

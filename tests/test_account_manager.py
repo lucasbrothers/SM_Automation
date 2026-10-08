@@ -36,6 +36,18 @@ def test_unlock_requires_existing_password():
     assert "Unlock requires a previously set password hash" in command
 
 
+def test_group_addition_preserves_existing_memberships():
+    options = validate_options({"action": "groups", "username": "example", "groups": "users,staff"})
+    command = account_command(options, "root")
+    assert "getent group users" in command
+    assert "usermod -a -G users,staff -- example" in command
+
+
+def test_group_argument_rejects_injection():
+    with pytest.raises(ValueError):
+        validate_options({"action": "groups", "username": "example", "groups": "users;id"})
+
+
 @pytest.mark.parametrize("uid", [True, -1, "1000;id", "999"])
 def test_invalid_uid(uid):
     with pytest.raises(ValueError):

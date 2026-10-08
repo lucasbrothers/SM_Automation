@@ -15,7 +15,7 @@ Linux가 모든 실제 작업을 수행하며 Windows는 네이티브 GUI와 TLS
 
 ## 완료한 확인
 
-- Linux 기존 회귀 테스트: 195 passed (계정·패치·예약 검증 포함).
+- Linux 기존 회귀 테스트: 197 passed (계정·패치·예약 검증 포함).
 - Windows → Linux 검증 TLS 접속 및 잘못된 토큰 거부.
 - 실제 SSH 연결 수집, 자원 모니터링, Linux 보안 감사 작업 완료.
 - 백업 11개 아티팩트 정상 완료. 설정 tar의 sudoers/sudoers.d 포함 확인 및 계정별 chage 결과 미리보기 확인.
@@ -50,7 +50,7 @@ root로 scripts/configure_wsl_lab.py를 실행한다. 이 도구는 로컬 실�
 
 ## 남은 개발
 
-- 계정 관리 후속: 그룹 변경, 비밀번호/키 프로비저닝, AIX/Windows 지원.
+- 계정 관리 후속: 그룹 제거/주 그룹 변경, 비밀번호/키 프로비저닝, AIX/Windows 지원.
 - 패치 후속: RPM/AIX/Windows 지원, 폐쇄망 패키지 업로드 및 메타데이터 갱신. 보안 정책 적용 GUI. 예약/취소 후속: 달력 기반 반복 및 실행 중 명령 단위 취소.
 - AIX/Windows 정책·수집 실환경 검증(현재 승인된 테스트 범위는 WSL뿐).
 - 사용자별 권한, 전체 복원/대용량 전송, 키 순환 및 보존 정책.
@@ -112,3 +112,12 @@ Activity에서 선택 작업의 Cancel pending targets를 누르면 대기 대�
 재개/일시정지, 백업 취소를 확인했다. 테스트용 예약은 마지막에 삭제했다.
 검증 도구 scripts/wsl_schedule_check.py는 로컬 WSL만 사용하고 Linux 서비스를 한 번 재시작한다.
 GUI 예약 목록 로딩을 확인했고 docs/images/desktop-schedules.png 합성 목업을 추가했다.
+
+## 2026-10-09 보조 그룹 관리
+
+Accounts의 Add supplementary groups에서 쉼표로 구분한 기존 Linux 그룹을 추가한다.
+기존 보조 그룹은 유지하고 변경 전 암호화 백업 및 관리/시스템 계정 보호를 동일하게 적용한다.
+결과에는 id -nG의 적용 후 그룹 목록이 포함된다. 새 로그인부터 그룹 권한이 반영된다.
+WSL 임시 계정에 users 그룹을 추가하여 확인하고 계정을 삭제했다.
+홈 /home/smtest_1791474638은 삭제 정책대로 보존했다. 테스트 197개 통과.
+보안 정책 적용 GUI 및 나머지 계정 관리 보완은 다음 실행에서 이어간다.

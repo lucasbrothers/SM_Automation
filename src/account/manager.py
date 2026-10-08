@@ -12,7 +12,7 @@ def validate_options(options):
     if not isinstance(options, dict):
         raise ValueError("Account options must be an object")
     action = options.get("action", "list")
-    if action not in {"list", "create", "modify", "lock", "unlock", "delete"}:
+    if action not in {"list", "create", "modify", "groups", "lock", "unlock", "delete"}:
         raise ValueError("Unknown account action")
     result = {"action": action}
     if action == "list":
@@ -21,6 +21,12 @@ def validate_options(options):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("Use a Linux username of at most 32 lowercase characters")
     result["username"] = username
+    if action == "groups":
+        groups = str(options.get("groups", "")).split(",")
+        groups = [g.strip() for g in groups]
+        if not 1 <= len(groups) <= 32 or any(not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", g) for g in groups):
+            raise ValueError("Provide up to 32 existing group names separated by commas")
+        result["groups"] = list(dict.fromkeys(groups))
     if action in {"create", "modify"}:
         for field in ("sr", "full_name"):
             value = str(options.get(field, "")).strip()
@@ -65,12 +71,16 @@ def account_command(options, login_user):
             "lock": f"usermod -L -- {user}",
             "unlock": f"usermod -U -- {user}",
             "delete": f"userdel -- {user}",
+            "groups": f"usermod -a -G {shlex.quote(','.join(options.get('groups', [])))} -- {user}",
         }[action]
+        if action == "groups":
+            for group in options["groups"]:
+                prefix += f"getent group {shlex.quote(group)} >/dev/null; "
         if action == "unlock":
             # An empty or never-set password must not become a passwordless login.
             prefix += f"hash=$(getent shadow {user} | cut -d: -f2); "
             prefix += "case \"$hash\" in '!$'*) ;; *) echo 'Unlock requires a previously set password hash' >&2; exit 1;; esac; "
-    suffix = f"; getent passwd {user}; passwd -S {user}" if action != "delete" else "; echo 'Account deleted; home retained'"
+    suffix = f"; getent passwd {user}; passwd -S {user}; id -nG {user}" if action != "delete" else "; echo 'Account deleted; home retained'"
     return prefix + command + suffix
 
 

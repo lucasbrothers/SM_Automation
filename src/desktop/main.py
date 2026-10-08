@@ -284,16 +284,19 @@ class Console(QMainWindow):
         frame, body = card(); body.addWidget(label("Linux accounts", "section"))
         body.addWidget(label("Targets follow the checkboxes in Connection map. Changes require a complete encrypted backup."))
         form = QFormLayout(); self.account_action = QComboBox()
-        for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
+        for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("groups", "Add supplementary groups"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
             self.account_action.addItem(title, action)
         form.addRow("Action", self.account_action)
         self.account_fields = {}
         for name, title in [("username", "Username"), ("sr", "SR reference"), ("full_name", "Full name"), ("uid", "UID (optional)"), ("gid", "Existing GID (optional)")]:
             field = QLineEdit(); self.account_fields[name] = field; form.addRow(title, field)
         body.addLayout(form)
+        self.account_fields["groups"] = QLineEdit(); form.addRow("Groups (comma separated)", self.account_fields["groups"])
         def update_fields():
             action = self.account_action.currentData()
             for name, field in self.account_fields.items():
+                if name == "groups":
+                    field.setEnabled(action == "groups"); continue
                 field.setEnabled(action != "list" if name == "username" else action in ({"create"} if name in {"uid", "gid"} else {"create", "modify"}))
         self.account_action.currentIndexChanged.connect(update_fields); update_fields()
         body.addWidget(label("New accounts have no password set. Delete retains the home directory. Lock controls password authentication."))
