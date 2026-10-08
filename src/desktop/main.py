@@ -1,0 +1,543 @@
+"""Native desktop control console; operational work stays on Linux."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QObject, Signal, QRunnable, QThreadPool, QTimer
+from PySide6.QtGui import QColor, QFont, QFontDatabase
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QLineEdit,
+    QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
+    QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
+    QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
+    QTreeWidget, QTreeWidgetItem,
+)
+
+from desktop.client import ConnectionSettings, ServerClient
+from desktop.graph import ConnectionMap
+
+STYLE = """
+QWidget { font-family: 'Segoe UI'; font-size: 10pt; color: #23344c; }
+QMainWindow, #workspace { background: #f3f6fb; }
+#sidebar { background: #122139; }
+#sidebar QLabel { color: #c0cee2; background: transparent; }
+#sidebar QPushButton { color: #adbed5; text-align: left; background: transparent; border: none; padding: 13px 18px; border-radius: 8px; }
+#sidebar QPushButton:checked { color: white; background: #285fc5; }
+#sidebar QPushButton:hover { background: #253d60; }
+#brand { color: white; font-size: 20pt; font-weight: 700; }
+#card { background: white; border: 1px solid #e0e7f0; border-radius: 12px; }
+#title { font-size: 23pt; font-weight: 700; color: #122139; }
+#subtitle { color: #77869c; }
+#section { font-size: 13pt; font-weight: 600; }
+#metric { font-size: 27pt; font-weight: 700; }
+#badge { color: #177e6d; background: #e4f5ef; padding: 7px 12px; border-radius: 6px; }
+QPushButton { background: white; border: 1px solid #d8e1ee; border-radius: 7px; padding: 9px 14px; }
+QPushButton:hover { background: #eaf0fb; border-color: #a9c0e8; }
+QPushButton:disabled { color: #9ca9ba; background: #edf1f6; }
+QPushButton[primary="true"] { background: #2869df; color: white; border: none; font-weight: 600; }
+QPushButton[primary="true"]:hover { background: #1c56bb; }
+QLineEdit, QSpinBox, QPlainTextEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
+QTableWidget { background: white; border: none; gridline-color: #edf1f6; selection-background-color: #e6efff; selection-color: #203955; }
+QHeaderView::section { background: #f7f9fc; color: #6a7c93; border: none; border-bottom: 1px solid #e1e8f0; padding: 9px; font-size: 9pt; }
+QTableWidget::item { padding: 7px; border-bottom: 1px solid #eff3f7; }
+QProgressBar { border: none; border-radius: 4px; background: #e9eff8; height: 8px; text-align: center; }
+QProgressBar::chunk { background: #2a74df; border-radius: 4px; }
+QCheckBox { spacing: 8px; }
+QSplitter::handle { background: transparent; width: 12px; }
+"""
+
+
+def label(text, name=None):
+    widget = QLabel(text)
+    if name:
+        widget.setObjectName(name)
+    return widget
+
+
+def button(text, callback, primary=False):
+    widget = QPushButton(text)
+    widget.setProperty("primary", primary)
+    widget.clicked.connect(callback)
+    return widget
+
+
+def card():
+    frame = QFrame(); frame.setObjectName("card")
+    layout = QVBoxLayout(frame); layout.setContentsMargins(20, 18, 20, 18); layout.setSpacing(12)
+    return frame, layout
+
+
+def table(headers):
+    widget = QTableWidget(0, len(headers)); widget.setHorizontalHeaderLabels(headers)
+    widget.verticalHeader().hide(); widget.setShowGrid(False)
+    widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    widget.verticalHeader().setDefaultSectionSize(39)
+    return widget
+
+
+def fill_table(widget, rows):
+    widget.setRowCount(len(rows))
+    for r, row in enumerate(rows):
+        for c, value in enumerate(row):
+            item = QTableWidgetItem(str(value)); item.setToolTip(str(value))
+            widget.setItem(r, c, item)
+
+
+class WorkerSignals(QObject):
+    done = Signal(object)
+    error = Signal(str)
+
+
+class Worker(QRunnable):
+    def __init__(self, fn):
+        super().__init__(); self.fn = fn; self.signals = WorkerSignals()
+
+    def run(self):
+        try:
+            self.signals.done.emit(self.fn())
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
+
+
+class ConnectDialog(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent); self.setWindowTitle("Connect to Linux main server"); self.setMinimumWidth(510)
+        layout = QVBoxLayout(self)
+        layout.addWidget(label("Connect your control console", "section"))
+        note = label("A dedicated TLS port connects this console to Linux.\nTarget SSH credentials remain on the Linux server.", "subtitle")
+        layout.addWidget(note)
+        form = QFormLayout()
+        self.host = QLineEdit(); self.host.setPlaceholderText("sm-main.example.internal")
+        self.port = QSpinBox(); self.port.setRange(1024, 65535); self.port.setValue(7443)
+        self.ca = QLineEdit(); self.ca.setPlaceholderText("Trusted server certificate / CA file")
+        ca_row = QHBoxLayout(); ca_row.addWidget(self.ca)
+        ca_row.addWidget(button("Browse", self.choose_ca))
+        self.token = QLineEdit(); self.token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.token.setPlaceholderText("Server API token (kept in memory only)")
+        form.addRow("Linux server", self.host); form.addRow("TLS port", self.port)
+        form.addRow("CA certificate", ca_row); form.addRow("Access token", self.token)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def choose_ca(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Choose trusted certificate", "", "Certificates (*.crt *.pem);;All files (*)")
+        if path:
+            self.ca.setText(path)
+
+    def settings(self):
+        return ConnectionSettings(self.host.text().strip(), self.port.value(), self.ca.text().strip(), self.token.text().strip())
+
+
+class InventoryDialog(QDialog):
+    def __init__(self, parent, rows):
+        super().__init__(parent); self.setWindowTitle("Manage server inventory"); self.resize(680, 450)
+        layout = QVBoxLayout(self)
+        layout.addWidget(label("Saved encrypted on the Linux main server.", "subtitle"))
+        self.grid = table(["Hostname", "IP address", "Operating system", "SSH profile"])
+        self.grid.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        fill_table(self.grid, [[r["hostname"], r["ip"], r["os"], r.get("profile", "default")] for r in rows]); layout.addWidget(self.grid)
+        actions = QHBoxLayout()
+        actions.addWidget(button("Add server", lambda: self.grid.insertRow(self.grid.rowCount())))
+        actions.addWidget(button("Remove selected", self.remove)); actions.addStretch()
+        layout.addLayout(actions)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def remove(self):
+        for row in sorted({item.row() for item in self.grid.selectedItems()}, reverse=True):
+            self.grid.removeRow(row)
+
+    def rows(self):
+        return [{key: self.grid.item(row, col).text().strip() if self.grid.item(row, col) else ""
+                 for col, key in enumerate(("hostname", "ip", "os", "profile"))} for row in range(self.grid.rowCount())]
+
+
+class Console(QMainWindow):
+    def __init__(self, demo=False):
+        super().__init__()
+        self.setWindowTitle("SM Automation | Control Console")
+        self.resize(1460, 920); self.setMinimumSize(1120, 760)
+        self.client = None; self.demo = demo; self.servers = []; self.jobs = []; self.connection_results = []
+        self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
+        self.workers = set()
+        self.build_ui()
+        self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(3000)
+        if demo:
+            self.load_demo()
+
+    def build_ui(self):
+        base = QWidget(); self.setCentralWidget(base)
+        root = QHBoxLayout(base); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
+        sidebar = QFrame(); sidebar.setObjectName("sidebar"); sidebar.setFixedWidth(210)
+        nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
+        nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
+        self.nav_buttons = []
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity"]):
+            item = QPushButton(title); item.setCheckable(True)
+            item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
+        nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
+        self.server_badge = label("Not connected"); self.server_badge.setWordWrap(True); nav.addWidget(self.server_badge)
+        nav.addWidget(button("Connect server", self.connect_server))
+        nav.addWidget(button("Disconnect", self.disconnect_server))
+        nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
+        root.addWidget(sidebar)
+        workspace = QWidget(); workspace.setObjectName("workspace"); root.addWidget(workspace, 1)
+        content = QVBoxLayout(workspace); content.setContentsMargins(28, 24, 28, 18); content.setSpacing(18)
+        top = QHBoxLayout(); top.addWidget(label("OPERATIONS  /  INFRASTRUCTURE", "subtitle")); top.addStretch()
+        self.connection_badge = label("OFFLINE", "badge"); top.addWidget(self.connection_badge); content.addLayout(top)
+        self.title = label("Infrastructure overview", "title"); content.addWidget(self.title)
+        self.subtitle = label("One control console. All operational work on your Linux server.", "subtitle"); content.addWidget(self.subtitle)
+        metrics = QHBoxLayout(); metrics.setSpacing(14)
+        self.metric_values = []
+        for title, value, foot in [("INVENTORY", "0", "Managed servers"), ("SELECTED", "0", "Ready for collection"),
+                                    ("ESTABLISHED", "—", "Latest connection snapshot"), ("STORAGE", "Encrypted", "Linux DATA + BACKUP")]:
+            frame, layout = card(); layout.addWidget(label(title, "subtitle")); number = label(value, "metric")
+            if value == "Encrypted":
+                number.setStyleSheet("font-size:22pt;color:#118875;font-weight:700")
+            layout.addWidget(number); layout.addWidget(label(foot, "subtitle")); metrics.addWidget(frame)
+            self.metric_values.append(number)
+        content.addLayout(metrics)
+        self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
+        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity()
+        self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
+        self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
+        self.navigate(0)
+
+    def build_overview(self):
+        page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
+        frame, body = card(); body.addWidget(label("Your server fleet", "section"))
+        actions = QHBoxLayout()
+        actions.addWidget(button("Manage inventory", self.edit_inventory)); actions.addWidget(button("Import CSV", self.import_csv))
+        actions.addWidget(button("Refresh", self.reload)); actions.addStretch()
+        actions.addWidget(button("Resource snapshot", lambda: self.start_job("monitoring")))
+        actions.addWidget(button("Security audit", lambda: self.start_job("security_audit")))
+        body.addLayout(actions)
+        self.inventory_table = table(["Hostname", "IP address", "Operating system", "Execution"]); body.addWidget(self.inventory_table)
+        body.addWidget(label("Inventory changes and collection results are stored encrypted on Linux.", "subtitle"))
+        layout.addWidget(frame); self.pages.addWidget(page)
+
+    def build_network(self):
+        page = QWidget(); layout = QHBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(16)
+        selection, left = card(); selection.setFixedWidth(260)
+        left.addWidget(label("Collection targets", "section"))
+        self.server_search = QLineEdit(); self.server_search.setPlaceholderText("Find a server...")
+        self.server_search.textChanged.connect(self.filter_servers); left.addWidget(self.server_search)
+        self.select_all = QCheckBox("Select all servers"); self.select_all.setChecked(True)
+        self.select_all.toggled.connect(self.check_all); left.addWidget(self.select_all)
+        self.target_table = table(["", "Server"])
+        self.target_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.target_table.setColumnWidth(0, 30); self.target_table.horizontalHeader().hide()
+        self.target_table.itemChanged.connect(self.selection_changed); left.addWidget(self.target_table)
+        left.addWidget(button("Collect connections", lambda: self.start_job("connections"), True))
+        note = label("Linux executes netstat over SSH.\nOnly ESTABLISHED TCP peers\nare displayed.", "subtitle"); left.addWidget(note)
+        layout.addWidget(selection)
+        right_frame, right = card()
+        tools = QHBoxLayout(); tools.addWidget(label("Connection mind map", "section")); tools.addStretch()
+        self.peer_search = QLineEdit(); self.peer_search.setPlaceholderText("Filter peer / port"); self.peer_search.setMaximumWidth(180)
+        self.peer_search.textChanged.connect(self.update_map); tools.addWidget(self.peer_search)
+        tools.addWidget(button("Fit", lambda: self.graph.fit_map())); right.addLayout(tools)
+        self.graph = ConnectionMap(); self.graph.set_results([]); right.addWidget(self.graph, 1)
+        right.addWidget(label("Blue = selected host   /   Green = connected peer   /   Scroll to zoom, drag to pan", "subtitle"))
+        self.connection_table = table(["Source", "Local endpoint", "Connected peer", "Port"])
+        self.connection_table.setMaximumHeight(170); right.addWidget(self.connection_table)
+        layout.addWidget(right_frame, 1); self.pages.addWidget(page)
+
+    def build_backup(self):
+        page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
+        frame, body = card(); body.addWidget(label("Configuration & account backups", "section"))
+        text = label("Capture files and command output from every listed server.\nLinux encrypts each artifact under BACKUP / date / hostname / run ID.", "subtitle")
+        text.setWordWrap(True); body.addWidget(text)
+        coverage = table(["Operating system", "Configuration files", "Command snapshots"])
+        fill_table(coverage, [["Linux", "sudoers + sudoers.d, SSH, PAM, cron, network", "chage per account, sudo privileges, services, storage"],
+                             ["AIX", "security, filesystems, inittab, SSH, sudoers", "lsuser expiry, sudo privileges, lsvg, lssrc, packages"],
+                             ["Windows (SSH)", "OpenSSH, hosts, GroupPolicy, scheduled tasks", "Local users, expiry, firewall, audit, patches"]])
+        coverage.setMaximumHeight(175); body.addWidget(coverage)
+        actions = QHBoxLayout(); actions.addWidget(button("Back up ALL servers", lambda: self.start_job("backup", all_hosts=True), True))
+        actions.addWidget(button("Back up selected", lambda: self.start_job("backup"))); actions.addStretch(); body.addLayout(actions)
+        self.backup_table = table(["Created", "Status", "Progress", "Job ID"]); body.addWidget(self.backup_table)
+        self.backup_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.backup_jobs[row]["id"]))
+        body.addWidget(label("Double-click a backup to view Linux paths and per-artifact results. Partial captures are never reported as complete.", "subtitle"))
+        layout.addWidget(frame); self.pages.addWidget(page)
+
+    def build_activity(self):
+        page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
+        frame, body = card(); body.addWidget(label("Server-side job history", "section"))
+        self.jobs_table = table(["Created", "Operation", "Status", "Progress", "Job ID"])
+        self.jobs_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.jobs[row]["id"]))
+        body.addWidget(self.jobs_table)
+        body.addWidget(label("Closing this console does not stop Linux jobs. Reconnect to see results.", "subtitle"))
+        layout.addWidget(frame); self.pages.addWidget(page)
+
+    def navigate(self, index):
+        self.pages.setCurrentIndex(index)
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view"]
+        self.title.setText(titles[index])
+        for i, item in enumerate(self.nav_buttons):
+            item.setChecked(i == index)
+        if index == 1:
+            QTimer.singleShot(50, self.graph.fit_map)
+
+    def work(self, fn, done, quiet=False):
+        worker = Worker(fn); self.workers.add(worker)
+        epoch = self.epoch
+        def success(result):
+            self.workers.discard(worker)
+            if epoch == self.epoch:
+                done(result)
+        def failure(message):
+            self.workers.discard(worker); self.poll_busy = False
+            if epoch != self.epoch:
+                return
+            self.status_line.setText("Request failed: " + message[:160])
+            if not quiet:
+                QMessageBox.warning(self, "Operation could not finish", message)
+        worker.signals.done.connect(success); worker.signals.error.connect(failure)
+        QThreadPool.globalInstance().start(worker)
+
+    def connect_server(self):
+        if self.demo:
+            QMessageBox.information(self, "Visual demo", "Restart without --demo to connect to a real Linux main server."); return
+        dialog = ConnectDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        settings = dialog.settings()
+        if not settings.host or not settings.ca_file or not settings.token:
+            QMessageBox.warning(self, "Connection details", "Server, CA certificate and access token are required."); return
+        client = ServerClient(settings)
+        self.status_line.setText("Connecting to Linux main server...")
+        def connected(status):
+            self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
+            self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
+            self.connection_badge.setText("CONNECTED  /  TLS")
+            self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
+            self.status_line.setText("Connected. All operational work executes on Linux."); self.reload()
+        self.work(lambda: client.call("status"), connected)
+
+    def disconnect_server(self):
+        if self.demo:
+            return
+        self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
+        self.connection_results = []; self.jobs = []; self.set_inventory([]); self.update_map(); self.set_jobs([])
+        self.metric_values[2].setText("—"); self.progress.setValue(0)
+        self.server_badge.setText("Not connected"); self.connection_badge.setText("OFFLINE")
+        self.subtitle.setText("One control console. All operational work on your Linux server.")
+        self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
+
+    def require_client(self):
+        if not self.client:
+            QMessageBox.information(self, "Linux connection required", "Connect to the Linux main server first. Demo mode never runs operations.")
+            return False
+        return True
+
+    def reload(self):
+        if not self.require_client():
+            return
+        client = self.client
+        self.work(lambda: client.call("inventory.list"), self.set_inventory)
+        self.poll()
+
+    def set_inventory(self, servers):
+        self.servers = servers; self.metric_values[0].setText(str(len(servers)))
+        fill_table(self.inventory_table, [[r["hostname"], r["ip"], r["os"], "Linux main server / SSH"] for r in servers])
+        self.target_table.blockSignals(True); self.target_table.setRowCount(len(servers))
+        for row, server in enumerate(servers):
+            check = QTableWidgetItem(); check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            check.setCheckState(Qt.CheckState.Checked); self.target_table.setItem(row, 0, check)
+            item = QTableWidgetItem(server["hostname"] + "\n" + server["ip"])
+            item.setToolTip(server["os"]); self.target_table.setItem(row, 1, item); self.target_table.setRowHeight(row, 60)
+        self.target_table.blockSignals(False)
+        self.select_all.blockSignals(True); self.select_all.setChecked(True); self.select_all.blockSignals(False)
+        self.selection_changed(); self.filter_servers(self.server_search.text())
+
+    def checked_hosts(self):
+        return [server["hostname"] for row, server in enumerate(self.servers)
+                if self.target_table.item(row, 0).checkState() == Qt.CheckState.Checked]
+
+    def selection_changed(self, *_):
+        hosts = self.checked_hosts(); self.metric_values[1].setText(str(len(hosts)))
+        self.select_all.blockSignals(True); self.select_all.setChecked(bool(self.servers) and len(hosts) == len(self.servers)); self.select_all.blockSignals(False)
+
+    def check_all(self, checked):
+        self.target_table.blockSignals(True)
+        for row in range(self.target_table.rowCount()):
+            self.target_table.item(row, 0).setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        self.target_table.blockSignals(False); self.selection_changed()
+
+    def filter_servers(self, query):
+        for row, server in enumerate(self.servers):
+            self.target_table.setRowHidden(row, query.casefold() not in (server["hostname"] + server["ip"]).casefold())
+
+    def edit_inventory(self):
+        if not self.require_client():
+            return
+        dialog = InventoryDialog(self, self.servers)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            rows = dialog.rows(); client = self.client
+            self.work(lambda: client.call("inventory.save", servers=rows), lambda _: self.reload())
+
+    def import_csv(self):
+        if not self.require_client():
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Import hostname,ip,os CSV (replaces inventory)", "", "Inventory (*.csv *.txt)")
+        if path:
+            try:
+                content = Path(path).read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError) as exc:
+                QMessageBox.warning(self, "Import failed", str(exc)); return
+            client = self.client
+            self.work(lambda: client.call("inventory.import", csv=content), lambda _: self.reload())
+
+    def start_job(self, kind, all_hosts=False):
+        if not self.require_client():
+            return
+        hosts = [row["hostname"] for row in self.servers] if all_hosts else self.checked_hosts()
+        if not hosts:
+            QMessageBox.information(self, "Select targets", "Select at least one server in Connection map."); return
+        client = self.client
+        def started(job):
+            self.active_job = job["id"]; self.loaded_job = None
+            self.status_line.setText(f"{kind}: submitted to Linux for {len(hosts)} servers."); self.poll()
+        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts), started)
+
+    def poll(self):
+        if not self.client or self.poll_busy:
+            return
+        self.poll_busy = True; client = self.client
+        self.work(lambda: client.call("job.list"), self.set_jobs, quiet=True)
+
+    def set_jobs(self, jobs):
+        self.poll_busy = False; self.jobs = jobs
+        fill_table(self.jobs_table, [[j["created_at"][11:19], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
+        self.backup_jobs = [j for j in jobs if j["kind"] == "backup"]
+        fill_table(self.backup_table, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
+        active = next((j for j in jobs if j["id"] == self.active_job), None)
+        if active:
+            self.progress.setValue(int(100 * active["done"] / max(1, active["total"])))
+            self.status_line.setText(f"{active['kind']} / {active['status']} / {active.get('message', '')}")
+            if active["status"] not in {"queued", "running"} and self.loaded_job != active["id"]:
+                self.loaded_job = active["id"]
+                if active["kind"] == "connections":
+                    client = self.client
+                    self.work(lambda: client.results(active["id"]), self.display_connections)
+
+    def display_connections(self, rows):
+        self.connection_results = rows
+        total = sum(len(row.get("result", {}).get("connections", [])) for row in rows)
+        self.metric_values[2].setText(str(total)); self.update_map(); self.navigate(1)
+        failures = sum(row["status"] == "failed" for row in rows)
+        truncated = any(row.get("result", {}).get("truncated") for row in rows)
+        self.status_line.setText(f"Snapshot loaded: {total} established connections, {failures} failed servers." +
+                                 (" Large results limited to 5,000 connections per host." if truncated else ""))
+
+    def update_map(self, *_):
+        query = self.peer_search.text()
+        self.graph.set_results(self.connection_results, query)
+        rows = []
+        for row in self.connection_results:
+            for connection in row.get("result", {}).get("connections", []):
+                local, remote = connection["local"], connection["remote"]
+                values = [row["hostname"], f"{local['address']}:{local['port']}", remote["address"], remote["port"]]
+                if not query or query.casefold() in " ".join(values).casefold():
+                    rows.append(values)
+        fill_table(self.connection_table, rows)
+
+    def show_job(self, job_id):
+        if not self.require_client():
+            return
+        client = self.client
+        def show(rows):
+            job = next((item for item in self.jobs if item["id"] == job_id), {})
+            if job.get("kind") == "connections":
+                self.display_connections(rows); return
+            if job.get("kind") == "backup":
+                self.show_backup_results(rows); return
+            dialog = QDialog(self); dialog.setWindowTitle("Linux job results"); dialog.resize(880, 620)
+            layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
+            text.setPlainText(json.dumps(rows, ensure_ascii=False, indent=2)); layout.addWidget(text)
+            layout.addWidget(button("Close", dialog.accept)); dialog.exec()
+        self.work(lambda: client.results(job_id), show)
+
+    def show_backup_results(self, rows):
+        dialog = QDialog(self); dialog.setWindowTitle("Backup artifacts on Linux"); dialog.resize(1060, 720)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label("Browse encrypted backups", "section"))
+        layout.addWidget(label("Double-click a text artifact to preview it. Decryption runs on Linux; the preview stays in memory.", "subtitle"))
+        tree = QTreeWidget(); tree.setHeaderLabels(["Server / artifact", "Status", "Size", "Linux storage path"])
+        tree.setColumnWidth(0, 260); tree.setColumnWidth(1, 100); tree.setColumnWidth(2, 90)
+        for row in rows:
+            result = row.get("result", {})
+            parent = QTreeWidgetItem([row["hostname"], row["status"], "", result.get("directory", row.get("error", ""))])
+            tree.addTopLevelItem(parent)
+            for artifact in result.get("artifacts", []):
+                path = artifact.get("path", "")
+                item = QTreeWidgetItem([artifact["name"], artifact["status"],
+                                        f"{artifact.get('size', 0):,} B", path or artifact.get("error", "")])
+                item.setData(0, Qt.ItemDataRole.UserRole, path); parent.addChild(item)
+            parent.setExpanded(True)
+        layout.addWidget(tree, 2)
+        preview = QPlainTextEdit(); preview.setReadOnly(True)
+        preview.setPlaceholderText("Select a text artifact. Archive files are exported explicitly on the Linux server.")
+        layout.addWidget(preview, 1)
+        def view(item, _):
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            if not path:
+                return
+            if not path.endswith((".txt.enc", ".json.enc")):
+                preview.setPlainText("Binary archive: use scripts/decrypt_artifact.py on the Linux server."); return
+            client = self.client
+            if client is None:
+                return
+            preview.setPlainText("Loading preview from Linux...")
+            def loaded(response):
+                preview.setPlainText(response["text"] + ("\n\n[Preview limited to 64 KiB]" if response["truncated"] else ""))
+            self.work(lambda: client.call("backup.preview", path=path), loaded)
+        tree.itemDoubleClicked.connect(view)
+        layout.addWidget(button("Close", dialog.accept)); dialog.exec()
+
+    def load_demo(self):
+        from desktop.demo import SERVERS, connection_rows
+        self.set_inventory(SERVERS)
+        self.target_table.item(3, 0).setCheckState(Qt.CheckState.Unchecked)
+        self.server_badge.setText("sm-main.example.internal\nTLS : 7443 / Preview")
+        self.connection_badge.setText("DEMO  /  SYNTHETIC DATA")
+        self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
+        self.display_connections(connection_rows())
+        self.status_line.setText("VISUAL MOCKUP  /  Synthetic sample data. No server connection or operational task is running.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SM Automation native desktop console")
+    parser.add_argument("--demo", action="store_true")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity"], default="connections")
+    parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
+    args = parser.parse_args()
+    app = QApplication(sys.argv[:1])
+    if sys.platform == "win32":
+        for filename in ("segoeui.ttf", "segoeuib.ttf"):
+            font_file = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / filename
+            if font_file.exists():
+                QFontDatabase.addApplicationFont(str(font_file))
+    app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
+    window = Console(demo=args.demo or bool(args.mockup)); window.show()
+    if args.demo or args.mockup:
+        window.navigate(["overview", "connections", "backups", "activity"].index(args.page))
+    if args.mockup:
+        def save():
+            window.graph.fit_map()
+            args.mockup.parent.mkdir(parents=True, exist_ok=True)
+            if not window.grab().save(str(args.mockup)):
+                raise OSError("Could not save GUI preview")
+            app.quit()
+        QTimer.singleShot(600, save)
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

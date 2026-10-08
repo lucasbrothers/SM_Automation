@@ -25,9 +25,9 @@ def test_defaults(config_file):
     assert config.server_file == config_file.parent / "servers.txt"
     assert config.ssh_timeout == 30
     assert config.max_workers == 10
-    assert config.cmdb_enabled is False
-    assert config.cmdb_port == 5432
-    assert config.cmdb_password_env == "SM_AUTOMATION_CMDB_PASSWORD"
+    assert config.data_directory.name == "DATA"
+    assert config.backup_directory.name == "BACKUP"
+    assert config.listen_port == 7443
 
 
 def test_explicit_settings_and_path_base(config_file, tmp_path, monkeypatch):
@@ -36,15 +36,8 @@ def test_explicit_settings_and_path_base(config_file, tmp_path, monkeypatch):
         "logging": {"level": "DEBUG", "directory": "output"},
         "inventory": {"server_file": str(tmp_path / "hosts.txt")},
         "ssh": {"timeout": 60, "max_workers": 20},
-        "cmdb": {
-            "enabled": True,
-            "host": "db.internal",
-            "port": 5433,
-            "database": "cmdb",
-            "user": "cmdb_user",
-            "password_env": "CMDB_SECRET",
-            "sslmode": "verify-full",
-        },
+        "server": {"host": "0.0.0.0", "port": 8443},
+        "storage": {"data_directory": str(tmp_path / "DATA")},
     }), encoding="utf-8")
     monkeypatch.chdir(tmp_path.parent)
     config = load_config(config_file)
@@ -53,10 +46,8 @@ def test_explicit_settings_and_path_base(config_file, tmp_path, monkeypatch):
     assert config.log_directory == tmp_path / "output"
     assert config.server_file == tmp_path / "hosts.txt"
     assert (config.ssh_timeout, config.max_workers) == (60, 20)
-    assert (config.cmdb_enabled, config.cmdb_host, config.cmdb_port) == (
-        True, "db.internal", 5433
-    )
-    assert config.cmdb_password_env == "CMDB_SECRET"
+    assert config.listen_port == 8443
+    assert config.data_directory == tmp_path / "DATA"
     assert not config.log_directory.exists()
 
 

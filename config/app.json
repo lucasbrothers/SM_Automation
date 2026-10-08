@@ -2,14 +2,18 @@
   "environment": "development",
   "logging": {"level": "INFO", "directory": "../logs"},
   "inventory": {"server_file": "servers.txt"},
-  "ssh": {"timeout": 30, "max_workers": 10},
-  "cmdb": {
-    "enabled": false,
-    "host": "localhost",
-    "port": 5432,
-    "database": "sm_automation",
-    "user": "sm_automation",
-    "password_env": "SM_AUTOMATION_CMDB_PASSWORD",
-    "sslmode": "verify-full"
-  }
+  "ssh": {"user": "D25950", "port": 22, "timeout": 30, "max_workers": 10, "privilege": "sudo", "key_file": null},
+  "storage": {
+    "data_directory": "./DATA",
+    "backup_directory": "./BACKUP",
+    "key_file": "~/.config/sm-automation/master.key"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 7443,
+    "tls_cert": "~/.config/sm-automation/server.crt",
+    "tls_key": "~/.config/sm-automation/server.key",
+    "token_file": "~/.config/sm-automation/api.token"
+  },
+  "backup": {"timeout": 180, "max_capture_mb": 64}
 }

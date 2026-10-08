@@ -1,0 +1,14 @@
+{
+  "unix-admin": {
+    "user": "D25950",
+    "port": 22,
+    "key_file": "/home/smops/.ssh/id_ed25519_unix",
+    "privilege": "sudo-su"
+  },
+  "windows-admin": {
+    "user": "smops",
+    "port": 22,
+    "key_file": "/home/smops/.ssh/id_ed25519_windows",
+    "privilege": "direct"
+  }
+}

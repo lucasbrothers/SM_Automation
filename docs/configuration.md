@@ -1,84 +1,56 @@
-# 설정 관리 사용법
+# 설정과 암호화 저장
 
-## 실행
+2026-10-08 변경: PostgreSQL 설정을 제거하고 Linux 메인 서버 설정을 추가했다.
+`config/app.json`을 `config/app.local.json`으로 복사해 사용한다. local 파일은 Git 제외다.
 
-프로젝트 루트에서 다음 명령으로 설정 검증과 Logger 초기화를 실행한다.
-
-```powershell
-.venv/Scripts/python.exe src/main.py
-.venv/Scripts/python.exe src/main.py --config config/app.json
-```
-
-기본 파일은 `config/app.json`이다. `--config`의 상대 경로는 명령 실행 위치를,
-파일 내부의 상대 경로는 설정 파일이 있는 디렉터리를 기준으로 해석한다.
-
-## 설정 항목
-
-| 항목 | 기본값 | 허용 값 / 의미 |
+| 항목 | 기본값 | 의미 |
 | --- | --- | --- |
-| environment | development | development, test, production |
-| logging.level | INFO | DEBUG, INFO, WARNING, ERROR, CRITICAL |
-| logging.directory | ../logs | 로그 디렉터리 |
-| inventory.server_file | servers.txt | 다음 단계에서 읽을 서버 목록 파일 |
-| ssh.timeout | 30 | 연결 제한 시간(초), 정수 1~300 |
-| ssh.max_workers | 10 | 동시 작업 수, 정수 1~100 |
-| cmdb.enabled | false | PostgreSQL CMDB 사용 여부 |
-| cmdb.host | localhost | PostgreSQL 호스트 또는 사설 주소 |
-| cmdb.port | 5432 | PostgreSQL 포트 |
-| cmdb.database | sm_automation | CMDB 데이터베이스 이름 |
-| cmdb.user | sm_automation | 애플리케이션 전용 DB 사용자 |
-| cmdb.password_env | SM_AUTOMATION_CMDB_PASSWORD | DB 비밀번호 환경변수 이름 |
-| cmdb.sslmode | verify-full | PostgreSQL TLS 인증 모드 |
+| storage.data_directory | ./DATA | 암호화 목록·작업 결과 |
+| storage.backup_directory | ./BACKUP | 암호화 백업 |
+| storage.key_file | ~/.config/sm-automation/master.key | 외부 보관 암호화 키 |
+| server.host | 0.0.0.0 | Linux 수신 주소 |
+| server.port | 7443 | Windows GUI 전용 TLS/TCP 포트 |
+| server.tls_cert / tls_key | ~/.config/sm-automation/server.crt / server.key | 서버 인증서/개인키 |
+| server.token_file | ~/.config/sm-automation/api.token | GUI 접근 토큰 |
+| ssh.user | D25950 | Linux가 대상에 접속하는 계정 |
+| ssh.port | 22 | 대상 SSH 포트 |
+| ssh.key_file | null | Linux상의 키 경로, 없으면 SSH agent/기본 키 사용 |
+| ssh.timeout | 30 | 연결/일반 명령 제한 시간 |
+| ssh.max_workers | 10 | 작업당 병렬 대상 수 |
+| ssh.privilege | sudo | Unix 백업 권한 전환: sudo / direct / su |
+| backup.timeout | 180 | 백업 명령별 시간 제한(초) |
+| backup.max_capture_mb | 64 | 명령별 메모리 캡처 상한(MiB) |
 
-누락된 항목에는 기본값을 적용하지만 파일 자체가 없으면 오류로 처리한다.
-알 수 없는 항목과 중복 키도 거부하여 설정 오타를 발견할 수 있도록 한다.
-비밀번호·토큰·개인키 내용을 넣는 항목은 제공하지 않는다. CMDB 비밀번호도
-`cmdb.password_env`에 지정한 환경변수 또는 외부 Secret Manager에서만 읽는다.
+DATA/BACKUP 및 server/ssh 경로의 상대값은 **프로젝트 루트** 기준으로 해석한다.
+`~`는 Linux 서비스 계정 홈이다. 기존 logging/inventory 경로는 설정 파일 디렉터리 기준이다.
+절대 경로를 지정해 별도 볼륨으로 옮길 수 있다. 기존 파일을 새 경로로 자동 이동하지 않는다.
+`inventory.server_file`은 기존 CLI 호환 설정이며 서버의 실제 목록은 DATA의 암호화 파일이다.
+CSV는 GUI 가져오기 또는 `scripts/import_inventory.py`로 명시적으로 등록한다.
 
-현재 원격 PostgreSQL 검증:
+Fernet으로 내용 암호화와 변조 검출을 수행한다. 암호화 키는 DATA/BACKUP 밖에 둬야 한다.
+키가 없거나 잘못되면 읽기를 중단하며 새 키를 자동 생성하지 않는다.
+암호화 파일과 **원래 master.key를 함께 보존**해야 다른 Linux 서버에서 내용을 읽을 수 있다.
+키·토큰은 POSIX에서 0600 권한으로 보관한다. 평문 중간파일은 생성하지 않는다.
 
-```powershell
-py -3 scripts/verify_remote_postgresql.py `
-	--host 192.168.192.131 `
-	--user postgres `
-	--database postgres
-```
+`sudo`: 대상에서 `sudo -n sh -c ...`를 실행한다. 비밀번호 프롬프트 없는 승인된 sudo 권한 필요.
+`direct`: 이미 필요한 읽기 권한을 갖춘 로그인 계정으로 실행한다.
+`su`: `su - root -c ...`이며 비대화형 전환이 사전 허용된 대상만 지원한다.
+대화형 root 비밀번호 입력은 지원하지 않으며, 실패 시 작업 실패/부분 완료로 표시한다.
 
-스크립트는 비밀번호를 숨겨서 입력받고, 기본적으로 연결 정보만 확인합니다.
-스키마 생성이 승인된 경우에만 `--apply-schema`를 추가합니다.
+Windows의 SSH 세션은 필요한 권한을 가진 관리 계정을 사용해야 한다.
+SSH 계정/포트/키의 기본값은 전역 설정이며 OS별 계정이 다른 환경에서는
+아래 서버별 접속 프로필을 사용한다.
 
-향후 로컬 PostgreSQL을 동일 환경으로 구성할 때는 다음 PowerShell 스크립트를
-실행합니다. 관리자 비밀번호와 CMDB 애플리케이션 계정 비밀번호를 별도로
-입력받으며, 저장소에는 저장하지 않습니다.
+## 서버별 SSH 프로필
 
-```powershell
-.\scripts\setup_local_postgresql.ps1 `
-	-PostgresHost localhost `
-	-DatabaseName sm_automation `
-	-ApplicationUser sm_automation
-```
-시간 제한과 작업 수의 범위는 현재 애플리케이션의 초기 정책이다.
+Linux의 `~/.config/sm-automation/ssh-profiles.json`에 접속 프로필을 둘 수 있다.
+파일이 없으면 app 설정의 전역 접속값을 사용한다. 예시는 `config/ssh-profiles.example.json`이다.
+이 파일은 Linux 서비스 계정이 읽을 수 있는 0600 권한으로 보관한다.
+프로필의 `key_file`은 **Linux 절대 경로 또는 ~ 경로**를 사용한다.
+비밀번호가 필요하면 `password_env`에 Linux 환경변수 이름만 지정한다.
+GUI에는 프로필 이름만 입력하며 키/비밀번호는 전송하지 않는다.
 
-## 시작 순서
-
-1. `load_config()`가 UTF-8 JSON을 읽고 자료형·범위를 검사한다.
-2. 변경 불가능한 `AppConfig` 객체로 검증 결과를 반환한다.
-3. `LoggerManager.configure()`가 로그 수준과 디렉터리를 적용한다.
-4. 시작 메시지를 기록하고 종료 시 핸들러를 정리한다.
-
-종료 코드는 정상 0, 로그 초기화 실패 1, 설정 오류 2다.
-실행 중 Logger 설정 변경은 거부하며, 변경하려면 먼저 `shutdown()`해야 한다.
-기존 `get_logger()`만 사용하는 코드는 기존 INFO 기본값을 유지한다.
-
-이번 단계는 설정과 시작 기반까지 구현했다. 서버 목록 파일의 존재·내용 확인과
-실제 SSH 실행은 다음 단계에서 구현하며, 현재 실행은 서버에 접속하지 않는다.
-
-## 검증
-
-2026-09-17: 기존 Logger 회귀 검사와 설정·시작 통합 검사를 합쳐 **101 passed**.
-파일 누락, JSON 오류, 중복 키, 잘못된 자료형·범위, 경로 기준,
-지정된 로그 출력과 초기화 실패의 종료 코드를 검증했다.
-
-```powershell
-.venv/Scripts/python.exe -B -m pytest -q -p no:cacheprovider
-```
+CSV 선택 열 `profile` 또는 Manage inventory의 SSH profile에 `unix-admin`,
+`windows-admin` 등을 지정한다. 비워 두면 `default`(전역 설정)다.
+프로필 파일 변경 후 Linux 서비스를 재시작하면 반영된다.
+추가 권한 전환 `sudo-su`는 `sudo -n su - root -c ...`를 사용한다.

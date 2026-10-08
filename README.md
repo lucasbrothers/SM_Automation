@@ -1,53 +1,65 @@
 # SM_Automation
 
-Enterprise System Management Automation
+Linux 메인 서버와 Windows 네이티브 GUI로 구성한 중앙 OS 관리 시스템입니다.
+**2026-10-08 아키텍처 변경 기준**이며 과거 Windows 컨트롤러/PostgreSQL 설계보다 우선합니다.
 
-## Development Setup
+```text
+Windows desktop GUI (PySide6)
+        │ Dedicated TLS/TCP :7443 (not HTTP, not SSH tunneling)
+        ▼
+Linux main server ── encrypted DATA / BACKUP
+        │ SSH :22
+        ├── Linux / RHEL
+        ├── AIX
+        └── Windows OpenSSH / PowerShell
+```
 
-- [다른 PC에서 개발 이어가기](docs/pc-handoff.md)
-- [설정 관리 사용법](docs/configuration.md)
-- [SSH 및 보안 정책 사용법](docs/ssh-connection-options.md)
-- [보안 정책 기준표](docs/security-policy.md)
-- [보안 정책 권고 아키텍처](docs/security-architecture.md)
-- [PostgreSQL CMDB 운영](docs/cmdb-postgresql.md)
-- [원격 PostgreSQL 운영 서버 구성](docs/postgresql-remote-setup.md)
-- [Windows 오프라인 배포 및 설치](docs/offline-deployment.md)
-- Python 3.14.7, dependencies pinned in `requirements-dev.txt`.
+Windows는 대상 선택, 요청 전송, 진행 상황과 결과 표시만 합니다.
+대상 서버 접속 자격 증명, 모든 수집·백업·암호화 저장은 Linux에서 관리합니다.
+데이터베이스는 사용하지 않습니다.
 
-운영 패키지는 Windows 컨트롤러 배포를 기준으로 설계하며, Linux/RHEL과 AIX는
-SSH 원격 어댑터, Windows 대상은 향후 WinRM/PowerShell 어댑터로 관리합니다.
+## 구현한 기능
 
-## Design Context
+- 인증서 검증 TLS와 접근 토큰으로 연결하는 전용 포트 서버/클라이언트
+- 암호화된 서버 목록, 작업 이력 및 수집 결과; 기본 `./DATA`
+- 비동기 작업, 서버별 진행/실패 상태, 재접속 후 이력 조회
+- 선택/전체선택한 서버의 netstat ESTABLISHED 연결 수집과 네이티브 마인드맵
+- Linux/AIX/Windows 주요 설정 파일 및 명령 출력 암호화 백업
+- 백업 경로: `./BACKUP/YYYY-MM-DD/hostname/run-id/`
+- 기존 Linux 자원 수집 및 보안 감사 호출
+- Windows 데스크톱 GUI: Overview, Connection map, Backups, Activity
 
-- [중앙 OS 관리 시스템 설계 — 프로젝트 인계](docs/central-os-design-context.md)
-- [기존 대화 기록 (78개 항목)](docs/imported-central-os-conversation.md)
+## 시작 안내
 
-## Project Goal
+1. [Linux 서버·Windows GUI 설치](docs/deployment.md)
+2. [구조 및 통신 방식](docs/architecture.md)
+3. [설정과 암호화 저장](docs/configuration.md)
+4. [백업 대상 및 복원용 내보내기](docs/backups.md)
+5. [다른 PC에서 이어가기 / 남은 작업](docs/pc-handoff.md)
+6. [오프라인 패키지 준비](docs/offline-deployment.md)
+7. [오늘의 개발 기록](docs/progress-2026-10-08.md)
 
-Centralized management platform for Linux, AIX and Windows.
+GUI만 미리 보기:
 
-Features
+```powershell
+py -3.14 -m venv .venv-gui
+.venv-gui/Scripts/python.exe -m pip install -r requirements-gui.txt
+.venv-gui/Scripts/python.exe scripts/run_desktop.py --demo
+```
 
-- Security Management
-- Account Management
-- Patch Management
-- Backup
-- Monitoring
-- Grafana
-- Prometheus
-- REST API
+실제 서버 연결은 `--demo` 없이 실행합니다. GUI에는 대상 서버 SSH 비밀번호를 입력하지 않습니다.
 
+## GUI 목업
 
-SM_Automation
-│
-├── src
-│
-├── config
-│
-├── tests
-│
-├── logs
-│
-├── reports
-│
-└── docs
+실제 GUI 코드를 예시 데이터로 렌더링한 화면이며 실서버 연결 결과가 아닙니다.
+
+![Connection map](docs/images/desktop-connection-map.png)
+![Backups](docs/images/desktop-backups.png)
+
+## 검증 상태
+
+사용자 요청에 따라 **이번 변경의 자동 테스트·실서버 테스트는 실행하지 않았습니다.**
+GUI 화면 렌더링과 구문/문서 확인만 수행합니다. 과거 101개 테스트 통과 기록은
+이번 아키텍처 변경의 통과 결과가 아닙니다. 다른 PC에서 첫 실행과 연동을 확인해야 합니다.
+
+이전 설계 대화는 [기록](docs/imported-central-os-conversation.md)으로 보존합니다.

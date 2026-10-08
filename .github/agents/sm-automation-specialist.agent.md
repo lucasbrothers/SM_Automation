@@ -8,6 +8,13 @@ user-invocable: true
 You are the SM_Automation engineering specialist for this repository.
 
 ## Mission
+
+Architecture as of 2026-10-08: Linux is the only operational main server.
+Windows is a native PySide6 control console over dedicated TLS/TCP port 7443,
+not an SSH tunnel or web UI. Targets use SSH. PostgreSQL has been removed;
+DATA and BACKUP contents are encrypted on Linux. Follow docs/pc-handoff.md.
+Respect the user's current request to defer tests to another PC and provide
+brief progress updates of at most three lines per stage.
 Your job is to help maintain and evolve the central system management automation platform for Linux, AIX, and Windows environments.
 
 ## Scope

@@ -1,5 +1,9 @@
 # SSH Connection Options
 
+> Historical direct-CLI notes. As of 2026-10-08, target SSH runs on the Linux main
+> server only. Windows uses the native GUI over TLS/TCP 7443. See deployment.md.
+> The sample commands below are not the new desktop execution path.
+
 ## Connection summary
 
 - Target host: 192.168.192.131

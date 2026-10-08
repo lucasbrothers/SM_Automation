@@ -70,7 +70,7 @@ Windows Server 2022 권고 기준은 다음과 같습니다.
 | 시스템 보호 | 지원 시 Secure Boot, BitLocker, Credential Guard 활성화 |
 
 Windows 정책은 Linux 명령이나 AIX 경로를 사용하지 않습니다. Windows
-적용 모듈은 향후 PowerShell/WinRM 기반으로 별도 구현해야 합니다.
+정책 적용 모듈은 후속 구현 대상입니다. 현재 연결 방식은 Linux 메인 서버의 OpenSSH/PowerShell입니다.
 
 `authselect`, `faillock`, `sssd`, SELinux, systemd 서비스 항목은 RHEL 8/9
 기준입니다. `firewalld=disabled`, `SELinux=disabled`는 일반적인 보안 권고와

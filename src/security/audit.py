@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from engine.ssh import SSHClient
+from engine.remote import privileged
 
 
 @dataclass(frozen=True)
@@ -36,14 +37,16 @@ def _sshd_settings(sshd_output: str) -> dict[str, str]:
     return settings
 
 
-def audit_linux_server(client: SSHClient) -> SecurityAuditResult:
+def audit_linux_server(client: SSHClient, privilege: str = "sudo") -> SecurityAuditResult:
     """Collect a read-only Linux security baseline through an existing SSH client."""
-    passwd_output = client.execute("sudo -n getent passwd")
-    sshd_output = client.execute("sudo -n sshd -T")
+    def execute_root(command):
+        return client.execute("sudo -n " + command if privilege == "sudo" else privileged(command, privilege))
+    passwd_output = execute_root("getent passwd")
+    sshd_output = execute_root("sshd -T")
     if len(_sshd_settings(sshd_output)) != 3:
         raise ValueError("Required SSH audit observations are missing.")
-    config_mode = client.execute(
-        "sudo -n stat -c '%a %U %G' /etc/ssh/sshd_config"
+    config_mode = execute_root(
+        "stat -c '%a %U %G' /etc/ssh/sshd_config"
     ).strip()
     return SecurityAuditResult(
         root_accounts=_root_accounts(passwd_output),

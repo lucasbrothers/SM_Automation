@@ -1,0 +1,4 @@
+hostname,ip,os
+web-prod-01,192.0.2.11,RHEL 9
+core-aix-01,192.0.2.31,AIX 7.1
+win-app-01,192.0.2.41,Windows 2022

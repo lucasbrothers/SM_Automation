@@ -1,17 +1,7 @@
 [CmdletBinding()]
-param(
-    [string]$PythonPath = "py",
-    [string]$WheelDirectory = "src\sw\python-wheels"
-)
-
+param([string]$PythonPath = "py", [string]$WheelDirectory = "wheelhouse\gui")
 $ErrorActionPreference = "Stop"
-$root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$wheelPath = Join-Path $root $WheelDirectory
-$requirements = Join-Path $root "requirements-runtime.txt"
-
-New-Item -ItemType Directory -Force -Path $wheelPath | Out-Null
-& $PythonPath -m pip download --only-binary=:all: --dest $wheelPath -r $requirements
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to download offline Python packages."
-}
-Write-Host "[PASS] Offline Python package bundle prepared: $wheelPath"
+$projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+& $PythonPath (Join-Path $PSScriptRoot "prepare_offline_packages.py") --role gui --destination (Join-Path $projectRoot $WheelDirectory)
+if ($LASTEXITCODE -ne 0) { throw "Windows GUI wheel preparation failed." }
+Write-Host "Linux server wheels must be prepared on a matching Linux machine with --role server."

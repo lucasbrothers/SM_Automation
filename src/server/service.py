@@ -1,0 +1,224 @@
+"""Inventory, asynchronous SSH work and encrypted job history."""
+from __future__ import annotations
+
+import csv
+import io
+import ipaddress
+import json
+import os
+import re
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict, replace
+from datetime import datetime
+from pathlib import Path
+
+from backup.collector import backup_server
+from core.inventory import ServerRecord
+from engine.ssh import SSHClient
+from monitoring.collector import collect_linux_snapshot
+from monitoring.connections import collect_connections, os_family
+from security.audit import audit_linux_server
+from storage.encrypted import EncryptedStore, read_secret
+
+
+def now():
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def inventory_records(rows):
+    if not isinstance(rows, list) or len(rows) > 5000:
+        raise ValueError("Inventory must contain at most 5000 servers")
+    result, seen = [], set()
+    for row in rows:
+        hostname = str(row.get("hostname", "")).strip()
+        address = str(ipaddress.ip_address(str(row.get("ip", "")).strip()))
+        platform = str(row.get("os", "")).strip()
+        os_family(platform)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,252}", hostname) or hostname.casefold() in seen:
+            raise ValueError("Hostnames must be unique and use letters, digits, dots, underscores or hyphens")
+        seen.add(hostname.casefold())
+        profile = str(row.get("profile") or "default").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", profile):
+            raise ValueError("Invalid SSH profile name")
+        result.append({"hostname": hostname, "ip": address, "os": platform, "profile": profile})
+    return result
+
+
+class ManagementService:
+    def __init__(self, config):
+        self.config = config
+        self.data = EncryptedStore(config.data_directory, config.key_file)
+        self.backups = EncryptedStore(config.backup_directory, config.key_file)
+        self.profiles = (json.loads(read_secret(config.ssh_profiles_file))
+                         if config.ssh_profiles_file.exists() else {})
+        if not isinstance(self.profiles, dict):
+            raise ValueError("SSH profiles must be a JSON object")
+        self.lock = threading.RLock()
+        self.jobs = {}
+        self.closed = False
+        self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="management")
+        # Retain past output on disk; never repeat interrupted remote work automatically.
+        for path in sorted(self.data.root.glob("jobs/*.json.enc"), key=lambda p: p.stat().st_mtime, reverse=True)[:100]:
+            job = self.data.read_json(str(path.relative_to(self.data.root)))
+            if job["status"] in {"queued", "running"}:
+                job.update(status="interrupted", message="Server restarted; inspect partial artifacts before retrying", finished_at=now())
+                self.data.write_json(f"jobs/{job['id']}.json.enc", job)
+            self.jobs[job["id"]] = job
+
+    def inventory(self):
+        with self.lock:
+            return self.data.read_json("inventory.json.enc", [])
+
+    def save_inventory(self, rows):
+        rows = inventory_records(rows)
+        for row in rows:
+            if row["profile"] != "default" and row["profile"] not in self.profiles:
+                raise ValueError(f"SSH profile is not configured on Linux: {row['profile']}")
+        with self.lock:
+            self.data.write_json("inventory.json.enc", rows)
+        return {"count": len(rows)}
+
+    def summary(self, job):
+        return {key: value for key, value in job.items() if key not in {"results", "targets"}}
+
+    def _save(self, job):
+        self.data.write_json(f"jobs/{job['id']}.json.enc", job)
+
+    def submit(self, kind, names):
+        if kind not in {"connections", "backup", "monitoring", "security_audit"}:
+            raise ValueError("Unknown job type")
+        if not isinstance(names, list) or not names:
+            raise ValueError("Select at least one server")
+        inventory = self.inventory()
+        indexed = {row["hostname"]: row for row in inventory}
+        if any(name not in indexed for name in names):
+            raise ValueError("A selected server is no longer in the inventory")
+        targets = [indexed[name] for name in dict.fromkeys(names)]
+        with self.lock:
+            if self.closed:
+                raise RuntimeError("Server is shutting down")
+            if sum(job["status"] in {"queued", "running"} for job in self.jobs.values()) >= 2:
+                raise RuntimeError("Two jobs are already active; wait for one to finish")
+            job = {"id": uuid.uuid4().hex, "kind": kind, "status": "queued", "created_at": now(),
+                   "total": len(targets), "done": 0, "failed": 0, "partial": 0,
+                   "targets": targets, "message": "Queued on Linux main server", "results": []}
+            self.jobs[job["id"]] = job
+            self._save(job)
+            self.pool.submit(self._run, job, targets)
+            return self.summary(job)
+
+    def _target(self, job, row):
+        server = ServerRecord(**{key: row[key] for key in ("hostname", "ip", "os")})
+        client = None
+        try:
+            name = row.get("profile", "default")
+            if name != "default" and name not in self.profiles:
+                raise ValueError("SSH profile is not configured on the Linux server")
+            profile = self.profiles.get(name, {})
+            mode = profile.get("privilege", self.config.privilege)
+            if mode not in {"sudo", "sudo-su", "direct", "su"}:
+                raise ValueError("Invalid SSH profile privilege mode")
+            host_config = replace(self.config, privilege=mode)
+            key_file = profile.get("key_file", self.config.ssh_key_file)
+            client = SSHClient(server.hostname, server.ip, user=profile.get("user", self.config.ssh_user),
+                               password=os.environ.get(profile.get("password_env", "SM_AUTOMATION_SSH_PASSWORD")),
+                               key_filename=Path(key_file).expanduser() if key_file else None,
+                               port=int(profile.get("port", self.config.ssh_port)), timeout=self.config.ssh_timeout)
+            family = os_family(server.os)
+            kind = job["kind"]
+            if kind == "backup":
+                result = backup_server(client, server, host_config, self.backups, job["id"],
+                                       lambda text: self._progress(job, text))
+            elif kind == "connections":
+                result = collect_connections(client, family, self.config.ssh_timeout)
+                connections = result["connections"]
+                result["observed_count"] = len(connections)
+                result["connections"] = connections[:5000]
+                result["truncated"] = len(connections) > 5000
+            elif kind == "monitoring":
+                if family != "linux":
+                    raise ValueError("Resource monitoring currently supports Linux targets")
+                result = collect_linux_snapshot(client).to_dict()
+            else:
+                if family != "linux":
+                    raise ValueError("Security audit currently supports Linux targets")
+                result = asdict(audit_linux_server(client, privilege=mode))
+            return {**row, "status": result.pop("status", "completed"), "result": result}
+        except Exception as exc:
+            return {**row, "status": "failed", "error": str(exc)[:1500]}
+        finally:
+            if client is not None:
+                client.close()
+
+    def _progress(self, job, message):
+        with self.lock:
+            job["message"] = message
+
+    def _run(self, job, targets):
+        try:
+            with self.lock:
+                job.update(status="running", started_at=now())
+                self._save(job)
+            with ThreadPoolExecutor(max_workers=min(self.config.max_workers, len(targets))) as workers:
+                futures = [workers.submit(self._target, job, row) for row in targets]
+                for future in as_completed(futures):
+                    result = future.result()
+                    with self.lock:
+                        job["results"].append(result)
+                        job["done"] += 1
+                        job["failed"] += result["status"] == "failed"
+                        job["partial"] += result["status"] == "partial"
+                        job["message"] = f"{job['done']} / {job['total']} servers finished"
+                        self._save(job)
+            with self.lock:
+                status = "failed" if job["failed"] == job["total"] else (
+                    "partial" if job["failed"] or job["partial"] else "completed")
+                job.update(status=status, finished_at=now())
+                self._save(job)
+        except Exception as exc:
+            with self.lock:
+                job.update(status="failed", message=f"Job stopped: {type(exc).__name__}", finished_at=now())
+                try:
+                    self._save(job)
+                except OSError:
+                    pass
+
+    def dispatch(self, method, params):
+        if method == "status":
+            return {"platform": "Linux main server", "version": "0.2.0", "time": now(),
+                    "data_directory": str(self.config.data_directory), "backup_directory": str(self.config.backup_directory),
+                    "inventory_count": len(self.inventory()), "encrypted": True}
+        if method == "inventory.list":
+            return self.inventory()
+        if method == "inventory.save":
+            return self.save_inventory(params["servers"])
+        if method == "inventory.import":
+            content = params["csv"]
+            return self.save_inventory(list(csv.DictReader(io.StringIO(content.lstrip("\ufeff")))))
+        if method == "job.start":
+            return self.submit(params["kind"], params["hosts"])
+        if method == "backup.preview":
+            path = params["path"]
+            if not isinstance(path, str) or not path.endswith((".txt.enc", ".json.enc")):
+                raise ValueError("Only text and JSON artifacts support preview; export archives on Linux")
+            if self.backups.path(path).stat().st_size > 96 * 1024 * 1024:
+                raise ValueError("Artifact is too large to preview; export it on Linux")
+            content = self.backups.read_bytes(path)
+            return {"text": content[:65536].decode("utf-8", errors="replace"),
+                    "truncated": len(content) > 65536, "bytes": len(content)}
+        with self.lock:
+            if method == "job.list":
+                return [self.summary(job) for job in sorted(self.jobs.values(), key=lambda item: item["created_at"], reverse=True)[:100]]
+            if method == "job.get":
+                return self.summary(self.jobs[params["id"]])
+            if method == "job.result":
+                job = self.jobs[params["id"]]
+                offset = max(0, int(params.get("offset", 0)))
+                return {"items": job["results"][offset:offset + 1], "total": len(job["results"])}
+        raise ValueError("Unknown API method")
+
+    def close(self):
+        self.closed = True
+        self.pool.shutdown(wait=True)

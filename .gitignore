@@ -1,4 +1,5 @@
 .venv/
+.venv-*/
 venv/
 __pycache__/
 *.py[cod]
@@ -7,6 +8,12 @@ __pycache__/
 htmlcov/
 logs/
 reports/
+/DATA/
+/BACKUP/
+*.key
+*.token
+*.enc
+secrets/
 .env
 .env.*
 !.env.example

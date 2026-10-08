@@ -1,5 +1,9 @@
 # 중앙 OS 관리 시스템 설계 — 프로젝트 인계
 
+> 과거 대화 인계 기록입니다. 2026-10-08 이후 실제 구조와 실행 절차는
+> [architecture.md](architecture.md)와 [pc-handoff.md](pc-handoff.md)를 따릅니다.
+> PostgreSQL 및 Windows 컨트롤러 제안은 현재 설계가 아닙니다.
+
 가져온 날짜: 2026-09-17
 
 원본 대화: [중앙 OS 관리 시스템 설계](https://chatgpt.com/c/6a9fecaf-97c8-83e8-be9a-b916012d184a)

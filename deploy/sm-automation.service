@@ -1,0 +1,22 @@
+[Unit]
+Description=SM Automation Linux Main Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smops
+Group=smops
+WorkingDirectory=/opt/SM_Automation
+ExecStart=/opt/SM_Automation/.venv/bin/python /opt/SM_Automation/scripts/run_server.py --config /opt/SM_Automation/config/app.local.json
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/etc/sm-automation/runtime.env
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=300
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

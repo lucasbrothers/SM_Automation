@@ -1,80 +1,75 @@
 # 다른 PC에서 개발 이어가기
 
-## 저장한 환경
+기준: 2026-10-08 아키텍처 변경. 이 문서가 2026-09-17 인계보다 우선한다.
+저장소: https://github.com/lucasbrothers/SM_Automation / 브랜치: master
 
-- 기준일: 2026-09-17
-- 저장소: https://github.com/lucasbrothers/SM_Automation
-- 브랜치: `master`
-- 검증 환경: Windows, PowerShell, Python 3.14.7
-- 개발 패키지: `requirements-dev.txt`에 현재 설치 버전을 고정했다.
-- 애플리케이션 실행 의존성: Python 표준 라이브러리만 사용한다.
+## 이번에 변경한 방향
 
-`.python-version`은 기준 버전 기록이며 Python을 자동 설치하지 않는다.
-다른 운영체제에서는 명령을 조정해야 하며 아직 실행 검증하지 않았다.
-가상환경은 PC별 절대 경로를 포함하므로 `.venv`를 복사하지 말고 새로 만든다.
+1. Linux가 메인 서버이며 모든 실제 업무를 수행한다.
+2. Windows는 네이티브 GUI/통제만 담당하고 전용 TLS/TCP 7443으로 연결한다(SSH 터널 아님).
+3. 관리 대상 접속은 SSH를 유지한다. Windows 대상도 OpenSSH를 사용한다.
+4. PostgreSQL을 제거하고 DATA/BACKUP의 내용을 암호화한다.
+5. 체크박스·전체선택 + netstat ESTABLISHED 마인드맵, 전체 대상 OS별 백업을 추가했다.
+6. 테스트는 다른 PC에서 진행한다. 이번 PC에서는 기능/통합 테스트를 실행하지 않았다.
 
-## 새 Windows PC 준비
+## 인계 자료
 
-Git과 Python 3.14.7을 설치한다. PowerShell에서 `py -3.14 --version`이
-`Python 3.14.7`인지 확인하고 다음 명령을 실행한다.
+- README.md: 진입점
+- docs/deployment.md: Linux 서비스와 Windows GUI 실행
+- docs/configuration.md: 경로·키·포트·SSH 설정
+- docs/architecture.md: 책임 분리·저장·통신·현재 범위
+- docs/backups.md: 파일/명령 수집 범위와 복호화
+- docs/images/: 실제 GUI 코드로 만든 예시 목업 2장
+- deploy/sm-automation.service: systemd 템플릿
 
-```powershell
+## 새 PC 준비
+
+```sh
 git clone https://github.com/lucasbrothers/SM_Automation.git
 cd SM_Automation
 git switch master
-py -3.14 -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
-.venv/Scripts/python.exe -m pip check
-.venv/Scripts/python.exe -B -m pytest -q -p no:cacheprovider
-.venv/Scripts/python.exe src/main.py
 ```
 
-기대 결과는 **101개 테스트 통과**, 프로그램 종료 코드 0,
-`logs/sm_automation.log`에 `Application initialized` 기록이다.
-가상환경 활성화 없이 직접 실행하므로 PowerShell 실행 정책을 바꿀 필요가 없다.
-이미 저장소가 있다면 미커밋 작업을 먼저 보존하고 `git pull --ff-only origin master`로 받는다.
+이미 저장소가 있다면 로컬 변경을 보존한 뒤 `git pull --ff-only origin master`로 갱신한다.
+가상환경은 복사하지 않는다. Linux 서버는 requirements-runtime.txt,
+Windows GUI는 requirements-gui.txt를 사용한다. 이번 GUI 렌더링 환경은 Windows / Python 3.14.7 / PySide6 6.11.2다.
+서버 Linux 실행은 아직 하지 않았다. 폐쇄망 패키지는 대상 OS·Python과 일치하도록 별도 준비한다.
 
-패키지 설치는 인터넷 접근이 필요하다. 오프라인 PC로 이동할 경우 동일한
-Windows/Python 환경의 온라인 PC에서 wheel 파일도 준비한다.
+새 설치는 deployment.md대로 Linux에서 키와 인증서를 생성한다.
+기존 DATA/BACKUP을 이어받는 경우 원래 master.key가 반드시 필요하다.
+Git에는 실제 키·토큰·운영 CSV·DATA·BACKUP·가상환경이 포함되지 않는다.
+기존 PostgreSQL의 운영 데이터를 파일로 변환하는 마이그레이션은 별도 작업이다.
+DB 소프트웨어를 이 PC에서 제거하거나 DB 데이터를 삭제하지는 않았다.
 
-```powershell
-.venv/Scripts/python.exe -m pip download -r requirements-dev.txt -d wheelhouse
-```
+## 다음 PC에서 최소 확인할 항목
 
-`wheelhouse` 폴더를 별도로 옮기고 새 PC에서 다음 명령으로 설치한다.
+사용자 요청으로 지금은 실행하지 않는다. 다음 PC에서 다음 기능의 정상 여부 위주로 확인한다.
 
-```powershell
-.venv/Scripts/python.exe -m pip install --no-index --find-links wheelhouse -r requirements-dev.txt
-```
+1. Linux 서비스를 시작하고 Windows가 TLS 7443으로 인증·접속하는지.
+2. GUI에서 서버 목록을 저장하고 Linux DATA의 파일이 암호화되는지.
+3. 서버 1대 선택/전체선택 후 netstat 연결이 맵과 표에 표시되는지.
+4. Linux 1대의 sudoers/sudoers.d, 계정별 chage 결과와 manifest를 읽을 수 있는지.
+5. AIX 및 Windows OpenSSH 대상에서 OS별 명령과 인코딩/권한이 맞는지.
+6. GUI 종료 후 Linux 작업이 계속되고 재접속하여 이력을 읽을 수 있는지.
 
-wheel 파일과 Python/Git 설치 파일은 이번 저장소에 포함하지 않았다.
+기존 pytest를 원하면 requirements-dev.txt 설치 후 실행하되 이번 기능의 충분한 검증으로
+간주하지 않는다. 기존 설정 테스트의 PostgreSQL 기대값만 새 설정에 맞춰 수정했고 새 대규모
+테스트는 추가하지 않았다. 이전 101 passed 기록은 이전 코드 기준이다.
 
-## IDE 및 설정
+## 현재 구현의 한계 / 이어서 할 작업
 
-- VS Code에서 저장소 폴더를 열고 Python 인터프리터로 `.venv/Scripts/python.exe`를 선택한다.
-- pytest 설정은 저장소의 `pytest.ini`를 사용한다.
-- 기본 설정은 `config/app.json`, 상세 설명은 [configuration.md](configuration.md)에 있다.
-- PC별 설정은 `config/app.local.json`으로 복사하여 수정하고
-  `.venv/Scripts/python.exe src/main.py --config config/app.local.json`으로 실행한다.
-- 실행 로그, 캐시, 가상환경, 로컬 설정, 실제 서버 목록은 Git에 포함하지 않는다.
+- 서버별 SSH 프로필을 추가했다. Linux의 보호된 ssh-profiles.json에 계정/키/포트를 정의하고 GUI/CSV에는 profile 이름만 지정한다. 다른 PC에서 실제 연결을 확인한다.
+- AIX/Windows 실환경 netstat 및 파일/명령 수집 조정.
+- UI의 계정 생성·삭제, 패치, 보안 정책 적용은 미구현. 기존 Linux SSH 보안 엔진은 보존.
+- API는 공통 운영자 토큰 방식. 사용자별 로그인·역할·작업 취소·정기 스케줄은 후속 범위.
+- 수집 결과는 서버당 5,000 연결, 그래프는 서버당 25 peer로 제한. 대용량 최적화는 후속 범위.
+- 백업 전체 복원과 대용량 스트리밍, 키 순환, 보존기간 정리 기능은 후속 범위.
+- 기존 직접 실행 스크립트는 과거 호환 도구이며 새 GUI의 운영 경로가 아니다. 새 기능은 run_server.py를 통해 사용한다.
 
-## 완료 상태와 다음 작업
+## 다음 작업자에게 전달할 문장
 
-1. Logger 구현과 보안·동시 초기화·복구·회전 검증 완료.
-2. JSON 설정 읽기·검증과 Logger 설정 연결 완료.
-3. `main.py`의 설정 검증 및 시작/종료 처리 완료.
-4. 전체 테스트 101개 통과.
-
-다음 작업은 **서버 목록 로더**다. `AppConfig.server_file`을 입력으로 사용하여
-hostname/IP 형식을 결정하고, IP 유효성·중복·잘못된 행·파일 오류를 검증한다.
-현재 서버 목록 파일은 없으며 아직 읽거나 SSH 접속을 수행하지 않는다.
-그다음 SSH 연결·명령 실행 엔진을 구현한다.
-
-새 PC에서 에이전트에게 아래 내용을 전달하면 된다.
-
-> docs/pc-handoff.md와 docs/configuration.md를 읽고 현재 테스트를 확인한 뒤,
-> 다음 단계인 서버 목록 로더를 구현해 주세요. 한국어로 진행 상황을 설명하고,
-> 코드의 이름·주석·docstring은 영어로 작성해 주세요.
-
-이 문서는 프로젝트 작업 맥락을 저장한다. IDE 탭, 대화 세션,
-플러그인·계정 인증 정보는 새 PC에서 별도로 설정해야 한다.
+> docs/pc-handoff.md와 docs/architecture.md를 먼저 읽으세요. Linux 메인 서버,
+> Windows 네이티브 GUI, 전용 TLS 포트, 대상 SSH, 암호화 DATA/BACKUP 구조를 유지하세요.
+> 2026-10-08에는 테스트를 미뤘습니다. 이제 이 PC에서 최소 기능 확인부터 진행하고
+> 서버별 SSH 프로필과 OS별 수집 문제를 보완하세요. 한국어로 단계별 3줄 이내로 설명하고
+> 코드 식별자·주석·docstring은 영어로 작성하세요.

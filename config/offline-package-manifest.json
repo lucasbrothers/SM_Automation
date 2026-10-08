@@ -1,30 +1,22 @@
 {
-  "package_name": "SM_Automation Windows Controller",
-  "platform": "windows-x64",
+  "package_name": "SM_Automation Linux Server and Windows Desktop",
+  "version": "0.2.0",
   "offline": true,
-  "python_packages": [
-    {
-      "package": "paramiko",
-      "version": "4.0.0",
-      "artifact_directory": "src/sw/python-wheels",
-      "required": true,
-      "install_order": 20
-    },
-    {
-      "package": "psycopg[binary]",
-      "version": "3.2.13",
-      "artifact_directory": "src/sw/python-wheels",
-      "required": true,
-      "install_order": 20
-    }
-  ],
-  "configuration": {
-    "file": "config/app.local.json",
-    "cmdb_host": "localhost",
-    "cmdb_database": "sm_automation",
-    "password_source": "SM_AUTOMATION_CMDB_PASSWORD"
+  "server": {
+    "platform": "linux",
+    "requirements": "requirements-runtime.txt",
+    "entrypoint": "scripts/run_server.py",
+    "transport": "TLS/TCP",
+    "port": 7443,
+    "data_directory": "./DATA",
+    "backup_directory": "./BACKUP"
   },
-  "offline_python_prepare_script": "scripts/prepare_offline_python_packages.ps1",
-  "schema": "config/cmdb-schema.sql",
-  "setup_script": "scripts/setup_local_postgresql.ps1"
+  "gui": {
+    "platform": "windows-x64",
+    "requirements": "requirements-gui.txt",
+    "entrypoint": "scripts/run_desktop.py"
+  },
+  "prepare_script": "scripts/prepare_offline_packages.py",
+  "provision_script": "scripts/provision_server.py",
+  "instructions": "docs/deployment.md"
 }
