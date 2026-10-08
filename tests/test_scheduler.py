@@ -94,3 +94,32 @@ def test_active_previous_job_does_not_overlap(scheduler):
     scheduler.service.jobs["old"] = {"status": "running"}
     scheduler.tick()
     assert scheduler.service.count == 0
+
+
+def test_failed_create_does_not_leave_executable_schedule(scheduler, monkeypatch):
+    def fail(*args):
+        raise OSError("storage unavailable")
+    monkeypatch.setattr(scheduler.service.data, "write_json", fail)
+    with pytest.raises(OSError):
+        scheduler.create("connections", ["lab"], future(), 60)
+    assert scheduler.items == []
+
+
+def test_failed_pause_restores_persisted_state(scheduler, monkeypatch):
+    item = scheduler.create("connections", ["lab"], future(), 60)
+    def fail(*args):
+        raise OSError("storage unavailable")
+    monkeypatch.setattr(scheduler.service.data, "write_json", fail)
+    with pytest.raises(OSError):
+        scheduler.change(item["id"], enabled=False)
+    assert scheduler.items[0]["enabled"]
+
+
+def test_failed_delete_keeps_schedule(scheduler, monkeypatch):
+    item = scheduler.create("connections", ["lab"], future(), 60)
+    def fail(*args):
+        raise OSError("storage unavailable")
+    monkeypatch.setattr(scheduler.service.data, "write_json", fail)
+    with pytest.raises(OSError):
+        scheduler.change(item["id"], delete=True)
+    assert scheduler.items[0]["id"] == item["id"]

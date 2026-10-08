@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import threading
 import uuid
+import copy
 
 
 class Scheduler:
@@ -45,13 +46,19 @@ class Scheduler:
                     "targets": [inventory[name] for name in dict.fromkeys(hosts)],
                     "next_run": timestamp.isoformat(), "interval_seconds": interval_seconds,
                     "enabled": True, "message": "Waiting on Linux", "last_job_id": None}
-            self.items.append(item); self.save()
+            self.items.append(item)
+            try:
+                self.save()
+            except Exception:
+                self.items.remove(item)
+                raise
             return dict(item)
 
     def change(self, schedule_id, enabled=None, delete=False):
         if not isinstance(delete, bool):
             raise ValueError("Delete must be a boolean")
         with self.lock:
+            before = copy.deepcopy(self.items)
             item = next(i for i in self.items if i["id"] == schedule_id)
             if delete:
                 self.items.remove(item)
@@ -61,7 +68,11 @@ class Scheduler:
                 if enabled and datetime.fromisoformat(item["next_run"]) <= datetime.now().astimezone():
                     raise ValueError("Expired schedules cannot resume; create a new future schedule")
                 item.update(enabled=enabled, message="Waiting on Linux" if enabled else "Paused")
-            self.save()
+            try:
+                self.save()
+            except Exception:
+                self.items = before
+                raise
             return dict(item)
 
     def tick(self):
