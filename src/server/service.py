@@ -24,6 +24,7 @@ from monitoring.collector import collect_linux_snapshot
 from monitoring.connections import collect_connections, os_family
 from security.audit import audit_linux_server
 from storage.encrypted import EncryptedStore, read_secret
+from server.scheduler import Scheduler
 
 
 def now():
@@ -70,6 +71,7 @@ class ManagementService:
                 job.update(status="interrupted", message="Server restarted; inspect partial artifacts before retrying", finished_at=now())
                 self.data.write_json(f"jobs/{job['id']}.json.enc", job)
             self.jobs[job["id"]] = job
+        self.scheduler = Scheduler(self)
 
     def inventory(self):
         with self.lock:
@@ -119,6 +121,7 @@ class ManagementService:
                 raise RuntimeError("Two jobs are already active; wait for one to finish")
             job = {"id": uuid.uuid4().hex, "kind": kind, "status": "queued", "created_at": now(),
                    "total": len(targets), "done": 0, "failed": 0, "partial": 0,
+                   "cancel_requested": False, "cancelled": 0,
                    "targets": targets, "options": options, "message": "Queued on Linux main server", "results": []}
             self.jobs[job["id"]] = job
             self._save(job)
@@ -134,6 +137,9 @@ class ManagementService:
         return self._target_unlocked(job, row)
 
     def _target_unlocked(self, job, row):
+        with self.lock:
+            if job.get("cancel_requested"):
+                return {**row, "status": "cancelled", "message": "Not started: cancellation requested"}
         server = ServerRecord(**{key: row[key] for key in ("hostname", "ip", "os")})
         client = None
         try:
@@ -175,6 +181,9 @@ class ManagementService:
                                            lambda text: self._progress(job, text))
                     if before["status"] != "completed":
                         return {**row, "status": "failed", "error": "Pre-change backup incomplete; account unchanged", "result": {"backup": before}}
+                    with self.lock:
+                        if job.get("cancel_requested"):
+                            return {**row, "status": "cancelled", "message": "Cancelled after backup; account unchanged", "result": {"backup": before}}
                     try:
                         result = manage_accounts(client, options, mode, login_user, self.config.ssh_timeout)
                     except Exception as exc:
@@ -195,6 +204,9 @@ class ManagementService:
                                            lambda text: self._progress(job, text))
                     if before["status"] != "completed":
                         return {**row, "status": "failed", "error": "Pre-patch backup incomplete; packages unchanged", "result": {"backup": before}}
+                    with self.lock:
+                        if job.get("cancel_requested"):
+                            return {**row, "status": "cancelled", "message": "Cancelled after backup; packages unchanged", "result": {"backup": before}}
                     try:
                         result = apply_plan(client, plan, mode)
                     except Exception as exc:
@@ -229,11 +241,15 @@ class ManagementService:
                         job["done"] += 1
                         job["failed"] += result["status"] == "failed"
                         job["partial"] += result["status"] == "partial"
+                        job["cancelled"] = job.get("cancelled", 0) + (result["status"] == "cancelled")
                         job["message"] = f"{job['done']} / {job['total']} servers finished"
                         self._save(job)
             with self.lock:
                 status = "failed" if job["failed"] == job["total"] else (
                     "partial" if job["failed"] or job["partial"] else "completed")
+                if job.get("cancel_requested"):
+                    status = "cancelled"
+                    job["message"] = "Cancelled pending targets; started operations finished and results retained"
                 job.update(status=status, finished_at=now())
                 self._save(job)
         except Exception as exc:
@@ -245,8 +261,22 @@ class ManagementService:
                     pass
 
     def dispatch(self, method, params):
+        if method == "schedule.list":
+            return self.scheduler.list()
+        if method == "schedule.create":
+            return self.scheduler.create(params["kind"], params["hosts"], params["run_at"], params.get("interval_seconds", 0))
+        if method == "schedule.change":
+            return self.scheduler.change(params["id"], params.get("enabled"), params.get("delete", False))
+        if method == "job.cancel":
+            with self.lock:
+                job = self.jobs[params["id"]]
+                if job["status"] in {"queued", "running"}:
+                    job.update(cancel_requested=True, message="Cancellation requested; started operations will finish")
+                    self._save(job)
+                return self.summary(job)
         if method == "status":
             return {"platform": "Linux main server", "version": "0.2.0", "time": now(),
+                    "scheduler_running": self.scheduler.thread.is_alive(),
                     "data_directory": str(self.config.data_directory), "backup_directory": str(self.config.backup_directory),
                     "inventory_count": len(self.inventory()), "encrypted": True}
         if method == "inventory.list":
@@ -280,4 +310,5 @@ class ManagementService:
 
     def close(self):
         self.closed = True
+        self.scheduler.close()
         self.pool.shutdown(wait=True)

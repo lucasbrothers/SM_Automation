@@ -7,14 +7,14 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QObject, Signal, QRunnable, QThreadPool, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, QRunnable, QThreadPool, QTimer, QDateTime
 from PySide6.QtGui import QColor, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
     QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QComboBox,
+    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit,
 )
 
 from desktop.client import ConnectionSettings, ServerClient
@@ -40,7 +40,7 @@ QPushButton:hover { background: #eaf0fb; border-color: #a9c0e8; }
 QPushButton:disabled { color: #9ca9ba; background: #edf1f6; }
 QPushButton[primary="true"] { background: #2869df; color: white; border: none; font-weight: 600; }
 QPushButton[primary="true"]:hover { background: #1c56bb; }
-QLineEdit, QSpinBox, QPlainTextEdit, QComboBox { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
+QLineEdit, QSpinBox, QPlainTextEdit, QComboBox, QDateTimeEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
 QComboBox::drop-down { border: none; width: 26px; }
 QComboBox QAbstractItemView { background: white; selection-background-color: #e6efff; selection-color: #203955; }
 QTableWidget { background: white; border: none; gridline-color: #edf1f6; selection-background-color: #e6efff; selection-color: #203955; }
@@ -181,7 +181,7 @@ class Console(QMainWindow):
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
-        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches"]):
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
         nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
@@ -207,7 +207,7 @@ class Console(QMainWindow):
             self.metric_values.append(number)
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
-        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches()
+        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules()
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
@@ -274,6 +274,7 @@ class Console(QMainWindow):
         self.jobs_table = table(["Created", "Operation", "Status", "Progress", "Job ID"])
         self.jobs_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.jobs[row]["id"]))
         body.addWidget(self.jobs_table)
+        body.addWidget(button("Cancel pending targets of selected job", self.cancel_selected_job))
         body.addWidget(label("Closing this console does not stop Linux jobs. Reconnect to see results.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -359,21 +360,82 @@ class Console(QMainWindow):
         if job.get("options", {}).get("action") == "plan" and job["status"] == "completed":
             self.patch_plan_id = job["id"]; self.patch_apply.setEnabled(True)
 
+    def build_schedules(self):
+        self.schedules = []
+        page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
+        body.addWidget(label("Schedules on your Linux server", "section"))
+        form = QFormLayout(); self.schedule_kind = QComboBox()
+        for kind in ["backup", "connections", "monitoring", "security_audit"]:
+            self.schedule_kind.addItem(kind.replace("_", " ").title(), kind)
+        self.schedule_time = QDateTimeEdit(QDateTime.currentDateTime().addSecs(300)); self.schedule_time.setCalendarPopup(True)
+        self.schedule_time.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.schedule_interval = QSpinBox(); self.schedule_interval.setRange(0, 525600); self.schedule_interval.setSuffix(" min (0 = once)")
+        for control in (self.schedule_kind, self.schedule_time, self.schedule_interval):
+            control.setMinimumHeight(44)
+        form.addRow("Operation", self.schedule_kind); form.addRow("First run (this PC local time)", self.schedule_time); form.addRow("Repeat interval", self.schedule_interval)
+        body.addLayout(form)
+        body.addWidget(label("Targets follow Connection map selection. Linux runs schedules while this GUI is closed."))
+        body.addWidget(button("Create Linux schedule", self.create_schedule, True))
+        self.schedule_table = table(["Next run", "Operation", "Targets", "Repeat (min)", "State", "Message"]); body.addWidget(self.schedule_table, 1)
+        actions = QHBoxLayout()
+        actions.addWidget(button("Refresh schedules", self.load_schedules))
+        actions.addWidget(button("Pause selected", lambda: self.change_schedule(False)))
+        actions.addWidget(button("Resume selected", lambda: self.change_schedule(True)))
+        actions.addWidget(button("Delete selected", lambda: self.change_schedule(delete=True)))
+        body.addLayout(actions)
+        body.addWidget(label("Pause/delete stops future runs. Use Activity to cancel pending targets of a started job."))
+        layout.addWidget(frame); self.pages.addWidget(page)
+
+    def create_schedule(self):
+        if not self.require_client():
+            return
+        client = self.client
+        run_at = self.schedule_time.dateTime().toPython().astimezone().isoformat()
+        hosts = self.checked_hosts(); kind = self.schedule_kind.currentData(); interval = self.schedule_interval.value() * 60
+        self.work(lambda: client.call("schedule.create", kind=kind, hosts=hosts, run_at=run_at, interval_seconds=interval), lambda _: self.load_schedules())
+
+    def load_schedules(self):
+        if not self.require_client():
+            return
+        client = self.client
+        self.work(lambda: client.call("schedule.list"), self.display_schedules)
+
+    def display_schedules(self, schedules):
+        self.schedules = schedules
+        fill_table(self.schedule_table, [[s["next_run"], s["kind"], ", ".join(s["hosts"]), s["interval_seconds"] // 60, "Enabled" if s["enabled"] else "Paused / completed", s["message"]] for s in schedules])
+
+    def change_schedule(self, enabled=None, delete=False):
+        row = self.schedule_table.currentRow()
+        if row < 0 or row >= len(self.schedules) or not self.require_client():
+            return
+        schedule_id = self.schedules[row]["id"]; client = self.client
+        self.work(lambda: client.call("schedule.change", id=schedule_id, enabled=enabled, delete=delete), lambda _: self.load_schedules())
+
+    def cancel_selected_job(self):
+        row = self.jobs_table.currentRow()
+        if row < 0 or row >= len(self.jobs) or not self.require_client():
+            return
+        job_id = self.jobs[row]["id"]; client = self.client
+        self.work(lambda: client.call("job.cancel", id=job_id), lambda _: self.poll())
+
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
                         "Selected servers and their established TCP peers. All collection runs on Linux.",
                         "OS configuration files and account information, encrypted and retained on Linux.",
                         "Follow server-side jobs and inspect their results, even after reconnecting.",
                         "Account changes run on Linux after an encrypted backup.",
-                        "Preview exact versions, then apply the reviewed plan from your Linux main server."]
+                        "Preview exact versions, then apply the reviewed plan from your Linux main server.",
+                        "Encrypted Linux schedules continue independently of your Windows console."]
         self.subtitle.setText(descriptions[index])
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
         if index == 1:
             QTimer.singleShot(50, self.graph.fit_map)
+        if index == 6 and self.client:
+            self.load_schedules()
 
     def work(self, fn, done, quiet=False):
         worker = Worker(fn); self.workers.add(worker)
@@ -614,6 +676,9 @@ class Console(QMainWindow):
         fill_table(self.account_table, [["app-linux-01", "ops_example", "2001", "2001", "SR2026-2026-10-08-Example Operator", "/home/ops_example", "/bin/bash"]])
         fill_table(self.patch_table, [["app-linux-01", "openssh-server", "1:9.6p1-3ubuntu13.10", "1:9.6p1-3ubuntu13.14"]])
         self.patch_output.setPlainText("SYNTHETIC PATCH PLAN\n1 package upgraded, 0 removed.\nApply after reviewing the Linux package manager simulation.")
+        self.display_schedules([{"id": "demo-schedule", "next_run": "2026-10-09T01:00:00+09:00", "kind": "backup", "hosts": ["app-linux-01", "db-linux-01"], "interval_seconds": 86400, "enabled": True, "message": "Waiting on Linux"}])
+        self.schedule_time.setDateTime(QDateTime.fromString("2026-10-09T01:00:00", Qt.DateFormat.ISODate))
+        self.schedule_interval.setValue(1440)
         self.set_jobs([{"id": "demo-backup-001", "kind": "backup", "status": "partial", "total": 4,
                         "done": 4, "failed": 0, "partial": 1, "created_at": "2026-10-08T18:30:00+09:00"}])
         self.status_line.setText("VISUAL MOCKUP  /  Synthetic sample data. No server connection or operational task is running.")
@@ -622,7 +687,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -634,7 +699,7 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches"].index(args.page))
+        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules"].index(args.page))
     if args.mockup:
         def save():
             window.graph.fit_map()

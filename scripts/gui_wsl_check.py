@@ -61,6 +61,15 @@ def main():
             elif stage[0] == 4 and window.patch_plan_id and window.patch_apply.isEnabled():
                 assert window.patch_table.rowCount() == 1
                 print("PASS: native Patches page queries updates and displays a reviewed exact-version plan")
+                original = window.display_schedules
+                def loaded_schedules(rows):
+                    original(rows); window.schedule_table.setProperty("loaded", True)
+                window.display_schedules = loaded_schedules
+                window.navigate(6)
+                stage[0] = 5
+            elif stage[0] == 5 and window.schedule_table.property("loaded"):
+                assert window.schedule_table.columnCount() == 6
+                print("PASS: native Schedules page loads Linux schedules and displays scheduling controls")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
