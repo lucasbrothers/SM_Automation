@@ -279,6 +279,11 @@ class Console(QMainWindow):
         self.pages.setCurrentIndex(index)
         titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view"]
         self.title.setText(titles[index])
+        descriptions = ["One control console. All operational work on your Linux server.",
+                        "Selected servers and their established TCP peers. All collection runs on Linux.",
+                        "OS configuration files and account information, encrypted and retained on Linux.",
+                        "Follow server-side jobs and inspect their results, even after reconnecting."]
+        self.subtitle.setText(descriptions[index])
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
         if index == 1:
@@ -509,6 +514,8 @@ class Console(QMainWindow):
         self.connection_badge.setText("DEMO  /  SYNTHETIC DATA")
         self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
         self.display_connections(connection_rows())
+        self.set_jobs([{"id": "demo-backup-001", "kind": "backup", "status": "partial", "total": 4,
+                        "done": 4, "failed": 0, "partial": 1, "created_at": "2026-10-08T18:30:00+09:00"}])
         self.status_line.setText("VISUAL MOCKUP  /  Synthetic sample data. No server connection or operational task is running.")
 
 
