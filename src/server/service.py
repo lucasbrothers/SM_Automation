@@ -124,8 +124,17 @@ class ManagementService:
                    "cancel_requested": False, "cancelled": 0,
                    "targets": targets, "options": options, "message": "Queued on Linux main server", "results": []}
             self.jobs[job["id"]] = job
-            self._save(job)
-            self.pool.submit(self._run, job, targets)
+            try:
+                self._save(job)
+            except Exception:
+                del self.jobs[job["id"]]
+                raise
+            try:
+                self.pool.submit(self._run, job, targets)
+            except Exception:
+                job.update(status="failed", message="Linux executor rejected the job; no remote operation started", finished_at=now())
+                self._save(job)
+                raise
             return self.summary(job)
 
     def _target(self, job, row):
