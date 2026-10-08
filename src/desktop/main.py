@@ -629,6 +629,14 @@ class Console(QMainWindow):
                 self.display_connections(rows); return
             if job.get("kind") == "backup":
                 self.show_backup_results(rows); return
+            if job.get("kind") == "security_audit":
+                from desktop.security import audit_rows
+                dialog = QDialog(self); dialog.setWindowTitle("Linux security observations"); dialog.resize(980, 560)
+                layout = QVBoxLayout(dialog)
+                layout.addWidget(label("Review flags are guidance. No security policy has been changed."))
+                findings = table(["Server", "Setting", "Observed value", "Assessment"])
+                fill_table(findings, audit_rows(rows)); layout.addWidget(findings)
+                layout.addWidget(button("Close", dialog.accept)); dialog.exec(); return
             dialog = QDialog(self); dialog.setWindowTitle("Linux job results"); dialog.resize(880, 620)
             layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
             text.setPlainText(json.dumps(rows, ensure_ascii=False, indent=2)); layout.addWidget(text)
