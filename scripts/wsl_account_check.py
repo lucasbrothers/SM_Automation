@@ -39,6 +39,9 @@ def main():
             assert row["result"]["backup"]["status"] == "completed"
             job, row = run("groups", groups="users")
             assert job["status"] == "completed" and "users" in row["result"]["output"], row
+            job, row = run("remove_groups", groups="users")
+            assert job["status"] == "completed", row
+            assert "users" not in row["result"]["output"].splitlines()[-1].split(), row
             for action, fields in [("modify", {"sr": "SR-WSL-TEST", "full_name": "Updated Test Account"}), ("lock", {})]:
                 job, row = run(action, **fields)
                 assert job["status"] == "completed", row

@@ -48,6 +48,14 @@ def test_group_argument_rejects_injection():
         validate_options({"action": "groups", "username": "example", "groups": "users;id"})
 
 
+def test_group_removal_preserves_other_groups_and_checks_primary():
+    options = validate_options({"action": "remove_groups", "username": "example", "groups": "users"})
+    command = account_command(options, "root")
+    assert "gpasswd -d example users" in command
+    assert "Cannot remove primary group" in command
+    assert "usermod -G" not in command
+
+
 @pytest.mark.parametrize("uid", [True, -1, "1000;id", "999"])
 def test_invalid_uid(uid):
     with pytest.raises(ValueError):

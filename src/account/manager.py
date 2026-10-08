@@ -12,7 +12,7 @@ def validate_options(options):
     if not isinstance(options, dict):
         raise ValueError("Account options must be an object")
     action = options.get("action", "list")
-    if action not in {"list", "create", "modify", "groups", "lock", "unlock", "delete"}:
+    if action not in {"list", "create", "modify", "groups", "remove_groups", "lock", "unlock", "delete"}:
         raise ValueError("Unknown account action")
     result = {"action": action}
     if action == "list":
@@ -21,7 +21,7 @@ def validate_options(options):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("Use a Linux username of at most 32 lowercase characters")
     result["username"] = username
-    if action == "groups":
+    if action in {"groups", "remove_groups"}:
         groups = str(options.get("groups", "")).split(",")
         groups = [g.strip() for g in groups]
         if not 1 <= len(groups) <= 32 or any(not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", g) for g in groups):
@@ -72,10 +72,14 @@ def account_command(options, login_user):
             "unlock": f"usermod -U -- {user}",
             "delete": f"userdel -- {user}",
             "groups": f"usermod -a -G {shlex.quote(','.join(options.get('groups', [])))} -- {user}",
+            "remove_groups": "; ".join(f"gpasswd -d {user} {shlex.quote(group)}" for group in options.get("groups", [])),
         }[action]
-        if action == "groups":
+        if action in {"groups", "remove_groups"}:
             for group in options["groups"]:
                 prefix += f"getent group {shlex.quote(group)} >/dev/null; "
+                if action == "remove_groups":
+                    prefix += f"id -nG {user} | tr ' ' '\\n' | grep -Fx {shlex.quote(group)} >/dev/null; "
+                    prefix += f"primary=$(id -gn {user}); [ \"$primary\" != {shlex.quote(group)} ] || {{ echo 'Cannot remove primary group' >&2; exit 1; }}; "
         if action == "unlock":
             # An empty or never-set password must not become a passwordless login.
             prefix += f"hash=$(getent shadow {user} | cut -d: -f2); "
