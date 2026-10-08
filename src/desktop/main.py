@@ -43,6 +43,7 @@ QPushButton[primary="true"]:hover { background: #1c56bb; }
 QLineEdit, QSpinBox, QPlainTextEdit, QComboBox, QDateTimeEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
 QComboBox::drop-down { border: none; width: 26px; }
 QComboBox QAbstractItemView { background: white; selection-background-color: #e6efff; selection-color: #203955; }
+QSpinBox, QDateTimeEdit, QComboBox { padding: 3px 8px; min-height: 22px; }
 QTableWidget { background: white; border: none; gridline-color: #edf1f6; selection-background-color: #e6efff; selection-color: #203955; }
 QHeaderView::section { background: #f7f9fc; color: #6a7c93; border: none; border-bottom: 1px solid #e1e8f0; padding: 9px; font-size: 9pt; }
 QTableWidget::item { padding: 7px; border-bottom: 1px solid #eff3f7; }
@@ -370,8 +371,7 @@ class Console(QMainWindow):
         self.schedule_time = QDateTimeEdit(QDateTime.currentDateTime().addSecs(300)); self.schedule_time.setCalendarPopup(True)
         self.schedule_time.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
         self.schedule_interval = QSpinBox(); self.schedule_interval.setRange(0, 525600); self.schedule_interval.setSuffix(" min (0 = once)")
-        for control in (self.schedule_kind, self.schedule_time, self.schedule_interval):
-            control.setMinimumHeight(44)
+        form.setVerticalSpacing(12)
         form.addRow("Operation", self.schedule_kind); form.addRow("First run (this PC local time)", self.schedule_time); form.addRow("Repeat interval", self.schedule_interval)
         body.addLayout(form)
         body.addWidget(label("Targets follow Connection map selection. Linux runs schedules while this GUI is closed."))
