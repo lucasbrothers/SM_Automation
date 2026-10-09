@@ -36,6 +36,12 @@ def execute(client, command, mode, timeout=180):
 
 
 def list_updates(client, mode):
+    manager = client.execute("if command -v apt-get >/dev/null 2>&1; then echo apt; elif command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1; then echo dnf; else echo unsupported; fi").strip()
+    if manager == "dnf":
+        from patch.rpm import list_updates as rpm_updates
+        return rpm_updates(client, mode)
+    if manager != "apt":
+        raise ValueError("Patch discovery requires apt or RPM/DNF")
     output = execute(client, "apt list --upgradable 2>/dev/null", mode)
     packages = []
     for line in output.splitlines():
@@ -43,7 +49,7 @@ def list_updates(client, mode):
         if match:
             name, candidate, architecture, installed = match.groups()
             packages.append({"name": name, "installed": installed, "candidate": candidate, "architecture": architecture})
-    return {"action": "list", "packages": packages, "output": output, "note": "Uses existing apt metadata; no refresh, install or reboot"}
+    return {"action": "list", "manager": "apt", "packages": packages, "output": output, "note": "Uses existing apt metadata; no refresh, install or reboot"}
 
 
 def install_command(pins, simulate=True):

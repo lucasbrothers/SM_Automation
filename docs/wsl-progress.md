@@ -271,3 +271,18 @@ Resources에서 Linux 대상의 부하 평균(1/5/15분), 메모리·루트 디�
 선택적 30초 갱신은 콘솔이 열려 있을 때만 실행하며 다른 작업 실행 중에는 건너뛴다. GUI가 닫힌 뒤에도 수집하려면 Linux 예약 작업을 사용한다.
 수집/암호화 이력 저장은 기존 Linux monitoring 작업을 사용한다. 부하 평균은 CPU 사용률이 아니다. AIX/Windows 자원 수집은 아직 연결하지 않았다.
 Windows Qt와 실제 WSL TLS 경로에서 표시 및 갱신 타이머 시작/중지를 확인했다. 합성 자료 목업은 docs/images/desktop-resources.png다.
+
+## 2026-10-09 RPM/DNF 패치 조회
+
+패치 조회는 apt 또는 RPM/DNF를 자동으로 구분한다. DNF는 플러그인을 비활성화하고 기존 캐시만 읽으며 저장소 갱신·설치·재부팅을 하지 않는다.
+RPM 설치 버전과 DNF 업데이트의 아키텍처를 대조해 표시하며 Obsoleting Packages는 적용 대상 목록에 포함하지 않는다.
+DNF 종료 코드 100은 업데이트 발견으로 처리하고 오류/캐시 부족은 실패로 표시한다. RPM 변경 계획·설치는 아직 지원하지 않는다.
+동작 기준: https://dnf.readthedocs.io/en/stable/command_ref.html (cacheonly, noplugins, check-update).
+종료 코드와 파싱 경계 검증을 포함한 전체 231개 테스트 통과. 실제 RPM 대상은 승인된 테스트 환경에 없어 미검증이다.
+GUI에서 새 업데이트 조회를 시작하면 과거 패치 계획의 적용 버튼을 초기화한다.
+
+## 2026-10-09 Red Hat 범위 추가
+
+사용자 지시로 Red Hat Enterprise Linux를 관리 대상 및 Linux 메인 서버 지원 범위에 포함한다.
+Linux 공통 기능 외에 RPM/DNF 캐시 조회를 추가했고, RHEL 주요 설정인 sysconfig·SELinux·authselect·crypto-policies·firewalld·yum/dnf 저장소 설정을 암호화 백업 목록에 추가했다.
+RHEL 패치 계획·적용 개발은 다음 단계이며 실제 RHEL 접속/설치 테스트는 하지 않았다. 기존 WSL GUI 연동은 통과했다.

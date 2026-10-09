@@ -34,6 +34,7 @@ manifest는 각 단계 후 갱신하여 중단 직전까지 완료한 항목을 
 | Windows | ProgramData/ssh, hosts, GroupPolicy, Tasks | 로컬 계정/그룹 및 net user 만료정보, 서비스, 예약작업, 네트워크, 디스크, 패치, 방화벽, auditpol, 정책 레지스트리 조회 |
 
 `chage`는 Linux 명령이다. AIX는 `lsuser`, Windows는 `net user`로 대응한다.
+RHEL은 Linux 공통 목록에 더해 redhat-release, sysconfig, SELinux, authselect, crypto-policies, firewalld, yum/dnf 저장소 설정을 포함한다. 없는 선택 경로는 경고로 기록한다.
 Windows는 OpenSSH와 PowerShell, 필요한 관리자 권한이 준비되어 있어야 한다.
 이 백업은 주요 OS 설정/운영 정보 스냅샷이다. 디스크 이미지·애플리케이션 DB·전체 레지스트리
 하이브·AD 전체 백업을 대체하지 않는다. 필요 경로/명령은 `src/backup/profiles.py`에서 확장한다.

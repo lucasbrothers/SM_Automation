@@ -12,6 +12,8 @@ LINUX_PATHS = [
     "/etc/cron.d", "/var/spool/cron", "/etc/systemd/system", "/etc/netplan", "/etc/network",
     "/etc/NetworkManager/system-connections", "/etc/chrony.conf", "/etc/ntp.conf", "/etc/audit",
     "/etc/rsyslog.conf", "/etc/rsyslog.d", "/etc/logrotate.conf", "/etc/logrotate.d",
+    "/etc/redhat-release", "/etc/sysconfig", "/etc/selinux", "/etc/authselect",
+    "/etc/crypto-policies", "/etc/firewalld", "/etc/yum.repos.d", "/etc/dnf", "/etc/yum.conf",
 ]
 AIX_PATHS = [
     "/etc/passwd", "/etc/group", "/etc/security", "/etc/sudoers", "/etc/sudoers.d",

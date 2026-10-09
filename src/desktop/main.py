@@ -397,10 +397,10 @@ class Console(QMainWindow):
 
     def build_patches(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
-        body.addWidget(label("Debian / Ubuntu patches", "section"))
+        body.addWidget(label("Linux patches", "section"))
         body.addWidget(label("Use Connection map to select targets. Query uses existing package metadata."))
         actions = QHBoxLayout()
-        actions.addWidget(button("Query updates", lambda: self.start_job("patches", options={"action": "list"})))
+        actions.addWidget(button("Query updates", self.query_patches))
         self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("Installed packages, separated by spaces: openssh-server net-tools")
         actions.addWidget(self.patch_packages, 1)
         actions.addWidget(button("Preview patch plan", self.plan_patches, True)); body.addLayout(actions)
@@ -409,8 +409,13 @@ class Console(QMainWindow):
         self.patch_plan_id = None
         self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
         body.addWidget(self.patch_apply)
-        body.addWidget(label("Linux backs up first. No package removals or automatic reboot. Existing configuration files are retained."))
+        patch_note = label("Debian/Ubuntu: reviewed plans and backed-up apply. RPM/DNF: cached update discovery only. No automatic reboot.")
+        patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
+
+    def query_patches(self):
+        self.patch_plan_id = None; self.patch_apply.setEnabled(False)
+        self.start_job("patches", options={"action": "list"})
 
     def plan_patches(self):
         self.patch_plan_id = None; self.patch_apply.setEnabled(False)
@@ -424,12 +429,18 @@ class Console(QMainWindow):
         self.start_job("patches", options={"action": "apply", "plan_id": plan_id})
 
     def display_patches(self, rows, job):
+        if job.get("options", {}).get("action") == "list":
+            self.patch_plan_id = None; self.patch_apply.setEnabled(False)
         values, output = [], []
         for row in rows:
             result = row.get("result", {})
             for package in result.get("packages", []):
                 values.append([row["hostname"], package["name"], package["installed"], package["candidate"]])
             output.append(row["hostname"] + " / " + row["status"] + "\n" + row.get("error", result.get("output", "")))
+            if result.get("note"):
+                output.append(result["note"])
+            if result.get("warnings"):
+                output.append("Warnings: " + result["warnings"])
             if result.get("reboot_required"):
                 output.append("Reboot required. Restart manually during your maintenance window.")
         fill_table(self.patch_table, values); self.patch_output.setPlainText("\n\n".join(output)); self.navigate(5)
