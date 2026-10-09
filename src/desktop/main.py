@@ -182,6 +182,7 @@ class Console(QMainWindow):
         self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
         self.backup_history = {}
         self.backup_history_offset = 0
+        self.history_errors = []
         self.resource_loaded_job = None
         self.workers = set()
         self.build_ui()
@@ -583,9 +584,14 @@ class Console(QMainWindow):
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
         self.connection_badge.setText("CONNECTED  /  TLS")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
+        self.history_errors = status.get("history_errors", [])
+        self.subtitle.setToolTip("")
         if status.get("history_errors"):
             self.subtitle.setText("Linux history recovery required: " + str(len(status["history_errors"])) +
                                   " unreadable records. Existing results remain readable; new operations are disabled.")
+            self.subtitle.setToolTip("Linux DATA/jobs recovery required:\n" +
+                                     "\n".join(f"{item['file']}: {item['error']}" for item in self.history_errors) +
+                                     "\nPreserve these files and restore the original key/history on Linux, then restart the service.\nPaused schedules require review before resuming.")
         self.status_line.setText("Connected. All operational work executes on Linux."); self.reload()
 
     def connect_to(self, client):
@@ -596,6 +602,7 @@ class Console(QMainWindow):
         if self.demo:
             return
         self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
+        self.history_errors = []; self.subtitle.setToolTip("")
         self.backup_history = {}
         self.backup_history_offset = 0
         self.resource_auto.setChecked(False); self.resource_loaded_job = None
@@ -672,6 +679,9 @@ class Console(QMainWindow):
 
     def start_job(self, kind, all_hosts=False, options=None):
         if not self.require_client():
+            return
+        if self.history_errors:
+            QMessageBox.information(self, "Linux history recovery required", self.subtitle.toolTip())
             return
         hosts = [row["hostname"] for row in self.servers] if all_hosts else self.checked_hosts()
         if not hosts:
