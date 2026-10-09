@@ -22,7 +22,7 @@ from desktop.graph import ConnectionMap
 
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 10pt; color: #23344c; }
-QMainWindow, #workspace { background: #f3f6fb; }
+QMainWindow, QDialog, QMessageBox, #workspace { background: #f3f6fb; }
 #sidebar { background: #122139; }
 #sidebar QLabel { color: #c0cee2; background: transparent; }
 #sidebar QPushButton { color: #adbed5; text-align: left; background: transparent; border: none; padding: 13px 18px; border-radius: 8px; }
@@ -40,6 +40,7 @@ QPushButton:hover { background: #eaf0fb; border-color: #a9c0e8; }
 QPushButton:disabled { color: #9ca9ba; background: #edf1f6; }
 QPushButton[primary="true"] { background: #2869df; color: white; border: none; font-weight: 600; }
 QPushButton[primary="true"]:hover { background: #1c56bb; }
+QPushButton[primary="true"]:disabled { color: #8796aa; background: #e3e9f2; }
 QLineEdit, QSpinBox, QPlainTextEdit, QComboBox, QDateTimeEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
 QComboBox::drop-down { border: none; width: 26px; }
 QComboBox QAbstractItemView { background: white; selection-background-color: #e6efff; selection-color: #203955; }
@@ -645,16 +646,30 @@ class Console(QMainWindow):
                 findings = table(["Server", "Setting", "Observed value", "Assessment"])
                 fill_table(findings, audit_rows(rows)); layout.addWidget(findings)
                 layout.addWidget(button("Close", dialog.accept)); dialog.exec(); return
+            if job.get("kind") == "security_plan":
+                self.security_plan_dialog(rows, job_id, job.get("status") == "completed").exec(); return
             dialog = QDialog(self); dialog.setWindowTitle("Linux job results"); dialog.resize(880, 620)
             layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
             text.setPlainText(json.dumps(rows, ensure_ascii=False, indent=2)); layout.addWidget(text)
-            if job.get("kind") == "security_plan" and job.get("status") == "completed":
-                layout.addWidget(label("Ubuntu/Debian global Include is supported. Conditional Match configurations require a separate adapter."))
-                apply_button = button("Apply this SSH plan to selected targets", lambda: (dialog.accept(), self.start_job("security_apply", options={"plan_id": job_id})), True)
-                apply_button.setEnabled(all(row.get("result", {}).get("plan", {}).get("status") in {"no_changes", "action_required"} for row in rows))
-                layout.addWidget(apply_button)
             layout.addWidget(button("Close", dialog.accept)); dialog.exec()
         self.work(lambda: client.results(job_id), show)
+
+    def security_plan_dialog(self, rows, job_id, completed=False):
+        from desktop.security import plan_rows
+        dialog = QDialog(self); dialog.setWindowTitle("SSH policy change plan"); dialog.resize(1080, 620)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label("Review SSH policy changes", "section"))
+        layout.addWidget(label("Linux backs up each target before applying changes. A failed reconnect triggers recovery.", "subtitle"))
+        findings = table(["Server", "Setting", "Current", "Planned", "Status / reason"])
+        fill_table(findings, plan_rows(rows)); layout.addWidget(findings)
+        targets_match = set(self.checked_hosts()) == {row["hostname"] for row in rows}
+        supported = bool(rows) and all(row.get("status") == "completed" and row.get("result", {}).get("plan", {}).get("status") in {"no_changes", "action_required"} for row in rows)
+        layout.addWidget(label("Select exactly the servers listed in this plan before applying." if not targets_match else "Plan targets match the selected servers. Plans expire after one hour."))
+        apply_button = button("Apply reviewed SSH plan", lambda: (dialog.accept(), self.start_job("security_apply", options={"plan_id": job_id})), True)
+        apply_button.setEnabled(completed and supported and targets_match and not self.demo)
+        layout.addWidget(apply_button)
+        layout.addWidget(button("Close", dialog.accept))
+        return dialog
 
     def show_backup_results(self, rows):
         dialog = QDialog(self); dialog.setWindowTitle("Backup artifacts on Linux"); dialog.resize(1060, 720)
@@ -719,7 +734,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "security"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -731,12 +746,23 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules"].index(args.page))
+        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules"].index(args.page) if args.page != "security" else 3)
+    preview = window
+    if args.page == "security" and (args.demo or args.mockup):
+        preview = window.security_plan_dialog([
+            {"hostname": "app-linux-01", "status": "completed", "result": {
+                "plan": {"status": "action_required", "actions": [{"parameter": "permitrootlogin", "current": "yes", "recommended": "prohibit-password"}], "reasons": []},
+                "adapter": {"reason": "Global Include supported"}}},
+            {"hostname": "db-linux-01", "status": "completed", "result": {
+                "plan": {"status": "no_changes", "actions": [], "reasons": []},
+                "adapter": {"reason": "Global Include supported"}}},
+        ], "synthetic-plan")
+        preview.show()
     if args.mockup:
         def save():
             window.graph.fit_map()
             args.mockup.parent.mkdir(parents=True, exist_ok=True)
-            if not window.grab().save(str(args.mockup)):
+            if not preview.grab().save(str(args.mockup)):
                 raise OSError("Could not save GUI preview")
             app.quit()
         QTimer.singleShot(600, save)

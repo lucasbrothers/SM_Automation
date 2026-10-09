@@ -75,7 +75,22 @@ def main():
             elif stage[0] == 5 and window.schedule_table.property("loaded"):
                 assert window.schedule_table.columnCount() == 6
                 print("PASS: native Schedules page loads Linux schedules and displays scheduling controls")
-                passed[0] = True; app.quit()
+                window.start_job("security_plan"); stage[0] = 6
+            elif stage[0] == 6 and any(job["id"] == window.active_job and job["status"] == "completed" for job in window.jobs):
+                stage[0] = 7
+                def check_plan(rows):
+                    dialog = window.security_plan_dialog(rows, window.active_job, True)
+                    apply_button = next(item for item in dialog.findChildren(QPushButton) if item.text() == "Apply reviewed SSH plan")
+                    assert apply_button.isEnabled(), rows
+                    dialog.close()
+                    window.select_all.setChecked(False)
+                    dialog = window.security_plan_dialog(rows, window.active_job, True)
+                    apply_button = next(item for item in dialog.findChildren(QPushButton) if item.text() == "Apply reviewed SSH plan")
+                    assert not apply_button.isEnabled()
+                    dialog.close()
+                    print("PASS: native SSH plan table and selection mismatch protection")
+                    passed[0] = True; app.quit()
+                window.work(lambda: window.client.results(window.active_job), check_plan)
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
         return 0 if passed[0] else (result or 1)
