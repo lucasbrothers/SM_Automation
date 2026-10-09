@@ -79,16 +79,20 @@ def commands(family: str) -> dict[str, str]:
     scripts = {
         "system": "Get-ComputerInfo | Format-List; Get-CimInstance Win32_OperatingSystem | Format-List",
         "accounts": "Get-LocalUser | Format-List *; Get-LocalGroup | ForEach-Object { $_; Get-LocalGroupMember -Group $_.Name }",
-        "account_expiry": "Get-LocalUser | ForEach-Object { net user $_.Name }",
+        "account_expiry": "$failed=$false; Get-LocalUser | ForEach-Object { net user $_.Name; $rc=$LASTEXITCODE; Write-Output ('exit_code=' + $rc); if($rc -ne 0) { $failed=$true } }; if($failed) { exit 1 }",
         "network": "Get-NetIPConfiguration | Format-List; Get-NetRoute | Format-Table -AutoSize; netstat -ano",
         "services": "Get-Service | Format-Table -AutoSize; Get-ScheduledTask | Format-List",
         "storage": "Get-Disk | Format-List; Get-Volume | Format-List",
         "patches": "Get-HotFix | Format-Table -AutoSize",
         "firewall": "Get-NetFirewallProfile | Format-List; Get-NetFirewallRule | Format-List",
         "audit_policy": "auditpol.exe /get /category:*",
-        "local_policy": "net accounts; reg.exe query HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies /s",
+        "local_policy": "net accounts; if($LASTEXITCODE -ne 0) { throw ('net accounts failed: ' + $LASTEXITCODE) }; reg.exe query HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies /s",
     }
-    return {name: powershell("[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); " + script) for name, script in scripts.items()}
+    return {name: powershell("$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); "
+                            "$global:LASTEXITCODE=0; try { " + script +
+                            "; if($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('Native command failed: ' + $LASTEXITCODE); exit 1 } "
+                            "} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }")
+            for name, script in scripts.items()}
 
 
 def windows_files() -> str:

@@ -525,3 +525,10 @@ GUI 오류 표시를 포함한 화면 확인 22개와 WSL 백업 진단 검증�
 
 오류 50줄/줄당 1000자 제한에 걸리면 errors_truncated를 저장하고 GUI에서 전체 진단 파일 열기를 안내한다.
 긴 오류의 요약 한도와 metadata 원문 보존 검증을 포함한 관련 확인 24개 통과. 최신 Linux 코드를 WSL에 동기화하고 재시작했다.
+
+## 2026-10-09 Windows 백업 명령 실패 보존
+
+Windows 명령 백업은 PowerShell 오류를 잡아 stderr와 실패 종료 코드로 반환한다. netstat/auditpol/reg 등 외부 명령의 LASTEXITCODE도 확인한다.
+계정별 net user 실패는 각 종료 코드와 함께 누적하며 앞선 계정 실패를 마지막 계정 성공으로 덮지 않는다. net accounts 실패도 후속 reg 성공으로 덮지 않는다.
+WSL 백업 관련 회귀 확인 9개 통과. 실제 Windows SSH 실행은 검증하지 않았으며 외부 대상에 접속하지 않았다.
+참고: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_error_handling
