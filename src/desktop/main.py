@@ -837,7 +837,7 @@ class Console(QMainWindow):
                     self.status_line.setText(f"{job.get('status', 'unknown')}: {len(rows)}/{job.get('total', '?')} target results available. " + job.get("message", ""))
                 return
             if job.get("kind") == "backup":
-                self.show_backup_results(rows); return
+                self.show_backup_results(rows, job); return
             if job.get("kind") == "monitoring":
                 self.display_resources(rows, job.get("finished_at", job.get("created_at", ""))); self.navigate(7); return
             if job.get("kind") == "security_audit":
@@ -873,13 +873,17 @@ class Console(QMainWindow):
         layout.addWidget(button("Close", dialog.accept))
         return dialog
 
-    def show_backup_results(self, rows):
-        self.backup_results_dialog(rows).exec()
+    def show_backup_results(self, rows, job=None):
+        self.backup_results_dialog(rows, job).exec()
 
-    def backup_results_dialog(self, rows):
+    def backup_results_dialog(self, rows, job=None):
         dialog = QDialog(self); dialog.setWindowTitle("Backup artifacts on Linux"); dialog.resize(1060, 720)
         layout = QVBoxLayout(dialog)
         layout.addWidget(label("Browse encrypted backups", "section"))
+        if job:
+            layout.addWidget(label(f"Job status: {job.get('status', 'unknown')} / {len(rows)} of {job.get('total', '?')} targets have saved results", "subtitle"))
+            if job.get("status") != "completed" and job.get("message"):
+                note = label(job["message"], "subtitle"); note.setWordWrap(True); layout.addWidget(note)
         layout.addWidget(label("Double-click an artifact to preview text or list archive files. Decryption runs on Linux.", "subtitle"))
         tree = QTreeWidget(); tree.setHeaderLabels(["Server / artifact", "Status", "Size", "Linux storage path"])
         tree.setStyleSheet("QTreeWidget { background: white; color: #20354d; alternate-background-color: #f4f7fb; } QTreeWidget::item:selected { background: #dbeafe; color: #172d48; }")
@@ -1005,7 +1009,8 @@ def main():
                  "path": prefix + "/network.txt.enc", "exit_code": 1},
                 {"name": "account_expiry_chage", "status": "failed",
                  "error": "Synthetic example: remote command timed out"},
-            ]}}])
+            ]}}], {"status": "interrupted", "total": 4,
+                    "message": "Synthetic example: Linux restarted; inspect saved artifacts before retrying."})
         preview.show()
     if args.page == "security" and (args.demo or args.mockup):
         preview = window.security_plan_dialog([
