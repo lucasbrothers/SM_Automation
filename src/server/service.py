@@ -412,7 +412,15 @@ class ManagementService:
                     "truncated": len(content) > 65536, "bytes": len(content)}
         with self.lock:
             if method == "job.list":
-                return [self.summary(job) for job in sorted(self.jobs.values(), key=lambda item: item["created_at"], reverse=True)[:100]]
+                offset = params.get("offset", 0)
+                if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+                    raise ValueError("Job list offset must be a nonnegative integer")
+                kind = params.get("kind")
+                if kind is not None and kind not in {"backup"}:
+                    raise ValueError("Unsupported job history filter")
+                jobs = sorted((job for job in self.jobs.values() if kind is None or job["kind"] == kind),
+                              key=lambda item: (item["created_at"], item["id"]), reverse=True)
+                return [self.summary(job) for job in jobs[offset:offset + 100]]
             if method == "job.get":
                 return self.summary(self.jobs[params["id"]])
             if method == "job.result":

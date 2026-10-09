@@ -180,6 +180,8 @@ class Console(QMainWindow):
         self.resize(1460, 920); self.setMinimumSize(1120, 760)
         self.client = None; self.demo = demo; self.servers = []; self.jobs = []; self.connection_results = []
         self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
+        self.backup_history = {}
+        self.backup_history_offset = 0
         self.resource_loaded_job = None
         self.workers = set()
         self.build_ui()
@@ -333,6 +335,10 @@ class Console(QMainWindow):
         coverage.setMaximumHeight(175); body.addWidget(coverage)
         actions = QHBoxLayout(); actions.addWidget(button("Back up ALL servers", lambda: self.start_job("backup", all_hosts=True), True))
         actions.addWidget(button("Back up selected", lambda: self.start_job("backup"))); actions.addStretch(); body.addLayout(actions)
+        history = QHBoxLayout()
+        history.addWidget(button("Refresh backup history", lambda: self.load_backup_history(True)))
+        history.addWidget(button("Load older backups", self.load_backup_history))
+        history.addStretch(); body.addLayout(history)
         self.backup_table = table(["Created", "Status", "Progress", "Job ID"]); body.addWidget(self.backup_table)
         self.backup_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.backup_jobs[row]["id"]))
         body.addWidget(label("Double-click a backup to view Linux paths and per-artifact results. Partial captures are never reported as complete.", "subtitle"))
@@ -571,6 +577,8 @@ class Console(QMainWindow):
     def attach_client(self, client, status):
         settings = client.settings
         self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
+        self.backup_history = {}
+        self.backup_history_offset = 0
         self.resource_loaded_job = None
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
         self.connection_badge.setText("CONNECTED  /  TLS")
@@ -585,6 +593,8 @@ class Console(QMainWindow):
         if self.demo:
             return
         self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
+        self.backup_history = {}
+        self.backup_history_offset = 0
         self.resource_auto.setChecked(False); self.resource_loaded_job = None
         self.resource_table.setRowCount(0); self.resource_updated.setText("No resource snapshot loaded")
         self.connection_results = []; self.jobs = []; self.set_inventory([]); self.update_map(); self.set_jobs([])
@@ -675,15 +685,29 @@ class Console(QMainWindow):
         self.poll_busy = True; client = self.client
         self.work(lambda: client.call("job.list"), self.set_jobs, quiet=True)
 
+    def load_backup_history(self, refresh=False):
+        if not self.require_client():
+            return
+        client = self.client
+        offset = 0 if refresh else self.backup_history_offset
+        def loaded(jobs):
+            self.backup_history_offset = offset + len(jobs)
+            self.display_backup_history(jobs)
+        self.work(lambda: client.call("job.list", kind="backup", offset=offset), loaded)
+
+    def display_backup_history(self, jobs):
+        self.backup_history.update({job["id"]: job for job in jobs})
+        self.backup_jobs = sorted(self.backup_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
+        fill_table(self.backup_table, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
+
     def set_jobs(self, jobs):
         self.poll_busy = False; self.jobs = jobs
         fill_table(self.jobs_table, [[j["created_at"][11:19], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
-        self.backup_jobs = [j for j in jobs if j["kind"] == "backup"]
+        self.display_backup_history([j for j in jobs if j["kind"] == "backup"])
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
         if resource and resource["id"] != self.resource_loaded_job and self.client:
             self.resource_loaded_job = resource["id"]; client = self.client
             self.work(lambda: client.results(resource["id"]), lambda rows: self.display_resources(rows, resource.get("finished_at", resource["created_at"])), quiet=True)
-        fill_table(self.backup_table, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
         active = next((j for j in jobs if j["id"] == self.active_job), None)
         if active:
             self.progress.setValue(int(100 * active["done"] / max(1, active["total"])))
@@ -726,7 +750,7 @@ class Console(QMainWindow):
             return
         client = self.client
         def show(rows):
-            job = next((item for item in self.jobs if item["id"] == job_id), {})
+            job = next((item for item in self.jobs if item["id"] == job_id), self.backup_history.get(job_id, {}))
             if job.get("kind") == "connections":
                 self.display_connections(rows); return
             if job.get("kind") == "backup":
