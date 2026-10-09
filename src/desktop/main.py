@@ -693,6 +693,8 @@ class Console(QMainWindow):
         def loaded(jobs):
             self.backup_history_offset = offset + len(jobs)
             self.display_backup_history(jobs)
+            self.status_line.setText(f"Backup history: {len(self.backup_history)} records loaded." +
+                                     (" No older backups in this page." if not jobs else ""))
         self.work(lambda: client.call("job.list", kind="backup", offset=offset), loaded)
 
     def display_backup_history(self, jobs):

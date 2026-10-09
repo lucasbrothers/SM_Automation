@@ -145,6 +145,18 @@ def main():
                 assert editor.toPlainText() == "latest diagnostic"
                 print("PASS: native backup details, optional-path warnings and Linux-decrypted command diagnostics")
                 print("PASS: delayed backup preview responses cannot overwrite current or closed views")
+                window.navigate(2)
+                control = next(item for item in window.findChildren(QPushButton) if item.text() == "Refresh backup history")
+                control.click(); stage[0] = 12
+            elif stage[0] == 12 and window.backup_history_offset:
+                assert all(job["kind"] == "backup" for job in window.backup_jobs)
+                assert len(window.backup_jobs) >= window.backup_history_offset
+                previous = set(window.backup_history)
+                window.set_jobs([job for job in window.jobs if job["kind"] != "backup"])
+                assert set(window.backup_history) == previous
+                window.disconnect_server()
+                assert not window.backup_history and window.backup_history_offset == 0
+                print("PASS: real filtered backup history button, polling preservation and disconnect reset")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()

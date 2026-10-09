@@ -98,9 +98,9 @@ $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new()
 $paths=@('C:\ProgramData\ssh','C:\Windows\System32\drivers\etc\hosts',
  'C:\Windows\System32\GroupPolicy','C:\Windows\System32\Tasks')
-$items=@(); $errors=@(); $total=0
+$items=@(); $errors=@(); $warnings=@(); $total=0
 foreach($path in $paths) {
- if(-not (Test-Path -LiteralPath $path)) { $errors += "Missing optional path: $path"; continue }
+ if(-not (Test-Path -LiteralPath $path)) { $warnings += "Missing optional path: $path"; continue }
  try {
   foreach($file in (Get-ChildItem -LiteralPath $path -File -Recurse -ErrorAction Stop)) {
    try {
@@ -111,6 +111,8 @@ foreach($path in $paths) {
   }
  } catch { $errors += $_.Exception.Message }
 }
-@{format='base64-files-v1'; files=$items; warnings=$errors} | ConvertTo-Json -Depth 5 -Compress
+@{format='base64-files-v1'; files=$items; warnings=$warnings; errors=$errors} | ConvertTo-Json -Depth 5 -Compress
+foreach($warning in $warnings) { [Console]::Error.WriteLine($warning) }
+foreach($errorMessage in $errors) { [Console]::Error.WriteLine($errorMessage) }
 if($errors.Count -gt 0) { exit 1 }
 """)
