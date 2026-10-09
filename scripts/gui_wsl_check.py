@@ -164,9 +164,17 @@ def main():
                 previous = set(window.backup_history)
                 window.set_jobs([job for job in window.jobs if job["kind"] != "backup"])
                 assert set(window.backup_history) == previous
+                window.navigate(3)
+                control = next(item for item in window.findChildren(QPushButton) if item.text() == "Load older operations")
+                control.click(); stage[0] = 13
+            elif stage[0] == 13 and window.status_line.text().startswith("Operation history:"):
+                assert window.job_history_offset >= 100
+                assert window.jobs_table.rowCount() == len(window.jobs) and window.jobs
                 window.disconnect_server()
                 assert not window.backup_history and window.backup_history_offset == 0
+                assert not window.job_history and window.job_history_offset == 100
                 print("PASS: real filtered backup history button, polling preservation and disconnect reset")
+                print("PASS: real older operational history button and cache reset")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
