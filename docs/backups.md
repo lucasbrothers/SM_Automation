@@ -74,3 +74,5 @@ Unix 설정 파일은 tar 스트림을 받아 즉시 암호화한다. 원격/로
 Linux 설정 파일 수집은 /etc/apt·/etc/dpkg·/etc/default, 모듈 로딩/udev 설정, chrony 디렉터리, nftables 설정, hostname·timezone·localtime도 포함한다. 없는 경로는 선택 경로 경고로 기록한다.
 
 Linux의 cron.hourly/daily/weekly/monthly와 anacrontab을 수집하며 /etc/systemd 전체를 포함해 journald/logind/timesyncd 등 전역 설정도 보관한다.
+
+Linux 저장장치/부팅 설정은 LVM·multipath·mdadm·dracut·crypttab·modules 경로도 포함한다. 이 구성 파일의 백업은 전체 디스크나 부팅 이미지의 복원을 의미하지 않는다.

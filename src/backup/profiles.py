@@ -19,6 +19,8 @@ LINUX_PATHS = [
     "/etc/apt", "/etc/dpkg", "/etc/default", "/etc/modprobe.d", "/etc/modules-load.d",
     "/etc/chrony", "/etc/nftables.conf", "/etc/hostname", "/etc/timezone", "/etc/localtime",
     "/etc/udev/rules.d",
+    "/etc/lvm", "/etc/multipath.conf", "/etc/multipath", "/etc/mdadm", "/etc/mdadm.conf",
+    "/etc/dracut.conf", "/etc/dracut.conf.d", "/etc/crypttab", "/etc/modules",
 ]
 AIX_PATHS = [
     "/etc/passwd", "/etc/group", "/etc/security", "/etc/sudoers", "/etc/sudoers.d",

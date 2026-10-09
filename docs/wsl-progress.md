@@ -562,3 +562,8 @@ Windows 계정 만료 진단에서 빈 사용자 목록은 오류로 처리한�
 
 주기별 cron 디렉터리 4개와 anacrontab을 추가하고 systemd/system 경로를 /etc/systemd 전체로 확장했다.
 실제 WSL TLS 백업에서 etc/systemd·etc/cron.daily 포함을 확인했다. 백업 11개 항목과 기존 연결·자원·SSH 진단/계획 흐름 통과.
+
+## 2026-10-09 저장장치 및 부팅 설정 백업
+
+LVM·multipath·mdadm·dracut·crypttab·modules 관련 경로 9개를 추가했다. 없는 선택 경로는 경고로 보존한다.
+WSL 동기화/서비스 재시작 후 실제 TLS 통합 확인에서 백업 11개 항목이 완료됐다. 실제 RHEL 저장장치 구성/복원 검증은 수행하지 않았다.
