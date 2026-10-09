@@ -775,8 +775,10 @@ class Console(QMainWindow):
         total = sum(len(row.get("result", {}).get("connections", [])) for row in rows)
         self.metric_values[2].setText(str(total)); self.update_map(); self.navigate(1)
         failures = sum(row["status"] == "failed" for row in rows)
+        cancelled = sum(row["status"] == "cancelled" for row in rows)
+        empty = sum(row["status"] == "completed" and not row.get("result", {}).get("connections") for row in rows)
         truncated = any(row.get("result", {}).get("truncated") for row in rows)
-        self.status_line.setText(f"Snapshot loaded: {total} established connections, {failures} failed servers." +
+        self.status_line.setText(f"Snapshot loaded: {total} established connections; {empty} servers with no connections, {failures} failed, {cancelled} cancelled." +
                                  (" Large results limited to 5,000 connections per host." if truncated else ""))
 
     def update_map(self, *_):
