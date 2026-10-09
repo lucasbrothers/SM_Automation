@@ -38,6 +38,7 @@ def backup_server(client, server, config, store, run_id: str, progress=None, ext
             unexpected = [line for line in result.stderr.splitlines() if line.strip() and not line.startswith("Missing optional path: ")]
             record.update(path=filename, size=len(result.stdout), exit_code=result.exit_code,
                           warnings=warnings,
+                          errors=[line[:1000] for line in unexpected[:50]],
                           status="completed" if result.exit_code == 0 and not unexpected else "partial")
             store.write_json(f"{prefix}/{name}.metadata.json.enc", {
                 "command": command, "exit_code": result.exit_code, "stderr": result.stderr,
