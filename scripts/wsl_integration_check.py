@@ -39,7 +39,7 @@ def main():
         inventory = client.call("inventory.list")
         targets = [row for row in inventory if row["hostname"] == "wsl-ubuntu" and row["ip"] == "127.0.0.1"]
         assert len(targets) == 1, "Authorized loopback lab target not found"
-        kinds = ["connections", "monitoring", "security_audit", "backup"]
+        kinds = ["connections", "monitoring", "security_audit", "security_plan", "backup"]
         if args.secure_ssh_config:
             kinds += ["security_permissions", "security_audit"]
         for position, kind in enumerate(kinds):
@@ -54,6 +54,8 @@ def main():
             assert results and results[0]["status"] != "failed", results
             if kind == "connections":
                 assert results[0]["result"]["connections"], "Active SSH connection was not observed"
+            if kind == "security_plan":
+                assert results[0]["result"]["plan"]["status"] in {"no_changes", "action_required"}
             if kind == "security_permissions":
                 assert results[0]["result"]["mode_owner"].startswith("600 root ")
                 assert results[0]["result"]["backup"]["status"] == "completed"

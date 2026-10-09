@@ -27,6 +27,7 @@ from storage.encrypted import EncryptedStore, read_secret
 from server.scheduler import Scheduler
 from security.permissions import secure_ssh_config
 from backup.preview import archive_listing
+from security.remediation import build_remediation_plan
 
 
 def now():
@@ -95,7 +96,7 @@ class ManagementService:
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
     def submit(self, kind, names, options=None):
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_permissions", "accounts", "patches"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_permissions", "accounts", "patches"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -245,6 +246,14 @@ class ManagementService:
                 if family != "linux":
                     raise ValueError("Security audit currently supports Linux targets")
                 result = asdict(audit_linux_server(client, privilege=mode))
+                if kind == "security_plan":
+                    policy = {"os": "linux", "allowed_sshd_settings": {
+                        "permitrootlogin": ["prohibit-password", "without-password"],
+                        "pubkeyauthentication": ["yes"]}}
+                    record = {**row, **result, "root_accounts": list(result["root_accounts"]), "status": "passed"}
+                    result = {"observations": result, "policy": policy,
+                              "plan": build_remediation_plan([record], policy)[0],
+                              "note": "Preview only; authentication settings have not been changed"}
             return {**row, "status": result.pop("status", "completed"), "result": result}
         except Exception as exc:
             return {**row, "status": "failed", "error": str(exc)[:1500]}

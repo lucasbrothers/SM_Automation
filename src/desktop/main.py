@@ -222,6 +222,7 @@ class Console(QMainWindow):
         actions.addWidget(button("Resource snapshot", lambda: self.start_job("monitoring")))
         actions.addWidget(button("Security audit", lambda: self.start_job("security_audit")))
         actions.addWidget(button("Protect SSH config (600)", lambda: self.start_job("security_permissions")))
+        actions.addWidget(button("Preview SSH policy", lambda: self.start_job("security_plan")))
         body.addLayout(actions)
         self.inventory_table = table(["Hostname", "IP address", "Operating system", "Execution"]); body.addWidget(self.inventory_table)
         body.addWidget(label("Inventory changes and collection results are stored encrypted on Linux.", "subtitle"))
