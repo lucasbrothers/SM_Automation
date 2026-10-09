@@ -780,7 +780,7 @@ class Console(QMainWindow):
         self.job_history.update({job["id"]: job for job in jobs})
         jobs = sorted(self.job_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
         self.jobs = jobs
-        fill_table(self.jobs_table, [[j["created_at"][11:19], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
+        fill_table(self.jobs_table, [[j["created_at"], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
         self.display_backup_history([j for j in jobs if j["kind"] == "backup"])
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
         if resource and resource["id"] != self.resource_loaded_job and self.client:
@@ -832,7 +832,10 @@ class Console(QMainWindow):
         def show(rows):
             job = next((item for item in self.jobs if item["id"] == job_id), self.backup_history.get(job_id, {}))
             if job.get("kind") == "connections":
-                self.display_connections(rows); return
+                self.display_connections(rows)
+                if job.get("status") != "completed":
+                    self.status_line.setText(f"{job.get('status', 'unknown')}: {len(rows)}/{job.get('total', '?')} target results available. " + job.get("message", ""))
+                return
             if job.get("kind") == "backup":
                 self.show_backup_results(rows); return
             if job.get("kind") == "monitoring":
@@ -849,7 +852,7 @@ class Console(QMainWindow):
                 self.security_plan_dialog(rows, job_id, job.get("status") == "completed").exec(); return
             dialog = QDialog(self); dialog.setWindowTitle("Linux job results"); dialog.resize(880, 620)
             layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
-            text.setPlainText(json.dumps(rows, ensure_ascii=False, indent=2)); layout.addWidget(text)
+            text.setPlainText(json.dumps({"job": job, "results": rows}, ensure_ascii=False, indent=2)); layout.addWidget(text)
             layout.addWidget(button("Close", dialog.accept)); dialog.exec()
         self.work(lambda: client.results(job_id), show)
 
