@@ -617,10 +617,6 @@ class Console(QMainWindow):
         self.submission_pending = False
         self.poll_busy = False
         self.clear_session_views()
-        self.backup_history = {}
-        self.backup_history_offset = 0
-        self.resource_loaded_job = None
-        self.job_history = {}; self.job_history_offset = 100
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
         self.connection_badge.setText("CONNECTED  /  TLS")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
@@ -645,18 +641,18 @@ class Console(QMainWindow):
         self.history_errors = []; self.subtitle.setToolTip("")
         self.submission_pending = False
         self.clear_session_views()
-        self.job_history = {}; self.job_history_offset = 100
-        self.backup_history = {}
-        self.backup_history_offset = 0
-        self.resource_auto.setChecked(False); self.resource_loaded_job = None
-        self.resource_table.setRowCount(0); self.resource_updated.setText("No resource snapshot loaded")
-        self.connection_results = []; self.jobs = []; self.set_inventory([]); self.update_map(); self.set_jobs([])
-        self.metric_values[2].setText("—"); self.progress.setValue(0)
         self.server_badge.setText("Not connected"); self.connection_badge.setText("OFFLINE")
         self.subtitle.setText("One control console. All operational work on your Linux server.")
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
 
     def clear_session_views(self):
+        self.job_history = {}; self.job_history_offset = 100
+        self.backup_history = {}; self.backup_history_offset = 0
+        self.resource_auto.setChecked(False); self.resource_loaded_job = None
+        self.resource_table.setRowCount(0); self.resource_updated.setText("No resource snapshot loaded")
+        self.connection_results = []; self.jobs = []
+        self.set_inventory([]); self.update_map(); self.set_jobs([])
+        self.metric_values[2].setText("—"); self.progress.setValue(0)
         self.account_table.setRowCount(0)
         self.patch_table.setRowCount(0)
         self.patch_output.clear()

@@ -18,6 +18,12 @@ def test_connection_change_clears_previous_account_patch_and_schedule_views(monk
     window.patch_apply.setEnabled(True)
     window.schedules = [{"id": "old-schedule"}]
     window.schedule_table.setRowCount(1)
+    window.connection_results = [{"hostname": "old-host"}]
+    window.jobs = [{"id": "old-job"}]
+    window.job_history = {"old-job": {"id": "old-job"}}
+    window.backup_history = {"old-backup": {"id": "old-backup"}}
+    window.resource_table.setRowCount(1)
+    window.resource_loaded_job = "old-resource"
     if reconnect:
         monkeypatch.setattr(window, "reload", lambda: None)
         client = Mock()
@@ -28,6 +34,9 @@ def test_connection_change_clears_previous_account_patch_and_schedule_views(monk
     assert window.account_table.rowCount() == window.patch_table.rowCount() == window.schedule_table.rowCount() == 0
     assert not window.patch_output.toPlainText() and not window.schedules
     assert window.patch_plan_id is None and not window.patch_apply.isEnabled()
+    assert not window.connection_results and not window.jobs and not window.job_history and not window.backup_history
+    assert window.resource_table.rowCount() == window.backup_table.rowCount() == window.jobs_table.rowCount() == 0
+    assert window.resource_loaded_job is None and not window.servers
     window.close()
 
 
