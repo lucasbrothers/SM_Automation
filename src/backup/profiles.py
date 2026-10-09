@@ -82,7 +82,7 @@ def commands(family: str) -> dict[str, str]:
     scripts = {
         "system": "Get-ComputerInfo | Format-List; Get-CimInstance Win32_OperatingSystem | Format-List",
         "accounts": "Get-LocalUser | Format-List *; Get-LocalGroup | ForEach-Object { $_; Get-LocalGroupMember -Group $_.Name }",
-        "account_expiry": "$failed=$false; Get-LocalUser | ForEach-Object { net user $_.Name; $rc=$LASTEXITCODE; Write-Output ('exit_code=' + $rc); if($rc -ne 0) { $failed=$true } }; if($failed) { exit 1 }",
+        "account_expiry": "$failed=$false; $users=@(Get-LocalUser); if($users.Count -eq 0) { throw 'Account inventory is empty' }; $users | ForEach-Object { net user $_.Name; $rc=$LASTEXITCODE; Write-Output ('exit_code=' + $rc); if($rc -ne 0) { $failed=$true; [Console]::Error.WriteLine('Account diagnostic failed: ' + $_.Name + ' / exit_code=' + $rc) } }; if($failed) { exit 1 }",
         "network": "Get-NetIPConfiguration | Format-List; Get-NetRoute | Format-Table -AutoSize; netstat -ano",
         "services": "Get-Service | Format-Table -AutoSize; Get-ScheduledTask | Format-List",
         "storage": "Get-Disk | Format-List; Get-Volume | Format-List",

@@ -552,3 +552,8 @@ start_desktop.ps1은 프로젝트 위치를 기준으로 .venv-gui 또는 .venv�
 
 GUI 실행 도구의 -Check가 프로젝트 밖 D:/Project에서도 환경을 찾는 것을 확인했다.
 배포 문서의 오래된 '설치하지 않았다' 설명을 실제 WSL 설치/연결 확인 상태로 수정했다. Ubuntu Python 3.14 예시와 RHEL Python 3.11 절차를 명확히 구분했다.
+
+## 2026-10-09 Windows 계정 진단 오류 안내
+
+Windows 계정 만료 진단에서 빈 사용자 목록은 오류로 처리한다. 계정별 net user 실패는 계정명/종료 코드와 함께 stderr에 남겨 GUI 오류 요약에서 확인할 수 있다.
+생성 코드 문법 검사 통과. 실제 Windows 대상 명령은 실행하지 않았다. Linux WSL 작업본 동기화와 서비스 재시작 완료.
