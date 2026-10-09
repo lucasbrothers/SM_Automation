@@ -146,6 +146,10 @@ class ManagementService:
                 for field in ("done", "total", "failed", "partial", "cancelled"):
                     if field in job and (isinstance(job[field], bool) or not isinstance(job[field], int) or job[field] < 0):
                         raise ValueError("Invalid stored job progress")
+                if job["done"] > job["total"] or len(job["results"]) != job["done"]:
+                    raise ValueError("Stored job progress does not match saved results")
+                if sum(job.get(field, 0) for field in ("failed", "partial", "cancelled")) > job["done"]:
+                    raise ValueError("Stored job result counts exceed completed targets")
                 if "message" in job and not isinstance(job["message"], str):
                     raise ValueError("Invalid stored job message")
             except (InvalidToken, ValueError, UnicodeError, OSError) as exc:

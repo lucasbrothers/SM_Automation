@@ -91,6 +91,7 @@ def test_damaged_history_preserved_and_operations_blocked(tmp_path, monkeypatch)
 @pytest.mark.parametrize("field,value", [("status", []), ("created_at", 42), ("kind", None),
                                         ("results", {}), ("targets", "invalid"), ("done", -1),
                                         ("total", True), ("failed", "1"), ("message", {}), ("status", "unknown"),
+                                        ("done", 1), ("failed", 1), ("results", [{"hostname": "unexpected"}]),
                                         ("done", "__missing__"), ("total", "__missing__"), ("results", "__missing__")])
 def test_malformed_history_is_preserved_without_breaking_startup(tmp_path, monkeypatch, field, value):
     key = tmp_path / "master.key"
