@@ -25,6 +25,7 @@ from monitoring.connections import collect_connections, os_family
 from security.audit import audit_linux_server
 from storage.encrypted import EncryptedStore, read_secret
 from server.scheduler import Scheduler
+from security.permissions import secure_ssh_config
 
 
 def now():
@@ -93,7 +94,7 @@ class ManagementService:
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
     def submit(self, kind, names, options=None):
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "accounts", "patches"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_permissions", "accounts", "patches"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -104,7 +105,7 @@ class ManagementService:
         targets = [indexed[name] for name in dict.fromkeys(names)]
         options = (validate_options(options or {}) if kind == "accounts" else
                    patch_options(options or {}) if kind == "patches" else {})
-        if kind in {"accounts", "patches"} and any(os_family(row["os"]) != "linux" for row in targets):
+        if kind in {"accounts", "patches", "security_permissions"} and any(os_family(row["os"]) != "linux" for row in targets):
             raise ValueError("Account and patch management currently support Linux targets")
         with self.lock:
             if kind == "patches" and options["action"] == "apply":
@@ -138,6 +139,11 @@ class ManagementService:
             return self.summary(job)
 
     def _target(self, job, row):
+        if job["kind"] == "security_permissions":
+            with self.lock:
+                target_lock = self.account_locks[row["ip"]]
+            with target_lock:
+                return self._target_unlocked(job, row)
         if (job["kind"] == "accounts" and job["options"]["action"] != "list") or (job["kind"] == "patches" and job["options"]["action"] == "apply"):
             with self.lock:
                 target_lock = self.account_locks[row["ip"]]
@@ -180,6 +186,19 @@ class ManagementService:
                 if family != "linux":
                     raise ValueError("Resource monitoring currently supports Linux targets")
                 result = collect_linux_snapshot(client).to_dict()
+            elif kind == "security_permissions":
+                before = backup_server(client, server, host_config, self.backups, job["id"],
+                                       lambda text: self._progress(job, text))
+                if before["status"] != "completed":
+                    return {**row, "status": "failed", "error": "Pre-policy backup incomplete; permissions unchanged", "result": {"backup": before}}
+                with self.lock:
+                    if job.get("cancel_requested"):
+                        return {**row, "status": "cancelled", "result": {"backup": before}}
+                try:
+                    result = secure_ssh_config(client, mode, self.config.ssh_timeout)
+                except Exception as exc:
+                    return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
+                result["backup"] = before
             elif kind == "accounts":
                 options = job["options"]
                 login_user = profile.get("user", self.config.ssh_user)
