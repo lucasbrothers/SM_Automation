@@ -139,6 +139,13 @@ class ManagementService:
                     raise ValueError("Invalid stored job record")
                 if any(field in job and not isinstance(job[field], list) for field in ("results", "targets")):
                     raise ValueError("Invalid stored job collections")
+                if job["status"] not in {"queued", "running", "completed", "partial", "failed", "cancelled", "interrupted"}:
+                    raise ValueError("Invalid stored job status")
+                for field in ("done", "total", "failed", "partial", "cancelled"):
+                    if field in job and (isinstance(job[field], bool) or not isinstance(job[field], int) or job[field] < 0):
+                        raise ValueError("Invalid stored job progress")
+                if "message" in job and not isinstance(job["message"], str):
+                    raise ValueError("Invalid stored job message")
             except (InvalidToken, ValueError, UnicodeError, OSError) as exc:
                 self.history_errors.append({"file": path.name, "error": type(exc).__name__})
                 continue

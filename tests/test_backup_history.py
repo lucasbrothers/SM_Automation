@@ -75,7 +75,8 @@ def test_damaged_history_preserved_and_operations_blocked(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize("field,value", [("status", []), ("created_at", 42), ("kind", None),
-                                        ("results", {}), ("targets", "invalid")])
+                                        ("results", {}), ("targets", "invalid"), ("done", -1),
+                                        ("total", True), ("failed", "1"), ("message", {}), ("status", "unknown")])
 def test_malformed_history_is_preserved_without_breaking_startup(tmp_path, monkeypatch, field, value):
     key = tmp_path / "master.key"
     key.write_bytes(Fernet.generate_key()); key.chmod(0o600)
