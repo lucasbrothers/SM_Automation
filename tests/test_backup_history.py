@@ -33,6 +33,20 @@ def test_history_rejects_invalid_offset(offset):
         service().dispatch("job.list", {"offset": offset})
 
 
+@pytest.mark.parametrize("offset", [-1, True, "1", 1.5])
+def test_result_pages_reject_invalid_offset(offset):
+    with pytest.raises(ValueError, match="offset"):
+        service().dispatch("job.result", {"id": "0", "offset": offset})
+
+
+def test_result_pages_keep_each_target_and_stop_at_end():
+    instance = service()
+    instance.jobs["0"]["results"] = [{"hostname": "first"}, {"hostname": "second"}]
+    pages = [instance.dispatch("job.result", {"id": "0", "offset": index}) for index in range(3)]
+    assert [page["items"] for page in pages] == [[{"hostname": "first"}], [{"hostname": "second"}], []]
+    assert all(page["total"] == 2 for page in pages)
+
+
 def test_restart_restores_backups_older_than_recent_hundred_jobs(tmp_path, monkeypatch):
     key = tmp_path / "master.key"
     key.write_bytes(Fernet.generate_key())

@@ -506,7 +506,9 @@ class ManagementService:
                 return self.summary(self.jobs[params["id"]])
             if method == "job.result":
                 job = self.jobs[params["id"]]
-                offset = max(0, int(params.get("offset", 0)))
+                offset = params.get("offset", 0)
+                if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+                    raise ValueError("Job result offset must be a nonnegative integer")
                 return {"items": job["results"][offset:offset + 1], "total": len(job["results"])}
         raise ValueError("Unknown API method")
 
