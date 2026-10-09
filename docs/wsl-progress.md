@@ -578,3 +578,8 @@ nft list ruleset, iptables-save, ip6tables-save의 출력은 firewall.txt.enc에
 
 nft는 -j list ruleset으로 규칙을 JSON 형식으로 수집한다. 기존 텍스트 출력의 iptables-nft 관리 테이블 안내를 피하면서 실제 실패/stderr 진단은 그대로 보존한다.
 관련 검증 12개 및 실제 WSL TLS 통합 확인 통과. 최신 백업은 12개 항목 모두 completed였다. 앞선 partial 기록은 이전 텍스트 출력 단계의 결과다.
+
+## 2026-10-09 조용한 명령 실패 진단
+
+Linux/AIX 공통 명령 그룹과 Linux 방화벽에서 stderr 없이 실패한 명령도 명령명·원래 종료 코드로 기록한다. 계정별 chage/sudo 실패는 계정명·종료 코드를 기록하며 뒤 계정의 성공이 앞 실패를 지우지 않는다.
+WSL 셸/백업 진단 검증 14개 통과. 실제 WSL TLS 통합과 백업 12개 항목 완료 확인. 실제 AIX/RHEL 대상 실행은 수행하지 않았다.

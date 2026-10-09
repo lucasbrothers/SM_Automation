@@ -46,13 +46,18 @@ def account_commands(tool: str) -> str:
             "[ -n \"$accounts\" ] || { echo 'Account inventory is empty' >&2; exit 1; }; "
             "for account in $(printf '%s\\n' \"$accounts\" | cut -d: -f1); do "
             "printf '\\n===== %s =====\\n' \"$account\"; " + body +
-            "; rc=$?; printf '\\nexit_code=%s\\n' \"$rc\"; [ \"$rc\" -eq 0 ] || failed=1; done; exit \"$failed\"")
+            "; rc=$?; printf '\\nexit_code=%s\\n' \"$rc\"; "
+            "if [ \"$rc\" -ne 0 ]; then failed=1; "
+            "printf 'Account diagnostic failed: %s / exit_code=%s\\n' \"$account\" \"$rc\" >&2; fi; "
+            "done; exit \"$failed\"")
 
 
 def command_group(*steps: str) -> str:
     """Keep every command's output and preserve any failure in the group status."""
     return "failed=0; " + "; ".join(
-        "( " + step + " ) || failed=1" for step in steps
+        "( " + step + " ); rc=$?; if [ \"$rc\" -ne 0 ]; then failed=1; "
+        "printf 'Command failed: %s / exit_code=%s\\n' " + shlex.quote(step) + " \"$rc\" >&2; fi"
+        for step in steps
     ) + '; exit "$failed"'
 
 
@@ -62,7 +67,8 @@ def firewall_commands() -> str:
     for tool, arguments in [("nft", "-j list ruleset"), ("iptables-save", ""), ("ip6tables-save", "")]:
         lines.append(
             f"if command -v {tool} >/dev/null 2>&1; then available=1; "
-            f"printf '\\n===== {tool} =====\\n'; {tool} {arguments} || failed=1; "
+            f"printf '\\n===== {tool} =====\\n'; {tool} {arguments}; rc=$?; "
+            f"if [ \"$rc\" -ne 0 ]; then failed=1; printf 'Command failed: {tool} / exit_code=%s\\n' \"$rc\" >&2; fi; "
             f"else printf '%s\\n' 'Missing optional tool: {tool}' >&2; fi"
         )
     lines.append('[ "$available" -eq 1 ] || { echo "No firewall rule collection tool available" >&2; failed=1; }')

@@ -3,7 +3,18 @@ import sys
 
 import pytest
 
-from backup.profiles import command_group, commands
+from backup.profiles import account_commands, command_group, commands
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
+@pytest.mark.parametrize("tool", ["chage", "sudo"])
+def test_account_diagnostic_retains_earlier_failure_with_account_name(tool):
+    stub = "getent() { printf 'first:x:1000:1000::/:/bin/sh\\nsecond:x:1001:1001::/:/bin/sh\\n'; }; "
+    stub += tool + "() { for arg do [ \"$arg\" != first ] || return 9; done; echo success; }; "
+    result = subprocess.run(["sh", "-c", stub + account_commands(tool)], capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "===== second =====" in result.stdout and "success" in result.stdout
+    assert result.stderr == "Account diagnostic failed: first / exit_code=9\n"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
@@ -16,6 +27,7 @@ def test_firewall_backup_distinguishes_missing_tools_and_failed_collection(scena
     assert "Missing optional tool: iptables-save" in result.stderr
     assert ("No firewall rule collection tool available" in result.stderr) == (scenario == "missing")
     assert ("rules" in result.stdout) == (scenario != "missing")
+    assert ("Command failed: nft / exit_code=7" in result.stderr) == (scenario == "failed")
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
@@ -25,6 +37,10 @@ def test_command_group_retains_all_output_and_any_failure(failure_position):
     result = subprocess.run(["sh", "-c", command_group(*steps)], capture_output=True, text=True)
     assert result.stdout == "step0\nstep1\nstep2\n"
     assert result.returncode == (0 if failure_position is None else 1)
+    if failure_position is None:
+        assert result.stderr == ""
+    else:
+        assert f"step{failure_position}" in result.stderr and "exit_code=7" in result.stderr
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
