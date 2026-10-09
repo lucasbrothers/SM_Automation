@@ -7,6 +7,25 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+def test_inventory_refresh_preserves_selection_and_requires_changed_targets_to_be_selected():
+    from PySide6.QtCore import Qt
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    first = {"hostname": "first", "ip": "127.0.0.1", "os": "Linux"}
+    second = {"hostname": "second", "ip": "127.0.0.2", "os": "Linux"}
+    window.set_inventory([first, second])
+    window.target_table.item(1, 0).setCheckState(Qt.CheckState.Unchecked)
+    window.set_inventory([second, first])
+    assert window.checked_hosts() == ["first"]
+    assert not window.select_all.isChecked()
+    window.set_inventory([{**first, "ip": "127.0.0.3"}, second,
+                          {"hostname": "new", "ip": "127.0.0.4", "os": "Linux"}])
+    assert window.checked_hosts() == []
+    window.select_all.setChecked(True)
+    assert window.checked_hosts() == ["first", "second", "new"]
+    window.close()
+
+
 def test_schedule_action_uses_selected_identity_after_reordering(monkeypatch):
     app = QApplication.instance() or QApplication([])
     window = Console(); window.client = Mock()

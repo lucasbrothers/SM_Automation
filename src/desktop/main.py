@@ -688,12 +688,18 @@ class Console(QMainWindow):
         self.poll()
 
     def set_inventory(self, servers):
+        def identity(server):
+            return tuple(server.get(field, "default" if field == "profile" else "") for field in ("hostname", "ip", "os", "profile"))
+        initial = not self.servers
+        selected = {identity(server) for row, server in enumerate(self.servers)
+                    if self.target_table.item(row, 0).checkState() == Qt.CheckState.Checked}
         self.servers = servers; self.metric_values[0].setText(str(len(servers)))
         fill_table(self.inventory_table, [[r["hostname"], r["ip"], r["os"], "Linux main server / SSH"] for r in servers])
         self.target_table.blockSignals(True); self.target_table.setRowCount(len(servers))
         for row, server in enumerate(servers):
             check = QTableWidgetItem(); check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-            check.setCheckState(Qt.CheckState.Checked); self.target_table.setItem(row, 0, check)
+            check.setCheckState(Qt.CheckState.Checked if initial or identity(server) in selected else Qt.CheckState.Unchecked)
+            self.target_table.setItem(row, 0, check)
             item = QTableWidgetItem(server["hostname"] + "\n" + server["ip"])
             item.setToolTip(server["os"]); self.target_table.setItem(row, 1, item); self.target_table.setRowHeight(row, 60)
         self.target_table.blockSignals(False)
