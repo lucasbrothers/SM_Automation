@@ -21,6 +21,7 @@ class MemoryData:
 class Service:
     def __init__(self, items=None):
         self.data = MemoryData(items); self.lock = threading.RLock(); self.jobs = {}; self.count = 0
+        self.history_errors = []
         self.rows = [{"hostname": "lab", "ip": "127.0.0.1", "os": "Ubuntu", "profile": "default"}]
 
     def inventory(self):
@@ -81,6 +82,23 @@ def test_uncertain_restart_disables_schedule(scheduler):
     restored = Scheduler(Service(scheduler.items)); restored.close(); restored.tick()
     assert not restored.items[0]["enabled"]
     assert restored.service.count == 0
+
+
+def test_history_recovery_pauses_and_preserves_schedules(scheduler):
+    due(scheduler, 60)
+    service = Service(scheduler.items)
+    service.history_errors = [{"file": "damaged.json.enc"}]
+    restored = Scheduler(service); restored.close()
+    restored.tick()
+    assert not restored.items[0]["enabled"] and service.count == 0
+    assert not service.data.items[0]["enabled"]
+    with pytest.raises(RuntimeError, match="recovery required"):
+        restored.create("connections", ["lab"], future())
+    with pytest.raises(RuntimeError, match="recovery required"):
+        restored.change(restored.items[0]["id"], enabled=True)
+    service.history_errors = []
+    restored.tick()
+    assert service.count == 0
 
 
 def test_mutating_jobs_cannot_be_scheduled(scheduler):

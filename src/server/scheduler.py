@@ -15,7 +15,9 @@ class Scheduler:
         self.stop = threading.Event()
         # An uncertain dispatch after a crash must not be automatically repeated.
         for item in self.items:
-            if item.get("dispatching"):
+            if service.history_errors and item.get("enabled"):
+                item.update(enabled=False, dispatching=False, message="History recovery required; review before resuming")
+            elif item.get("dispatching"):
                 item.update(enabled=False, dispatching=False, message="Interrupted dispatch; inspect job history before resuming")
         self.save()
         self.thread = threading.Thread(target=self.run, name="scheduler", daemon=True)
@@ -29,6 +31,8 @@ class Scheduler:
             return [dict(item) for item in self.items]
 
     def create(self, kind, hosts, run_at, interval_seconds=0):
+        if self.service.history_errors:
+            raise RuntimeError("History recovery required before creating schedules")
         if kind not in {"connections", "backup", "monitoring", "security_audit"}:
             raise ValueError("Schedules support collection, monitoring, audit and backup only")
         timestamp = datetime.fromisoformat(run_at)
@@ -55,6 +59,8 @@ class Scheduler:
             return dict(item)
 
     def change(self, schedule_id, enabled=None, delete=False):
+        if enabled is True and not delete and self.service.history_errors:
+            raise RuntimeError("History recovery required before resuming schedules")
         if not isinstance(delete, bool):
             raise ValueError("Delete must be a boolean")
         with self.lock:
