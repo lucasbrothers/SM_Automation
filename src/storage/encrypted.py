@@ -41,6 +41,18 @@ class EncryptedStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, target)
+            if os.name == "posix":
+                # Persist the rename and newly created backup/job directories.
+                directory = target.parent
+                while True:
+                    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+                    if directory == self.root.parent:
+                        break
+                    directory = directory.parent
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
