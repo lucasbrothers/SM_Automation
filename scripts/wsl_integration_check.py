@@ -18,10 +18,16 @@ def wsl_read(path):
 
 def main():
     parser = argparse.ArgumentParser(description="Test local WSL only; credentials stay in memory")
-    parser.add_argument("--host", default="172.22.194.8")
+    parser.add_argument("--host", help="Local loopback or an address reported by WSL Ubuntu; default is detected")
     parser.add_argument("--secure-ssh-config", action="store_true", help="Back up and apply mode 600 to the authorized WSL SSH configuration")
     parser.add_argument("--check-ssh-apply", action="store_true", help="Verify SSH apply only when the WSL plan requires no changes")
     args = parser.parse_args()
+    addresses = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "hostname", "-I"], text=True).split()
+    if not addresses:
+        parser.error("WSL Ubuntu has no detected address")
+    args.host = args.host or addresses[0]
+    if args.host not in {*addresses, "localhost", "127.0.0.1", "::1"}:
+        parser.error("This integration check accepts the authorized local WSL only")
     token = wsl_read("/root/.config/sm-automation/api.token").decode().strip()
     with tempfile.TemporaryDirectory(prefix="sm-wsl-") as directory:
         certificate = Path(directory) / "ca.crt"
