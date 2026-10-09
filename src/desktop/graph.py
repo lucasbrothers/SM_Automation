@@ -71,14 +71,20 @@ class ConnectionMap(QGraphicsView):
         anchors = []
         omitted = 0
         for row, peers in rows:
+            warning = row.get("result", {}).get("warning", "")
             shown = list(sorted(peers.items()))[:25]
             omitted += max(0, len(peers) - len(shown))
             block_height = max(100, len(shown) * 82)
             host = self.card(350, y + block_height / 2 - 33, row["hostname"],
-                             row["ip"] + "  /  " + row["os"], "#b45309" if row.get("result", {}).get("truncated") else "#2c6bed")
+                             row["ip"] + "  /  " + row["os"], "#b45309" if warning or row.get("result", {}).get("truncated") else "#2c6bed")
             if row.get("result", {}).get("truncated"):
                 notice = self.scene().addSimpleText("Capture limit reached: incomplete snapshot", QFont("Segoe UI", 8))
                 notice.setBrush(QColor("#b45309"))
+                notice.setPos(host[0], host[1] + 70)
+            elif warning:
+                notice = self.scene().addSimpleText("Collection warning: hover for details", QFont("Segoe UI", 8))
+                notice.setBrush(QColor("#b45309"))
+                notice.setToolTip(warning)
                 notice.setPos(host[0], host[1] + 70)
             anchors.append(host)
             if row.get("status") == "failed":

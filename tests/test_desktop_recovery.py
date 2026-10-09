@@ -7,6 +7,19 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+def test_connection_warnings_visible_and_incomplete_not_counted_as_empty():
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    window.display_connections([{"hostname": "lab", "ip": "127.0.0.1", "os": "Linux", "status": "completed",
+                                "result": {"connections": [], "truncated": True}},
+                               {"hostname": "warning-lab", "ip": "127.0.0.2", "os": "Linux", "status": "completed",
+                                "result": {"connections": [], "warning": "Collection diagnostic"}}])
+    assert "1 servers with no connections" in window.status_line.text()
+    assert "1 servers reported collection warnings" in window.status_line.text()
+    assert any(item.toolTip() == "Collection diagnostic" for item in window.graph.scene().items())
+    window.close()
+
+
 def test_recovery_details_prevent_desktop_job_submission(monkeypatch):
     app = QApplication.instance() or QApplication([])
     window = Console()
