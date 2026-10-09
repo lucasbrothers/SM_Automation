@@ -525,6 +525,8 @@ class Console(QMainWindow):
         form.addRow("Operation", self.schedule_kind); form.addRow("First run (this PC local time)", self.schedule_time); form.addRow("Repeat interval", self.schedule_interval)
         body.addLayout(form)
         body.addWidget(label("Targets follow Connection map selection. Linux runs schedules while this GUI is closed."))
+        self.schedule_health = label("Refresh schedules to check Linux scheduling status.", "subtitle")
+        body.addWidget(self.schedule_health)
         body.addWidget(button("Create Linux schedule", self.create_schedule, True))
         self.schedule_table = table(["Next run", "Operation", "Targets", "Repeat (min)", "State", "Message"]); body.addWidget(self.schedule_table, 1)
         actions = QHBoxLayout()
@@ -548,7 +550,17 @@ class Console(QMainWindow):
         if not self.require_client():
             return
         client = self.client
-        self.work(lambda: client.call("schedule.list"), self.display_schedules)
+        def loaded(result):
+            schedules, status = result
+            self.display_schedules(schedules)
+            if status.get("history_errors"):
+                message = "Linux history recovery required. Automatic scheduling is blocked."
+            elif not status.get("scheduler_running", True):
+                message = "Linux scheduler stopped. Inspect Linux storage and restart the service after recovery."
+            else:
+                message = "Linux scheduler is running. Enabled schedules execute independently of this GUI."
+            self.schedule_health.setText(message)
+        self.work(lambda: (client.call("schedule.list"), client.call("status")), loaded)
 
     def display_schedules(self, schedules):
         self.schedules = schedules
@@ -673,6 +685,7 @@ class Console(QMainWindow):
         self.patch_apply.setEnabled(False)
         self.schedules = []
         self.schedule_table.setRowCount(0)
+        self.schedule_health.setText("Refresh schedules to check Linux scheduling status.")
 
     def require_client(self):
         if not self.client:

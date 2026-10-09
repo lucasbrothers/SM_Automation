@@ -456,6 +456,7 @@ class ManagementService:
         if method == "status":
             return {"platform": "Linux main server", "version": "0.2.0", "time": now(),
                     "scheduler_running": self.scheduler.thread.is_alive(),
+                    "scheduler_error": self.scheduler.failure,
                     "data_directory": str(self.config.data_directory), "backup_directory": str(self.config.backup_directory),
                     "inventory_count": len(self.inventory()), "encrypted": True,
                     "history_errors": self.history_errors, "operations_enabled": not self.history_errors}

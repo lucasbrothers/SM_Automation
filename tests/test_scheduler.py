@@ -169,3 +169,13 @@ def test_failed_delete_keeps_schedule(scheduler, monkeypatch):
     with pytest.raises(OSError):
         scheduler.change(item["id"], delete=True)
     assert scheduler.items[0]["id"] == item["id"]
+
+
+def test_scheduler_reports_failure_without_exposing_exception_details(scheduler, monkeypatch):
+    scheduler.stop.clear()
+    monkeypatch.setattr(scheduler.stop, "wait", lambda timeout: scheduler.stop.is_set())
+    def fail():
+        raise OSError("private storage diagnostic")
+    monkeypatch.setattr(scheduler, "tick", fail)
+    scheduler.run()
+    assert scheduler.stop.is_set() and scheduler.failure == "OSError"

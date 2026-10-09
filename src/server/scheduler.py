@@ -11,6 +11,7 @@ from cryptography.fernet import InvalidToken
 class Scheduler:
     def __init__(self, service):
         self.service = service
+        self.failure = None
         self.recovery_required = False
         try:
             self.items = service.data.read_json("schedules.json.enc", [])
@@ -143,8 +144,9 @@ class Scheduler:
         while not self.stop.wait(1):
             try:
                 self.tick()
-            except Exception:
+            except Exception as exc:
                 # A persistence failure stops scheduling until an operator restarts the service.
+                self.failure = type(exc).__name__
                 self.stop.set()
 
     def close(self):
