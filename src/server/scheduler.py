@@ -59,7 +59,12 @@ class Scheduler:
     def save(self):
         if self.recovery_required:
             return
-        self.service.data.write_json("schedules.json.enc", self.items)
+        try:
+            self.service.data.write_json("schedules.json.enc", self.items)
+        except Exception as exc:
+            self.failure = type(exc).__name__
+            self.stop.set()
+            raise
 
     def list(self):
         with self.lock:
@@ -121,6 +126,8 @@ class Scheduler:
             return dict(item)
 
     def tick(self):
+        if self.failure:
+            return
         timestamp = datetime.now().astimezone()
         with self.lock:
             for item in self.items:

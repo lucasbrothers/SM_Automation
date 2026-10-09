@@ -161,6 +161,10 @@ def test_failed_pause_restores_persisted_state(scheduler, monkeypatch):
     with pytest.raises(OSError):
         scheduler.change(item["id"], enabled=False)
     assert scheduler.items[0]["enabled"]
+    assert scheduler.failure == "OSError"
+    scheduler.items[0]["next_run"] = (datetime.now().astimezone() - timedelta(seconds=2)).isoformat()
+    scheduler.tick()
+    assert scheduler.service.count == 0
 
 
 def test_failed_delete_keeps_schedule(scheduler, monkeypatch):
