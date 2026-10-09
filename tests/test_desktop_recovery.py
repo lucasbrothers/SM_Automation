@@ -4,6 +4,7 @@ import pytest
 pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QMessageBox
 from desktop.main import Console, InventoryDialog
+from desktop.graph import ConnectionMap
 
 
 def test_recovery_details_prevent_desktop_job_submission(monkeypatch):
@@ -39,3 +40,16 @@ def test_inventory_profile_selection_preserves_unconfigured_name(monkeypatch):
     dialog.add_server()
     assert dialog.rows()[1]["profile"] == "default"
     dialog.close()
+
+
+def test_connection_map_distinguishes_empty_and_cancelled_targets():
+    app = QApplication.instance() or QApplication([])
+    graph = ConnectionMap()
+    graph.set_results([
+        {"hostname": "empty-lab", "ip": "127.0.0.1", "os": "Linux", "status": "completed", "result": {"connections": []}},
+        {"hostname": "cancelled-lab", "ip": "127.0.0.2", "os": "Linux", "status": "cancelled"},
+    ])
+    labels = [item.text() for item in graph.scene().items() if hasattr(item, "text")]
+    assert "empty-lab" in labels and "cancelled-lab" in labels
+    assert "No established connections" in labels and "Collection cancelled" in labels
+    graph.close()

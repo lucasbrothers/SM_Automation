@@ -57,7 +57,7 @@ class ConnectionMap(QGraphicsView):
                 if query and query not in (row["hostname"] + " " + peer + " " + connection["remote"]["port"]).casefold():
                     continue
                 peers[peer].append(connection)
-            if peers or row.get("status") == "failed":
+            if peers or not query or query in (row["hostname"] + " " + row["ip"]).casefold():
                 rows.append((row, peers))
         if not rows:
             title = "No matching connections" if query else ("No established connections" if results else "No connection snapshot")
@@ -77,6 +77,12 @@ class ConnectionMap(QGraphicsView):
             if row.get("status") == "failed":
                 node = self.card(660, y, "Collection failed", row.get("error", ""), "#d45850", 230)
                 self.edge(host, node, "#e9c0bc")
+            elif not shown:
+                cancelled = row.get("status") == "cancelled"
+                node = self.card(660, y, "Collection cancelled" if cancelled else "No established connections",
+                                 "Target was not collected" if cancelled else "Successful snapshot / 0 TCP peers",
+                                 "#b45309" if cancelled else "#12a58b", 230)
+                self.edge(host, node)
             for index, (peer, connections) in enumerate(shown):
                 ports = ", ".join(sorted({item["remote"]["port"] for item in connections}))
                 node = self.card(660, y + index * 82, peer,
