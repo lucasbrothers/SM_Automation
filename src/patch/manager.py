@@ -1,4 +1,4 @@
-"""Debian/Ubuntu patch discovery and version-pinned, removal-free plans."""
+"""Linux patch discovery and version-pinned plans for apt and RPM/DNF."""
 from __future__ import annotations
 
 import re
@@ -94,7 +94,8 @@ def make_plan(client, packages, mode):
 
 def apply_plan(client, plan, mode):
     if plan.get("manager") == "dnf":
-        raise ValueError("RPM application adapter is pending; reviewed RHEL plan cannot yet be applied")
+        from patch.rpm_plan import apply_plan as rpm_apply
+        return rpm_apply(client, plan, mode)
     operations, _ = simulate(client, plan["pins"], mode)
     if operations != plan["operations"]:
         raise ValueError("Package state changed since planning; create a fresh plan")

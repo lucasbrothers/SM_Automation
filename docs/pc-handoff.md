@@ -58,7 +58,7 @@ DB 소프트웨어를 이 PC에서 제거하거나 DB 데이터를 삭제하지�
 
 ## 현재 구현의 한계 / 이어서 할 작업
 
-- 최신 사용자 지시로 Red Hat Enterprise Linux를 명시적으로 지원 범위에 추가했다. RHEL은 Linux 공통 기능과 RPM/DNF 캐시 업데이트 조회를 사용하며 패치 계획·적용 및 실제 RHEL 검증을 이어서 진행한다. 외부 대상 테스트는 승인되지 않았고 현재 테스트는 로컬 Ubuntu WSL만 사용한다.
+- 최신 사용자 지시로 Red Hat Enterprise Linux를 명시적으로 지원 범위에 추가했다. RHEL은 Linux 공통 기능과 RPM/DNF 캐시 업데이트 조회·버전 고정 계획·백업 후 로컬 서명 RPM 적용 경로를 사용한다. 실제 RHEL 검증은 아직 필요하다. 외부 대상 테스트는 승인되지 않았고 현재 테스트는 로컬 Ubuntu WSL만 사용한다.
 
 - 서버별 SSH 프로필을 추가했다. Linux의 보호된 ssh-profiles.json에 계정/키/포트를 정의하고 GUI/CSV에는 profile 이름만 지정한다. 다른 PC에서 실제 연결을 확인한다.
 - AIX/Windows 실환경 netstat 및 파일/명령 수집 조정.

@@ -52,6 +52,7 @@ def resolver(monkeypatch, unrelated_removal=False, no_changes=False):
     dnf = ModuleType("dnf"); dnf.__path__ = []; dnf.Base = Base
     dnf.rpm = ModuleType("dnf.rpm"); dnf.rpm.detect_releasever = lambda _: "9"
     rpm = ModuleType("rpm"); rpm.labelCompare = lambda left, right: (left > right) - (left < right)
+    monkeypatch.setitem(sys.modules, "hawkey", ModuleType("hawkey"))
     monkeypatch.setitem(sys.modules, "dnf", dnf)
     monkeypatch.setitem(sys.modules, "dnf.rpm", dnf.rpm)
     monkeypatch.setitem(sys.modules, "rpm", rpm)
@@ -63,7 +64,7 @@ def test_rhel_plan_pins_versions_and_records_dependency_operations(monkeypatch):
     plan = resolver(monkeypatch)(["pkg:x86_64"])
     assert plan["pins"] == ["pkg:x86_64=2-1"]
     assert [item["action"] for item in plan["operations"]] == ["install", "replace_old"]
-    assert not plan["apply_supported"]
+    assert plan["apply_supported"]
 
 
 def test_rhel_plan_rejects_unrelated_removal(monkeypatch):
@@ -75,3 +76,32 @@ def test_empty_dnf_transaction_is_a_no_change_plan(monkeypatch):
     plan = resolver(monkeypatch, no_changes=True)(["pkg"])
     assert plan["operations"] == []
     assert plan["pins"] == ["pkg:x86_64=1-1"]
+
+
+@pytest.mark.parametrize("field", ["pins", "operations", "rpm_state"])
+def test_changed_rhel_plan_never_reaches_package_verification(monkeypatch, field):
+    scope = resolver(monkeypatch).__globals__
+    scope["verify_cached_package"] = lambda package: pytest.fail("Changed plans must not reach package verification")
+    plan = {"pins": [], "operations": [], "rpm_state": "current"}
+    expected = {**plan, field: "changed"}
+    with pytest.raises(ValueError, match="changed since planning"):
+        scope["commit_transaction"](None, expected, plan)
+
+
+@pytest.mark.parametrize("signature_status", [0, 1, 2])
+def test_signature_failure_prevents_rpm_transaction(monkeypatch, signature_status):
+    scope = resolver(monkeypatch).__globals__
+    events = []
+    scope["verify_cached_package"] = lambda package: events.append("checksum")
+    base = SimpleNamespace(transaction=SimpleNamespace(install_set=[object()]),
+                           package_signature_check=lambda package: (signature_status, "invalid signature"),
+                           do_transaction=lambda: events.append("apply"))
+    plan = {"pins": ["pkg:x86_64=2-1"], "operations": [], "rpm_state": "current"}
+    if signature_status:
+        with pytest.raises(ValueError, match="signature verification failed"):
+            scope["commit_transaction"](base, plan, plan)
+        assert events == ["checksum"]
+    else:
+        result = scope["commit_transaction"](base, plan, plan)
+        assert result["applied"] == 1
+        assert events == ["checksum", "apply"]

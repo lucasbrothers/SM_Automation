@@ -104,9 +104,19 @@ class Worker(QRunnable):
 
     def run(self):
         try:
-            self.signals.done.emit(self.fn())
+            result = self.fn()
         except Exception as exc:
-            self.signals.error.emit(str(exc))
+            self.deliver(self.signals.error, str(exc))
+        else:
+            self.deliver(self.signals.done, result)
+
+    @staticmethod
+    def deliver(signal, value):
+        try:
+            signal.emit(value)
+        except RuntimeError as exc:
+            if "Signal source has been deleted" not in str(exc):
+                raise
 
 
 class ConnectDialog(QDialog):
@@ -202,12 +212,14 @@ class Console(QMainWindow):
         self.subtitle = label("One control console. All operational work on your Linux server.", "subtitle"); content.addWidget(self.subtitle)
         metrics = QHBoxLayout(); metrics.setSpacing(14)
         self.metric_values = []
+        self.metric_cards = []
         for title, value, foot in [("INVENTORY", "0", "Managed servers"), ("SELECTED", "0", "Ready for collection"),
                                     ("ESTABLISHED", "—", "Latest connection snapshot"), ("STORAGE", "Encrypted", "Linux DATA + BACKUP")]:
             frame, layout = card(); layout.addWidget(label(title, "subtitle")); number = label(value, "metric")
             if value == "Encrypted":
                 number.setStyleSheet("font-size:22pt;color:#118875;font-weight:700")
             layout.addWidget(number); layout.addWidget(label(foot, "subtitle")); metrics.addWidget(frame)
+            self.metric_cards.append(frame)
             self.metric_values.append(number)
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
@@ -404,12 +416,12 @@ class Console(QMainWindow):
         self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("Installed packages, separated by spaces: openssh-server net-tools")
         actions.addWidget(self.patch_packages, 1)
         actions.addWidget(button("Preview patch plan", self.plan_patches, True)); body.addLayout(actions)
-        self.patch_table = table(["Server", "Package", "Installed", "Planned version"]); body.addWidget(self.patch_table, 1)
-        self.patch_output = QPlainTextEdit(); self.patch_output.setReadOnly(True); body.addWidget(self.patch_output, 1)
+        self.patch_table = table(["Server", "Package", "Installed", "Planned version"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
+        self.patch_output = QPlainTextEdit(); self.patch_output.setReadOnly(True); self.patch_output.setMinimumHeight(100); body.addWidget(self.patch_output, 1)
         self.patch_plan_id = None
         self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
         body.addWidget(self.patch_apply)
-        patch_note = label("Debian/Ubuntu: reviewed plans and backed-up apply. RHEL/DNF: cached discovery and version-pinned preview; apply pending. No automatic reboot.")
+        patch_note = label("Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
         patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -506,6 +518,8 @@ class Console(QMainWindow):
         self.work(lambda: client.call("job.cancel", id=job_id), lambda _: self.poll())
 
     def navigate(self, index):
+        for metric in self.metric_cards:
+            metric.setVisible(index < 4)
         self.pages.setCurrentIndex(index)
         titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources"]
         self.title.setText(titles[index])
@@ -806,8 +820,9 @@ class Console(QMainWindow):
         self.account_action.setCurrentIndex(1)
         for name, value in {"username": "ops_example", "sr": "SR2026", "full_name": "Example Operator", "uid": "2001"}.items():
             self.account_fields[name].setText(value)
-        fill_table(self.patch_table, [["app-linux-01", "openssh-server", "1:9.6p1-3ubuntu13.10", "1:9.6p1-3ubuntu13.14"]])
-        self.patch_output.setPlainText("SYNTHETIC PATCH PLAN\n1 package upgraded, 0 removed.\nApply after reviewing the Linux package manager simulation.")
+        fill_table(self.patch_table, [["web-prod-01", "openssh-server:x86_64", "8.7p1-38.el9_4.1", "8.7p1-38.el9_4.4"],
+                                      ["app-prod-02", "openssh-server", "1:9.6p1-3ubuntu13.10", "1:9.6p1-3ubuntu13.14"]])
+        self.patch_output.setPlainText("SYNTHETIC PATCH PLAN / RHEL AND UBUNTU\n2 selected packages upgraded, 0 unrelated removals.\nRHEL: prepared signed RPMs required; no download or automatic reboot.\nLinux backs up each target before applying a reviewed plan.")
         self.display_schedules([{"id": "demo-schedule", "next_run": "2026-10-09T01:00:00+09:00", "kind": "backup", "hosts": ["app-linux-01", "db-linux-01"], "interval_seconds": 86400, "enabled": True, "message": "Waiting on Linux"}])
         self.schedule_time.setDateTime(QDateTime.fromString("2026-10-09T01:00:00", Qt.DateFormat.ISODate))
         self.schedule_interval.setValue(1440)

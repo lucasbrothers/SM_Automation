@@ -46,4 +46,4 @@ def list_updates(client, mode):
     if response.exit_code == 100 and not packages:
         raise ValueError("DNF reported updates but no installed update rows could be read")
     return {"action": "list", "manager": "dnf", "packages": packages, "output": output,
-            "warnings": response.stderr, "note": "Existing cache only; RPM plan/apply is not supported. No refresh, install or reboot"}
+            "warnings": response.stderr, "note": "Existing cache only; preview a pinned plan before applying prepared signed RPMs. This query performs no refresh, install or reboot"}

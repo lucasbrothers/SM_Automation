@@ -101,7 +101,10 @@ python3.11 -m venv .venv
 Python 버전 제공 기준: [Red Hat 공식 Python 설치 문서](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html-single/installing_and_using_dynamic_programming_languages/index).
 기존 Linux 서비스 설치 절차를 이어서 적용한다. SSH 서비스 이름은 `sshd`다. GUI용 TLS 7443 및 관리 서버에서 대상 SSH 포트에 접근할 수 있게 환경의 방화벽 정책을 구성한다.
 대상 RHEL의 DNF 계획은 시스템 DNF Python 바인딩을 사용한다. RHEL 8의 platform-python 또는 RHEL 9의 시스템 python3를 우선하며 서버 가상환경의 Python과 분리한다.
-현재 업데이트 조회 및 버전 고정 계획만 연결했고 실제 RPM 적용기는 다음 단계다. RHEL 실환경 테스트는 수행하지 않았다.
+업데이트 조회·버전 고정 계획·백업 후 적용을 연결했다. 적용은 준비된 로컬 RPM만 사용하며 다운로드나 GPG 키 자동 가져오기를 하지 않는다.
+DNF 캐시 또는 file:// 저장소의 RPM과 상위 디렉터리는 root 소유이며 그룹/기타 사용자 쓰기 권한이 없어야 한다. RPM 서명 검증에 필요한 키는 대상에 미리 등록한다.
+다중 버전/아키텍처는 하나의 설치 버전만 선택할 수 있다. 커널처럼 여러 설치 버전을 유지하는 패키지는 현재 적용 계획에서 제외한다.
+RHEL 실환경 테스트는 수행하지 않았다. 현재 실제 테스트 환경은 사용자가 승인한 로컬 Ubuntu WSL이다.
 
 ### 서버별 SSH 프로필
 

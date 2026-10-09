@@ -20,7 +20,7 @@ Windows는 대상 선택, 요청 전송, 진행 상황과 결과 표시만 합�
 
 Red Hat Enterprise Linux(RHEL)도 관리 대상 및 Linux 메인 서버 지원 범위에 포함합니다.
 현재 Linux 공통 연결·백업·계정·자원 기능과 RPM/DNF 캐시 업데이트 조회를 연결했습니다.
-RHEL 패치 계획·적용은 이어서 구현하며 실제 RHEL 검증은 아직 수행하지 않았습니다.
+RHEL 패치 버전 고정 계획·암호화 백업 후 적용 경로도 구현했습니다. 적용은 대상에 준비된 서명 RPM만 사용하며 실제 RHEL 검증은 아직 수행하지 않았습니다.
 
 ## 구현한 기능
 
@@ -31,7 +31,7 @@ RHEL 패치 계획·적용은 이어서 구현하며 실제 RHEL 검증은 아�
 - Linux/AIX/Windows 주요 설정 파일 및 명령 출력 암호화 백업
 - 백업 경로: `./BACKUP/YYYY-MM-DD/hostname/run-id/`
 - 기존 Linux 자원 수집 및 보안 감사 호출
-- Linux 계정 관리·공개키 등록, Debian/Ubuntu 패치 계획·적용, 예약 수집/백업
+- Linux 계정 관리·공개키 등록, Debian/Ubuntu 및 RHEL 패치 계획·적용 경로, 예약 수집/백업
 - SSH 정책 계획·암호화 백업 후 적용·재접속 실패 복구
 - Windows 데스크톱 GUI: Overview, Connection map, Backups, Activity, Accounts, Patches, Schedules, Resources
 - Linux 부하·메모리·디스크 자원 화면과 선택적 30초 갱신
@@ -70,7 +70,7 @@ py -3.14 -m venv .venv-gui
 
 ## 검증 상태
 
-후속 사용자 지시에 따라 로컬 WSL Ubuntu root 서버에서 기존 테스트 **234개가 통과**했습니다.
+후속 사용자 지시에 따라 로컬 WSL Ubuntu root 서버에서 기존 테스트 **240개가 통과**했습니다.
 Windows 클라이언트의 TLS 인증, 연결 수집, 자원 수집, 보안 감사, 암호화 백업과
 네이티브 GUI의 선택·작업 요청·마인드맵 표시를 확인했습니다. AIX/Windows 대상 실환경은 미검증입니다.
 실행 방법과 남은 작업은 [WSL 진행 기록](docs/wsl-progress.md)을 참조하세요.
