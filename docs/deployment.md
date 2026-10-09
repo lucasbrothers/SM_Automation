@@ -32,6 +32,7 @@ Linux 서비스 계정의 known_hosts에 **확인된 대상 호스트 키**를 �
 ```
 
 CSV 형식은 `hostname,ip,os`다. `config/servers.example.csv`에는 문서용 주소만 있다.
+선택 열 `profile`로 Linux에 구성된 SSH 프로필을 지정할 수 있다. GUI와 Linux 가져오기 도구는 같은 헤더·행 오류 검사를 사용한다. 가져오기는 기존 목록을 교체한다.
 서버의 실제 목록은 암호화 파일에 저장하므로 원본 CSV 보관 여부는 운영 정책에 따른다.
 
 Linux 방화벽/관리망에서는 Windows GUI 호스트 → Linux TCP 7443을 허용한다.

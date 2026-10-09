@@ -26,6 +26,8 @@ DATA/BACKUP 및 server/ssh 경로의 상대값은 **프로젝트 루트** 기준
 절대 경로를 지정해 별도 볼륨으로 옮길 수 있다. 기존 파일을 새 경로로 자동 이동하지 않는다.
 `inventory.server_file`은 기존 CLI 호환 설정이며 서버의 실제 목록은 DATA의 암호화 파일이다.
 CSV는 GUI 가져오기 또는 `scripts/import_inventory.py`로 명시적으로 등록한다.
+가져오기는 기존 목록 전체를 교체한다. 필수 열은 `hostname,ip,os`이며 `profile`은 선택이다. UTF-8(BOM 포함)을 사용하고 헤더 대소문자·앞뒤 공백은 허용한다. 중복 열·빈 필수 값·잘못된 행은 저장 전에 거부한다.
+Windows에서는 GUI의 Import CSV를 사용한다. 직접 가져오기 스크립트는 Linux 메인 서버에서 실행한다.
 
 Fernet으로 내용 암호화와 변조 검출을 수행한다. 암호화 키는 DATA/BACKUP 밖에 둬야 한다.
 키가 없거나 잘못되면 읽기를 중단하며 새 키를 자동 생성하지 않는다.
