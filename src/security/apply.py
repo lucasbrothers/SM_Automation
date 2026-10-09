@@ -179,28 +179,32 @@ def _discard_backup_command(backup: str) -> str:
     return "sudo -n sh -c " + shlex.quote(script)
 
 
-def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd", allow_includes: bool = False, discard_backup: bool = False) -> str:
+def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd", allow_includes: bool = False, discard_backup: bool = False, privilege: str = "sudo") -> str:
     """Apply one batch and verify a fresh authenticated connection before success."""
     validate_actions(actions)
     if service_name not in {"ssh", "sshd"}:
         raise ValueError("SSH service name must be ssh or sshd")
+    if privilege not in {"sudo", "direct"} or (privilege == "direct" and client.user != "root"):
+        raise ValueError("SSH application requires sudo or direct root")
+    def execution(command: str) -> str:
+        return command.removeprefix("sudo -n ") if privilege == "direct" else command
     command = build_sshd_apply_batch_command(actions, allow_includes=allow_includes).replace("systemctl reload sshd", "systemctl reload " + service_name)
-    output = client.execute(command)
+    output = client.execute(execution(command))
     metadata = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
     backup, digest = metadata.get("backup", ""), metadata.get("digest", "")
     rollback = _rollback_command(backup, digest).replace("systemctl reload sshd", "systemctl reload " + service_name)
     probe = SSHClient(client.hostname, client.ip, user=client.user, timeout=client.timeout,
                       password=client.password, key_filename=client.key_filename, port=client.port)
     try:
-        probe.execute("sudo -n true")
+        probe.execute(execution("sudo -n true"))
     except Exception as exc:
         try:
-            client.execute(rollback)
+            client.execute(execution(rollback))
         except Exception as rollback_exc:
             raise SSHCommandError(f"Reconnect failed; ROLLBACK FAILED; backup={backup}: {rollback_exc}") from exc
         if discard_backup:
             try:
-                client.execute(_discard_backup_command(backup))
+                client.execute(execution(_discard_backup_command(backup)))
             except Exception as cleanup_exc:
                 raise SSHCommandError(f"Reconnect failed; original configuration restored; temporary cleanup failed; backup={backup}: {cleanup_exc}") from exc
             raise SSHCommandError("Reconnect failed; original configuration restored; temporary backup removed") from exc
@@ -209,7 +213,7 @@ def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], servic
         probe.close()
     if discard_backup:
         try:
-            client.execute(_discard_backup_command(backup))
+            client.execute(execution(_discard_backup_command(backup)))
         except Exception as exc:
             return output + f"\nwarning=Policy applied; temporary backup cleanup failed: {str(exc)[:500]}\n"
         return f"digest={digest}\ntemporary_backup=removed\n"

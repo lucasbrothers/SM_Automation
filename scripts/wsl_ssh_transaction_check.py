@@ -27,7 +27,7 @@ def main():
         assert before["status"] == "completed", before["status"]
         actions = [{"type": "set_sshd_option", "parameter": "pubkeyauthentication", "current": "yes", "recommended": "yes"}]
         existing = set(Path("/etc/ssh").glob(".sm_automation.*"))
-        output = apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True, discard_backup=True)
+        output = apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True, discard_backup=True, privilege="direct")
         assert "temporary_backup=removed" in output
         assert set(Path("/etc/ssh").glob(".sm_automation.*")) == existing
         print("PASS: encrypted backup, Include-preserving write, ssh reload and fresh key connection")
@@ -43,7 +43,7 @@ def main():
         apply.SSHClient = FailedProbe
         try:
             try:
-                apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True, discard_backup=True)
+                apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True, discard_backup=True, privilege="direct")
             except SSHCommandError as exc:
                 assert "original configuration restored" in str(exc)
             else:

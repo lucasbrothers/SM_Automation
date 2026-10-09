@@ -233,7 +233,7 @@ class ManagementService:
                         service_name = "ssh" if any(name in server.os.casefold() for name in ("ubuntu", "debian")) else "sshd"
                         output = apply_sshd_settings(client, actions, service_name=service_name,
                                                      allow_includes=planned.get("adapter", {}).get("allow_includes", False),
-                                                     discard_backup=True)
+                                                     discard_backup=True, privilege=mode)
                         result = {"applied": len(actions), "output": output, "backup": before}
                     except Exception as exc:
                         return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
