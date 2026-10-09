@@ -64,3 +64,13 @@ def test_map_search_includes_server_and_local_endpoint(query):
     labels = [item.text() for item in graph.scene().items() if hasattr(item, "text")]
     assert "192.0.2.1" in labels and "No established connections" not in labels
     graph.close()
+
+
+def test_connection_map_marks_capture_limit():
+    app = QApplication.instance() or QApplication([])
+    graph = ConnectionMap()
+    graph.set_results([{"hostname": "lab", "ip": "127.0.0.1", "os": "Linux", "status": "completed",
+                        "result": {"connections": [], "truncated": True}}])
+    labels = [item.text() for item in graph.scene().items() if hasattr(item, "text")]
+    assert "Capture limit reached: incomplete snapshot" in labels
+    graph.close()
