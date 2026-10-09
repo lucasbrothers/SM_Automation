@@ -615,6 +615,8 @@ class Console(QMainWindow):
         settings = client.settings
         self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
         self.submission_pending = False
+        self.poll_busy = False
+        self.clear_session_views()
         self.backup_history = {}
         self.backup_history_offset = 0
         self.resource_loaded_job = None
@@ -642,6 +644,7 @@ class Console(QMainWindow):
         self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
         self.history_errors = []; self.subtitle.setToolTip("")
         self.submission_pending = False
+        self.clear_session_views()
         self.job_history = {}; self.job_history_offset = 100
         self.backup_history = {}
         self.backup_history_offset = 0
@@ -652,6 +655,15 @@ class Console(QMainWindow):
         self.server_badge.setText("Not connected"); self.connection_badge.setText("OFFLINE")
         self.subtitle.setText("One control console. All operational work on your Linux server.")
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
+
+    def clear_session_views(self):
+        self.account_table.setRowCount(0)
+        self.patch_table.setRowCount(0)
+        self.patch_output.clear()
+        self.patch_plan_id = None
+        self.patch_apply.setEnabled(False)
+        self.schedules = []
+        self.schedule_table.setRowCount(0)
 
     def require_client(self):
         if not self.client:

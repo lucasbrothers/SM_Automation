@@ -7,6 +7,30 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+@pytest.mark.parametrize("reconnect", [False, True])
+def test_connection_change_clears_previous_account_patch_and_schedule_views(monkeypatch, reconnect):
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    window.account_table.setRowCount(1)
+    window.patch_table.setRowCount(1)
+    window.patch_output.setPlainText("Previous server output")
+    window.patch_plan_id = "old-plan"
+    window.patch_apply.setEnabled(True)
+    window.schedules = [{"id": "old-schedule"}]
+    window.schedule_table.setRowCount(1)
+    if reconnect:
+        monkeypatch.setattr(window, "reload", lambda: None)
+        client = Mock()
+        client.settings.host = "localhost"; client.settings.port = 7443
+        window.attach_client(client, {"data_directory": "/opt/new/DATA"})
+    else:
+        window.disconnect_server()
+    assert window.account_table.rowCount() == window.patch_table.rowCount() == window.schedule_table.rowCount() == 0
+    assert not window.patch_output.toPlainText() and not window.schedules
+    assert window.patch_plan_id is None and not window.patch_apply.isEnabled()
+    window.close()
+
+
 def test_old_connection_failure_cannot_clear_new_poll(monkeypatch):
     app = QApplication.instance() or QApplication([])
     window = Console()
