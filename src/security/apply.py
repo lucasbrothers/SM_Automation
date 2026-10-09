@@ -169,7 +169,17 @@ cmp -s "$backup" "$cfg"
     return "sudo -n sh -c " + shlex.quote(script)
 
 
-def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd", allow_includes: bool = False) -> str:
+def _discard_backup_command(backup: str) -> str:
+    if not re.fullmatch(r"/etc/ssh/\.sm_automation\.[A-Za-z0-9]{10}/sshd_config", backup):
+        raise SSHCommandError("Invalid cleanup backup path")
+    directory = backup.rsplit("/", 1)[0]
+    script = "set -eu\n" + f"directory={shlex.quote(directory)}\n"
+    script += '[ -d "$directory" ] && [ ! -L "$directory" ]\n'
+    script += 'rm -f -- "$directory/sshd_config" "$directory/candidate"\nrmdir -- "$directory"\n'
+    return "sudo -n sh -c " + shlex.quote(script)
+
+
+def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd", allow_includes: bool = False, discard_backup: bool = False) -> str:
     """Apply one batch and verify a fresh authenticated connection before success."""
     validate_actions(actions)
     if service_name not in {"ssh", "sshd"}:
@@ -188,9 +198,21 @@ def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], servic
             client.execute(rollback)
         except Exception as rollback_exc:
             raise SSHCommandError(f"Reconnect failed; ROLLBACK FAILED; backup={backup}: {rollback_exc}") from exc
+        if discard_backup:
+            try:
+                client.execute(_discard_backup_command(backup))
+            except Exception as cleanup_exc:
+                raise SSHCommandError(f"Reconnect failed; original configuration restored; temporary cleanup failed; backup={backup}: {cleanup_exc}") from exc
+            raise SSHCommandError("Reconnect failed; original configuration restored; temporary backup removed") from exc
         raise SSHCommandError(f"Reconnect failed; original configuration restored; backup={backup}") from exc
     finally:
         probe.close()
+    if discard_backup:
+        try:
+            client.execute(_discard_backup_command(backup))
+        except Exception as exc:
+            return output + f"\nwarning=Policy applied; temporary backup cleanup failed: {str(exc)[:500]}\n"
+        return f"digest={digest}\ntemporary_backup=removed\n"
     return output
 
 

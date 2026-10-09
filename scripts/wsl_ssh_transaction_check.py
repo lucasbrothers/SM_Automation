@@ -26,7 +26,10 @@ def main():
                                config, EncryptedStore(config.backup_directory, config.key_file), uuid.uuid4().hex)
         assert before["status"] == "completed", before["status"]
         actions = [{"type": "set_sshd_option", "parameter": "pubkeyauthentication", "current": "yes", "recommended": "yes"}]
-        apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True)
+        existing = set(Path("/etc/ssh").glob(".sm_automation.*"))
+        output = apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True, discard_backup=True)
+        assert "temporary_backup=removed" in output
+        assert set(Path("/etc/ssh").glob(".sm_automation.*")) == existing
         print("PASS: encrypted backup, Include-preserving write, ssh reload and fresh key connection")
         digest = hashlib.sha256(Path("/etc/ssh/sshd_config").read_bytes()).digest()
         original = apply.SSHClient
@@ -40,7 +43,7 @@ def main():
         apply.SSHClient = FailedProbe
         try:
             try:
-                apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True)
+                apply.apply_sshd_settings(client, actions, service_name="ssh", allow_includes=True, discard_backup=True)
             except SSHCommandError as exc:
                 assert "original configuration restored" in str(exc)
             else:
@@ -48,6 +51,7 @@ def main():
         finally:
             apply.SSHClient = original
         assert hashlib.sha256(Path("/etc/ssh/sshd_config").read_bytes()).digest() == digest
+        assert set(Path("/etc/ssh").glob(".sm_automation.*")) == existing
         client.execute("sshd -t && systemctl is-active ssh")
         probe = SSHClient("wsl-ubuntu", "127.0.0.1", user="root", key_filename=config.ssh_key_file)
         try:
