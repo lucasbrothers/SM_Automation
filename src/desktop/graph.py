@@ -86,9 +86,11 @@ class ConnectionMap(QGraphicsView):
                 self.edge(host, node, "#e9c0bc")
             elif not shown:
                 cancelled = row.get("status") == "cancelled"
-                node = self.card(660, y, "Collection cancelled" if cancelled else "No established connections",
-                                 "Target was not collected" if cancelled else "Successful snapshot / 0 TCP peers",
-                                 "#b45309" if cancelled else "#12a58b", 230)
+                complete = row.get("status") == "completed" and not row.get("result", {}).get("truncated")
+                title = "No established connections" if complete else ("Collection cancelled" if cancelled else "Incomplete snapshot")
+                node = self.card(660, y, title,
+                                 "Successful snapshot / 0 TCP peers" if complete else "No complete connection result",
+                                 "#12a58b" if complete else "#b45309", 230)
                 self.edge(host, node)
             for index, (peer, connections) in enumerate(shown):
                 ports = ", ".join(sorted({item["remote"]["port"] for item in connections}))
@@ -96,7 +98,7 @@ class ConnectionMap(QGraphicsView):
                                  f"{len(connections)} TCP  /  ports {ports}", "#12a58b", 230)
                 self.edge(host, node)
             y += block_height + 45
-        center = self.card(20, y / 2 - 55, "ESTABLISHED", f"{len(rows)} selected servers", "#8059d5", 205)
+        center = self.card(20, y / 2 - 55, "ESTABLISHED", f"{len(rows)} servers in view", "#8059d5", 205)
         for anchor in anchors:
             self.edge(center, anchor, "#acc4ef")
         if omitted:

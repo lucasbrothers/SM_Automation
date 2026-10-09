@@ -73,4 +73,5 @@ def test_connection_map_marks_capture_limit():
                         "result": {"connections": [], "truncated": True}}])
     labels = [item.text() for item in graph.scene().items() if hasattr(item, "text")]
     assert "Capture limit reached: incomplete snapshot" in labels
+    assert "Successful snapshot / 0 TCP peers" not in labels
     graph.close()
