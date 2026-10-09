@@ -71,7 +71,7 @@ class ManagementService:
         self.closed = False
         self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="management")
         # Retain past output on disk; never repeat interrupted remote work automatically.
-        for path in sorted(self.data.root.glob("jobs/*.json.enc"), key=lambda p: p.stat().st_mtime, reverse=True)[:100]:
+        for path in sorted(self.data.root.glob("jobs/*.json.enc"), key=lambda p: p.stat().st_mtime, reverse=True):
             job = self.data.read_json(str(path.relative_to(self.data.root)))
             if job["status"] in {"queued", "running"}:
                 job.update(status="interrupted", message="Server restarted; inspect partial artifacts before retrying", finished_at=now())
