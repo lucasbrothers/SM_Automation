@@ -537,3 +537,8 @@ WSL 백업 관련 회귀 확인 9개 통과. 실제 Windows SSH 실행은 검증
 
 생성된 Windows 백업 명령 10개를 PowerShell 파서로 검사해 문법 오류가 없음을 확인했다. 명령 자체는 실행하지 않았고 Windows 관리 대상에 접속하지 않았다.
 최신 Windows 프로필 코드는 Linux WSL 작업본에 동기화되어 있으며 메인 서비스를 재시작했다. 실제 Windows SSH 수집 검증과는 구분한다.
+
+## 2026-10-09 Linux 주요 설정 백업 범위 보완
+
+APT/dpkg 저장소·기본 서비스 옵션·커널 모듈/udev·chrony·nftables·호스트명/시간대 경로 11개를 추가했다. 없는 경로는 기존 선택 경로 경고로 남긴다.
+WSL에 반영하고 실제 TLS 백업에서 etc/apt와 etc/hostname 포함을 확인했다. 백업 11개 항목과 연결·자원·SSH 진단/계획 흐름 통과.

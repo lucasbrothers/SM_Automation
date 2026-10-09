@@ -15,6 +15,9 @@ LINUX_PATHS = [
     "/etc/redhat-release", "/etc/sysconfig", "/etc/selinux", "/etc/authselect",
     "/etc/crypto-policies", "/etc/firewalld", "/etc/yum.repos.d", "/etc/dnf", "/etc/yum.conf",
     "/etc/sssd", "/etc/krb5.conf", "/etc/krb5.conf.d", "/etc/sudo.conf", "/etc/sudo_logsrvd.conf",
+    "/etc/apt", "/etc/dpkg", "/etc/default", "/etc/modprobe.d", "/etc/modules-load.d",
+    "/etc/chrony", "/etc/nftables.conf", "/etc/hostname", "/etc/timezone", "/etc/localtime",
+    "/etc/udev/rules.d",
 ]
 AIX_PATHS = [
     "/etc/passwd", "/etc/group", "/etc/security", "/etc/sudoers", "/etc/sudoers.d",

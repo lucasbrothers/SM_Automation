@@ -80,6 +80,7 @@ def main():
                 assert "root" in preview["text"]
                 archive = next(item for item in artifacts if item["name"] == "configuration_files")
                 contents = client.call("backup.contents", path=archive["path"])
+                assert "etc/apt" in contents["text"] and "etc/hostname" in contents["text"]
                 assert "etc/sudoers" in contents["text"]
                 print(f"PASS: backup artifacts={len(artifacts)}, status={job['status']}, expiry preview readable")
             else:
