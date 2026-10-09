@@ -106,11 +106,14 @@ def make_plan(client, packages, mode):
         pins.append(name + "=" + version)
         selected.append({"name": name, "installed": installed[1], "candidate": version})
     operations, output = simulate(client, pins, mode)
-    return {"action": "plan", "pins": pins, "packages": selected, "operations": operations, "output": output}
+    return {"action": "plan", "manager": "apt", "pins": pins, "packages": selected, "operations": operations, "output": output}
 
 
 def apply_plan(client, plan, mode):
-    if plan.get("manager") == "dnf":
+    expected = plan.get("manager", "apt")
+    if expected not in {"apt", "dnf"} or package_manager(client) != expected:
+        raise ValueError("Package manager changed since planning; create a fresh plan")
+    if expected == "dnf":
         from patch.rpm_plan import apply_plan as rpm_apply
         return rpm_apply(client, plan, mode)
     operations, _ = simulate(client, plan["pins"], mode)

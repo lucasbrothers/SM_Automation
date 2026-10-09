@@ -19,6 +19,7 @@ def test_invalid_apply_id():
 
 
 def test_changed_plan_never_installs(monkeypatch):
+    monkeypatch.setattr(manager, "package_manager", lambda client: "apt")
     monkeypatch.setattr(manager, "simulate", lambda *args: ([{"name": "changed"}], ""))
     monkeypatch.setattr(manager, "execute", lambda *args, **kwargs: pytest.fail("Install must not run"))
     with pytest.raises(ValueError, match="state changed"):
@@ -29,3 +30,12 @@ def test_simulation_removal_rejected(monkeypatch):
     monkeypatch.setattr(manager, "execute", lambda *args: "Remv important-package [1]")
     with pytest.raises(ValueError, match="removals"):
         manager.simulate(None, ["net-tools=1"], "direct")
+
+
+@pytest.mark.parametrize("planned,current", [("apt", "dnf"), ("dnf", "apt"), ("unknown", "apt")])
+def test_changed_manager_never_simulates_or_installs(monkeypatch, planned, current):
+    monkeypatch.setattr(manager, "package_manager", lambda client: current)
+    monkeypatch.setattr(manager, "simulate", lambda *args: pytest.fail("Simulation must not run"))
+    monkeypatch.setattr(manager, "execute", lambda *args, **kwargs: pytest.fail("Install must not run"))
+    with pytest.raises(ValueError, match="manager changed"):
+        manager.apply_plan(None, {"manager": planned}, "direct")
