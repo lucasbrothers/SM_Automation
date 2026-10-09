@@ -20,6 +20,9 @@ def test_recovery_details_prevent_desktop_job_submission(monkeypatch):
     window.start_job("backup")
     assert "damaged.json.enc: InvalidToken" in messages[0]
     client.call.assert_not_called()
+    window.navigate(1)
+    assert "history recovery required" in window.subtitle.text()
+    assert "damaged.json.enc" in window.subtitle.toolTip()
     window.disconnect_server()
     assert not window.history_errors and not window.subtitle.toolTip()
     window.close()

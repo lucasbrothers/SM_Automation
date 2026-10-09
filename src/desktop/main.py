@@ -570,6 +570,8 @@ class Console(QMainWindow):
                         "Encrypted Linux schedules continue independently of your Windows console.",
                         "Linux collects load, memory and root disk observations over SSH."]
         self.subtitle.setText(descriptions[index])
+        if self.history_errors:
+            self.subtitle.setText(f"Linux history recovery required: {len(self.history_errors)} unreadable records. New operations are disabled.")
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
         if index == 1:
