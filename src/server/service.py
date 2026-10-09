@@ -139,6 +139,8 @@ class ManagementService:
                     raise ValueError("Invalid stored job record")
                 if any(field in job and not isinstance(job[field], list) for field in ("results", "targets")):
                     raise ValueError("Invalid stored job collections")
+                if not all(field in job for field in ("done", "total", "results")):
+                    raise ValueError("Stored job is missing required progress or results")
                 if job["status"] not in {"queued", "running", "completed", "partial", "failed", "cancelled", "interrupted"}:
                     raise ValueError("Invalid stored job status")
                 for field in ("done", "total", "failed", "partial", "cancelled"):

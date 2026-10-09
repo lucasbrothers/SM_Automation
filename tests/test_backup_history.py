@@ -13,7 +13,7 @@ def service():
     instance.lock = threading.RLock()
     instance.summary = lambda job: job
     instance.jobs = {str(index): {"id": str(index), "created_at": f"{index:05d}",
-                                "kind": "backup" if index < 120 else "monitoring"}
+                                "kind": "backup" if index < 120 else "monitoring", "done": 0, "total": 0, "results": []}
                      for index in range(250)}
     return instance
 
@@ -59,7 +59,7 @@ def test_damaged_history_preserved_and_operations_blocked(tmp_path, monkeypatch)
     config = SimpleNamespace(data_directory=tmp_path / "DATA", backup_directory=tmp_path / "BACKUP",
                              key_file=key, ssh_profiles_file=tmp_path / "absent-profiles.json")
     store = EncryptedStore(config.data_directory, key)
-    store.write_json("jobs/good.json.enc", {"id": "good", "kind": "backup", "status": "completed", "created_at": "2026"})
+    store.write_json("jobs/good.json.enc", {"id": "good", "kind": "backup", "status": "completed", "created_at": "2026", "done": 0, "total": 0, "results": []})
     damaged = store.path("jobs/damaged.json.enc")
     damaged.write_bytes(b"damaged ciphertext")
     monkeypatch.setattr("server.service.Scheduler", lambda service: Mock())
@@ -76,21 +76,25 @@ def test_damaged_history_preserved_and_operations_blocked(tmp_path, monkeypatch)
 
 @pytest.mark.parametrize("field,value", [("status", []), ("created_at", 42), ("kind", None),
                                         ("results", {}), ("targets", "invalid"), ("done", -1),
-                                        ("total", True), ("failed", "1"), ("message", {}), ("status", "unknown")])
+                                        ("total", True), ("failed", "1"), ("message", {}), ("status", "unknown"),
+                                        ("done", "__missing__"), ("total", "__missing__"), ("results", "__missing__")])
 def test_malformed_history_is_preserved_without_breaking_startup(tmp_path, monkeypatch, field, value):
     key = tmp_path / "master.key"
     key.write_bytes(Fernet.generate_key()); key.chmod(0o600)
     config = SimpleNamespace(data_directory=tmp_path / "DATA", backup_directory=tmp_path / "BACKUP",
                              key_file=key, ssh_profiles_file=tmp_path / "absent-profiles.json")
     store = EncryptedStore(config.data_directory, key)
-    good = {"id": "good", "kind": "backup", "status": "completed", "created_at": "2026"}
+    good = {"id": "good", "kind": "backup", "status": "completed", "created_at": "2026", "done": 0, "total": 0, "results": []}
     store.write_json("jobs/good.json.enc", good)
-    store.write_json("jobs/bad.json.enc", {**good, "id": "bad", field: value})
+    bad = {**good, "id": "bad", field: value}
+    if value == "__missing__":
+        del bad[field]
+    store.write_json("jobs/bad.json.enc", bad)
     original = store.path("jobs/bad.json.enc").read_bytes()
     monkeypatch.setattr("server.service.Scheduler", lambda service: Mock())
     restored = ManagementService(config)
     try:
-        assert restored.dispatch("job.list", {}) == [good]
+        assert restored.dispatch("job.list", {}) == [{key: value for key, value in good.items() if key != "results"}]
         assert restored.history_errors == [{"file": "bad.json.enc", "error": "ValueError"}]
         with pytest.raises(RuntimeError, match="recovery required"):
             restored.submit("backup", [])
