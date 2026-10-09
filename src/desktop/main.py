@@ -170,9 +170,11 @@ class Console(QMainWindow):
         self.resize(1460, 920); self.setMinimumSize(1120, 760)
         self.client = None; self.demo = demo; self.servers = []; self.jobs = []; self.connection_results = []
         self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
+        self.resource_loaded_job = None
         self.workers = set()
         self.build_ui()
         self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(3000)
+        self.resource_timer = QTimer(self); self.resource_timer.timeout.connect(self.refresh_resources); self.resource_timer.setInterval(30000)
         if demo:
             self.load_demo()
 
@@ -183,7 +185,7 @@ class Console(QMainWindow):
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
-        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules"]):
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules", "08   Resources"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
         nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
@@ -209,7 +211,7 @@ class Console(QMainWindow):
             self.metric_values.append(number)
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
-        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules()
+        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules(); self.build_resources()
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
@@ -220,7 +222,7 @@ class Console(QMainWindow):
         actions = QHBoxLayout()
         actions.addWidget(button("Manage inventory", self.edit_inventory)); actions.addWidget(button("Import CSV", self.import_csv))
         actions.addWidget(button("Refresh", self.reload)); actions.addStretch()
-        actions.addWidget(button("Resource snapshot", lambda: self.start_job("monitoring")))
+        actions.addWidget(button("Resource snapshot", lambda: (self.navigate(7), self.start_job("monitoring"))))
         actions.addWidget(button("Security audit", lambda: self.start_job("security_audit")))
         actions.addWidget(button("Protect SSH config (600)", lambda: self.start_job("security_permissions")))
         actions.addWidget(button("Preview SSH policy", lambda: self.start_job("security_plan")))
@@ -228,6 +230,58 @@ class Console(QMainWindow):
         self.inventory_table = table(["Hostname", "IP address", "Operating system", "Execution"]); body.addWidget(self.inventory_table)
         body.addWidget(label("Inventory changes and collection results are stored encrypted on Linux.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
+
+    def build_resources(self):
+        page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
+        body.addWidget(label("Linux resource snapshots", "section"))
+        actions = QHBoxLayout()
+        actions.addWidget(button("Collect resources", lambda: self.start_job("monitoring"), True))
+        self.resource_auto = QCheckBox("Refresh every 30 seconds while this console is open")
+        def auto(enabled):
+            if enabled:
+                self.resource_timer.start(); self.refresh_resources()
+            else:
+                self.resource_timer.stop()
+        self.resource_auto.toggled.connect(auto); actions.addWidget(self.resource_auto); actions.addStretch()
+        body.addLayout(actions)
+        self.resource_updated = label("No resource snapshot loaded", "subtitle"); body.addWidget(self.resource_updated)
+        self.resource_table = table(["Server", "Load (1 / 5 / 15 min)", "Memory used", "Root disk used", "Uptime / status"])
+        body.addWidget(self.resource_table, 1)
+        note = label("Targets follow Connection map selection. Automatic refresh waits while another job is running. Load is not CPU utilization.", "subtitle")
+        note.setWordWrap(True); body.addWidget(note)
+        layout.addWidget(frame); self.pages.addWidget(page)
+
+    def refresh_resources(self):
+        if not self.client or self.demo or not self.checked_hosts():
+            return
+        if any(job["status"] in {"queued", "running"} for job in self.jobs):
+            return
+        self.start_job("monitoring")
+
+    def display_resources(self, rows, observed_at=""):
+        values = []
+        for row in rows:
+            result = row.get("result", {})
+            if row.get("status") != "completed":
+                values.append([row["hostname"], "Unavailable", "", "", row.get("error", row["status"])]); continue
+            memory = result.get("memory_mb", {}); filesystem = result.get("root_filesystem", {})
+            total, used = memory.get("total", 0), memory.get("used", 0)
+            percentage = round(100 * used / total) if total else 0
+            values.append([row["hostname"], " / ".join(f"{value:.2f}" for value in result.get("load_average", [])),
+                           f"{percentage}% ({used:,} / {total:,} MiB)", filesystem.get("capacity", "Unavailable"), result.get("uptime", "Unavailable")])
+        fill_table(self.resource_table, values)
+        for index, row in enumerate(rows):
+            if row.get("status") != "completed":
+                continue
+            result = row.get("result", {}); memory = result.get("memory_mb", {})
+            for column, value in [(2, round(100 * memory.get("used", 0) / max(1, memory.get("total", 0)))),
+                                  (3, int(result.get("root_filesystem", {}).get("capacity", "0%").rstrip("%")))]:
+                progress = QProgressBar(); progress.setRange(0, 100); progress.setValue(max(0, min(100, value)))
+                progress.setFormat(values[index][column]); progress.setToolTip(values[index][column])
+                if value >= 90:
+                    progress.setStyleSheet("QProgressBar::chunk { background: #d95f4a; }")
+                self.resource_table.setCellWidget(index, column, progress)
+        self.resource_updated.setText("Snapshot collected: " + (observed_at or "synthetic preview"))
 
     def build_network(self):
         page = QWidget(); layout = QHBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(16)
@@ -441,7 +495,7 @@ class Console(QMainWindow):
 
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
                         "Selected servers and their established TCP peers. All collection runs on Linux.",
@@ -449,7 +503,8 @@ class Console(QMainWindow):
                         "Follow server-side jobs and inspect their results, even after reconnecting.",
                         "Account changes run on Linux after an encrypted backup.",
                         "Preview exact versions, then apply the reviewed plan from your Linux main server.",
-                        "Encrypted Linux schedules continue independently of your Windows console."]
+                        "Encrypted Linux schedules continue independently of your Windows console.",
+                        "Linux collects load, memory and root disk observations over SSH."]
         self.subtitle.setText(descriptions[index])
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
@@ -490,6 +545,7 @@ class Console(QMainWindow):
     def attach_client(self, client, status):
         settings = client.settings
         self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
+        self.resource_loaded_job = None
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
         self.connection_badge.setText("CONNECTED  /  TLS")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
@@ -503,6 +559,8 @@ class Console(QMainWindow):
         if self.demo:
             return
         self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
+        self.resource_auto.setChecked(False); self.resource_loaded_job = None
+        self.resource_table.setRowCount(0); self.resource_updated.setText("No resource snapshot loaded")
         self.connection_results = []; self.jobs = []; self.set_inventory([]); self.update_map(); self.set_jobs([])
         self.metric_values[2].setText("—"); self.progress.setValue(0)
         self.server_badge.setText("Not connected"); self.connection_badge.setText("OFFLINE")
@@ -595,6 +653,10 @@ class Console(QMainWindow):
         self.poll_busy = False; self.jobs = jobs
         fill_table(self.jobs_table, [[j["created_at"][11:19], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
         self.backup_jobs = [j for j in jobs if j["kind"] == "backup"]
+        resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
+        if resource and resource["id"] != self.resource_loaded_job and self.client:
+            self.resource_loaded_job = resource["id"]; client = self.client
+            self.work(lambda: client.results(resource["id"]), lambda rows: self.display_resources(rows, resource.get("finished_at", resource["created_at"])), quiet=True)
         fill_table(self.backup_table, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
         active = next((j for j in jobs if j["id"] == self.active_job), None)
         if active:
@@ -643,6 +705,8 @@ class Console(QMainWindow):
                 self.display_connections(rows); return
             if job.get("kind") == "backup":
                 self.show_backup_results(rows); return
+            if job.get("kind") == "monitoring":
+                self.display_resources(rows, job.get("finished_at", job.get("created_at", ""))); self.navigate(7); return
             if job.get("kind") == "security_audit":
                 from desktop.security import audit_rows
                 dialog = QDialog(self); dialog.setWindowTitle("Linux security observations"); dialog.resize(980, 560)
@@ -722,6 +786,10 @@ class Console(QMainWindow):
         self.connection_badge.setText("DEMO  /  SYNTHETIC DATA")
         self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
         self.display_connections(connection_rows())
+        self.display_resources([
+            {"hostname": "app-linux-01", "status": "completed", "result": {"load_average": [0.42, 0.31, 0.28], "memory_mb": {"used": 5930, "total": 16384}, "root_filesystem": {"capacity": "47%"}, "uptime": "up 12 days, 3 hours"}},
+            {"hostname": "db-linux-01", "status": "completed", "result": {"load_average": [1.81, 1.64, 1.52], "memory_mb": {"used": 29492, "total": 32768}, "root_filesystem": {"capacity": "92%"}, "uptime": "up 31 days, 7 hours"}},
+        ])
         fill_table(self.account_table, [["app-linux-01", "ops_example", "2001", "2001", "SR2026-2026-10-08-Example Operator", "/home/ops_example", "/bin/bash"]])
         self.account_action.setCurrentIndex(1)
         for name, value in {"username": "ops_example", "sr": "SR2026", "full_name": "Example Operator", "uid": "2001"}.items():
@@ -739,7 +807,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "security"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources", "security"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -751,7 +819,7 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules"].index(args.page) if args.page != "security" else 3)
+        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources"].index(args.page) if args.page != "security" else 3)
     preview = window
     if args.page == "security" and (args.demo or args.mockup):
         preview = window.security_plan_dialog([

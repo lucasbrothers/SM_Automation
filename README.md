@@ -29,7 +29,8 @@ Windows는 대상 선택, 요청 전송, 진행 상황과 결과 표시만 합�
 - 기존 Linux 자원 수집 및 보안 감사 호출
 - Linux 계정 관리·공개키 등록, Debian/Ubuntu 패치 계획·적용, 예약 수집/백업
 - SSH 정책 계획·암호화 백업 후 적용·재접속 실패 복구
-- Windows 데스크톱 GUI: Overview, Connection map, Backups, Activity
+- Windows 데스크톱 GUI: Overview, Connection map, Backups, Activity, Accounts, Patches, Schedules, Resources
+- Linux 부하·메모리·디스크 자원 화면과 선택적 30초 갱신
 
 ## 시작 안내
 
@@ -61,6 +62,7 @@ py -3.14 -m venv .venv-gui
 ![Patches](docs/images/desktop-patches.png)
 ![Schedules](docs/images/desktop-schedules.png)
 ![SSH policy plan](docs/images/desktop-security-plan.png)
+![Resources](docs/images/desktop-resources.png)
 
 ## 검증 상태
 

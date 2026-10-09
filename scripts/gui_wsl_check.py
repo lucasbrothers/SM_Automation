@@ -91,8 +91,18 @@ def main():
                     assert not apply_button.isEnabled()
                     dialog.close()
                     print("PASS: native SSH plan table and selection mismatch protection")
-                    passed[0] = True; app.quit()
+                    window.select_all.setChecked(True)
+                    window.navigate(7); window.start_job("monitoring"); stage[0] = 8
                 window.work(lambda: window.client.results(window.active_job), check_plan)
+            elif stage[0] == 8 and window.resource_loaded_job == window.active_job and window.resource_table.rowCount():
+                assert window.resource_table.cellWidget(0, 2) is not None
+                assert window.resource_table.cellWidget(0, 3) is not None
+                window.resource_auto.setChecked(True)
+                assert window.resource_timer.isActive()
+                window.resource_auto.setChecked(False)
+                assert not window.resource_timer.isActive()
+                print("PASS: native resource metrics, memory/disk bars and automatic refresh control")
+                passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
         return 0 if passed[0] else (result or 1)

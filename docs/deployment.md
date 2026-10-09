@@ -81,6 +81,8 @@ sudo systemctl status sm-automation
 .venv-gui/Scripts/python.exe scripts/run_desktop.py --demo
 .venv-gui/Scripts/python.exe scripts/run_desktop.py --mockup docs/images/desktop-connection-map.png
 .venv-gui/Scripts/python.exe scripts/run_desktop.py --page backups --mockup docs/images/desktop-backups.png
+.venv-gui/Scripts/python.exe scripts/run_desktop.py --page resources --mockup docs/images/desktop-resources.png
+.venv-gui/Scripts/python.exe scripts/run_desktop.py --page security --mockup docs/images/desktop-security-plan.png
 ```
 
 데모 모드는 실제 서버 접속과 작업 실행을 하지 않는다. PNG는 예시 데이터를 사용한다.
