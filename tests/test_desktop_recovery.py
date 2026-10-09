@@ -7,6 +7,23 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+def test_old_connection_failure_cannot_clear_new_poll(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    from PySide6.QtCore import QThreadPool
+    pending = []
+    monkeypatch.setattr(QThreadPool, "start", lambda pool, worker: pending.append(worker))
+    window.work(lambda: None, lambda result: None, quiet=True)
+    window.epoch += 1
+    window.poll_busy = True
+    window.status_line.setText("New connection polling")
+    pending[0].signals.error.emit("Old connection lost")
+    assert window.poll_busy
+    assert window.status_line.text() == "New connection polling"
+    assert not window.workers
+    window.close()
+
+
 @pytest.mark.parametrize("kind", ["connections", "accounts", "patches", "monitoring"])
 def test_result_read_failure_retries_without_resubmitting_job(monkeypatch, kind):
     app = QApplication.instance() or QApplication([])

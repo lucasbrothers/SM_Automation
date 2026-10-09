@@ -587,9 +587,10 @@ class Console(QMainWindow):
             if epoch == self.epoch:
                 done(result)
         def failure(message):
-            self.workers.discard(worker); self.poll_busy = False
+            self.workers.discard(worker)
             if epoch != self.epoch:
                 return
+            self.poll_busy = False
             if on_error:
                 on_error()
             self.status_line.setText("Request failed: " + message[:160])
