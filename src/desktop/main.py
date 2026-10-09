@@ -151,11 +151,13 @@ class ConnectDialog(QDialog):
 
 class InventoryDialog(QDialog):
     def __init__(self, parent, rows, profiles=None):
-        super().__init__(parent); self.setWindowTitle("Manage server inventory"); self.resize(680, 450)
+        super().__init__(parent); self.setWindowTitle("Manage server inventory"); self.resize(960, 520)
         layout = QVBoxLayout(self)
         layout.addWidget(label("Saved encrypted on the Linux main server.", "subtitle"))
+        layout.addWidget(label("Double-click hostname, IP or OS to edit. Choose an SSH profile configured on Linux.", "subtitle"))
         self.grid = table(["Hostname", "IP address", "Operating system", "SSH profile"])
         self.grid.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        self.grid.verticalHeader().setDefaultSectionSize(44)
         self.profiles = sorted(set(profiles or ["default"]) | {"default"})
         fill_table(self.grid, [[r["hostname"], r["ip"], r["os"], r.get("profile", "default")] for r in rows]); layout.addWidget(self.grid)
         for index, row in enumerate(rows):
@@ -924,7 +926,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources", "security", "backup-details"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources", "security", "backup-details", "inventory"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -936,8 +938,16 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources"].index(args.page) if args.page not in {"security", "backup-details"} else 3)
+        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources"].index(args.page) if args.page not in {"security", "backup-details", "inventory"} else 3)
     preview = window
+    if args.page == "inventory" and (args.demo or args.mockup):
+        preview = InventoryDialog(window, [
+            {"hostname": "app-rhel-01", "ip": "192.0.2.11", "os": "RHEL 9", "profile": "unix-admin"},
+            {"hostname": "app-ubuntu-01", "ip": "192.0.2.21", "os": "Ubuntu 24.04", "profile": "default"},
+            {"hostname": "app-windows-01", "ip": "192.0.2.31", "os": "Windows 2022", "profile": "windows-admin"},
+            {"hostname": "legacy-aix-01", "ip": "192.0.2.41", "os": "AIX 7.3", "profile": "old-profile"},
+        ], ["default", "unix-admin", "windows-admin"])
+        preview.show()
     if args.page == "backup-details" and (args.demo or args.mockup):
         prefix = "2026-10-09/app-rhel-01/synthetic-run"
         preview = window.backup_results_dialog([{
