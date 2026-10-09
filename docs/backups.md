@@ -78,3 +78,5 @@ Linux의 cron.hourly/daily/weekly/monthly와 anacrontab을 수집하며 /etc/sys
 Linux 저장장치/부팅 설정은 LVM·multipath·mdadm·dracut·crypttab·modules 경로도 포함한다. 이 구성 파일의 백업은 전체 디스크나 부팅 이미지의 복원을 의미하지 않는다.
 
 Linux의 firewall 명령 항목은 nft list ruleset 및 iptables-save/ip6tables-save로 현재 규칙을 읽는다. 도구 부재는 선택 도구 경고로 보존하고 전부 없으면 부분 완료다. 실행 실패와 stderr 진단은 부분 완료로 남기며 metadata에서 원문을 읽는다. 서비스 시작 및 규칙 적용/복원은 수행하지 않는다.
+
+nft 규칙은 -j list ruleset의 JSON 형식으로 저장한다. iptables-save 출력과 도구별 제목을 함께 보존하므로 firewall.txt.enc 전체는 JSON 문서가 아닌 구분된 명령 출력이다.

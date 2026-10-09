@@ -59,7 +59,7 @@ def command_group(*steps: str) -> str:
 def firewall_commands() -> str:
     """Read kernel rules without changing the firewall or starting services."""
     lines = ["export LC_ALL=C; failed=0; available=0"]
-    for tool, arguments in [("nft", "list ruleset"), ("iptables-save", ""), ("ip6tables-save", "")]:
+    for tool, arguments in [("nft", "-j list ruleset"), ("iptables-save", ""), ("ip6tables-save", "")]:
         lines.append(
             f"if command -v {tool} >/dev/null 2>&1; then available=1; "
             f"printf '\\n===== {tool} =====\\n'; {tool} {arguments} || failed=1; "

@@ -573,3 +573,8 @@ WSL 동기화/서비스 재시작 후 실제 TLS 통합 확인에서 백업 11�
 nft list ruleset, iptables-save, ip6tables-save의 출력은 firewall.txt.enc에 수집한다. 방화벽 변경이나 서비스 시작은 수행하지 않는다.
 없는 도구는 Missing optional tool 경고이며, 모든 도구가 없거나 실행 실패하면 완료로 처리하지 않는다. stderr 원문은 암호화 metadata에 보존한다.
 로컬 WSL 명령/진단 확인 12개 통과. 실제 TLS 백업 12개 항목과 GUI 통합 확인 통과. nft의 iptables-nft 관리 테이블 진단 때문에 firewall 및 전체 백업은 partial이며 나머지 11개 항목은 completed였다. 실제 RHEL 검증은 수행하지 않았다.
+
+## 2026-10-09 nft JSON 출력 후속 확인
+
+nft는 -j list ruleset으로 규칙을 JSON 형식으로 수집한다. 기존 텍스트 출력의 iptables-nft 관리 테이블 안내를 피하면서 실제 실패/stderr 진단은 그대로 보존한다.
+관련 검증 12개 및 실제 WSL TLS 통합 확인 통과. 최신 백업은 12개 항목 모두 completed였다. 앞선 partial 기록은 이전 텍스트 출력 단계의 결과다.

@@ -107,3 +107,5 @@ Linux 백업에 APT/dpkg·시간대·모듈/udev·주기별 cron·systemd 전역
 
 Linux 백업에 현재 nft/IPv4·IPv6 iptables 규칙을 추가했다. 없는 도구와 수집 실패를 구분하며 전체 도구 부재는 성공으로 처리하지 않는다.
 실제 WSL TLS/GUI 검증 통과. 백업은 12개 항목이며 nft 진단이 있는 경우 부분 완료와 원문을 보존한다. GUI 검증은 고정 항목 수 대신 실제 결과와 firewall 존재를 확인한다.
+
+방화벽 후속 수정: nft -j list ruleset으로 JSON 규칙을 저장한다. 최신 WSL 실제 백업 12개 항목 모두 completed이며 앞선 partial은 이전 텍스트 출력의 진단 결과다. 실제 명령 실패는 계속 부분 완료로 보존한다.
