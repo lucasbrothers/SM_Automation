@@ -767,11 +767,16 @@ class Console(QMainWindow):
         return dialog
 
     def show_backup_results(self, rows):
+        self.backup_results_dialog(rows).exec()
+
+    def backup_results_dialog(self, rows):
         dialog = QDialog(self); dialog.setWindowTitle("Backup artifacts on Linux"); dialog.resize(1060, 720)
         layout = QVBoxLayout(dialog)
         layout.addWidget(label("Browse encrypted backups", "section"))
         layout.addWidget(label("Double-click an artifact to preview text or list archive files. Decryption runs on Linux.", "subtitle"))
         tree = QTreeWidget(); tree.setHeaderLabels(["Server / artifact", "Status", "Size", "Linux storage path"])
+        tree.setStyleSheet("QTreeWidget { background: white; color: #20354d; alternate-background-color: #f4f7fb; } QTreeWidget::item:selected { background: #dbeafe; color: #172d48; }")
+        tree.setAlternatingRowColors(True)
         tree.setColumnWidth(0, 260); tree.setColumnWidth(1, 100); tree.setColumnWidth(2, 90)
         for row in rows:
             result = row.get("result", {})
@@ -782,6 +787,24 @@ class Console(QMainWindow):
                 item = QTreeWidgetItem([artifact["name"], artifact["status"],
                                         f"{artifact.get('size', 0):,} B", path or artifact.get("error", "")])
                 item.setData(0, Qt.ItemDataRole.UserRole, path); parent.addChild(item)
+                details = []
+                if "exit_code" in artifact:
+                    details.append(f"Command exit code: {artifact['exit_code']}")
+                if artifact.get("error"):
+                    details.append("Collection error: " + artifact["error"])
+                details.extend(artifact.get("warnings", []))
+                for detail in details:
+                    child = QTreeWidgetItem([detail, "", "", ""])
+                    child.setToolTip(0, detail)
+                    item.addChild(child)
+                if path:
+                    metadata = path.rsplit("/", 1)[0] + "/" + artifact["name"] + ".metadata.json.enc"
+                    child = QTreeWidgetItem(["Command details and diagnostic output", "", "", metadata])
+                    child.setData(0, Qt.ItemDataRole.UserRole, metadata)
+                    item.addChild(child)
+                if artifact["status"] != "completed":
+                    item.setExpanded(True)
+                    item.setForeground(1, QColor("#b45309"))
             parent.setExpanded(True)
         layout.addWidget(tree, 2)
         preview = QPlainTextEdit(); preview.setReadOnly(True)
@@ -802,7 +825,8 @@ class Console(QMainWindow):
             method = "backup.contents" if path.endswith(".tar.enc") else "backup.preview"
             self.work(lambda: client.call(method, path=path), loaded)
         tree.itemDoubleClicked.connect(view)
-        layout.addWidget(button("Close", dialog.accept)); dialog.exec()
+        layout.addWidget(button("Close", dialog.accept))
+        return dialog
 
     def load_demo(self):
         from desktop.demo import SERVERS, connection_rows
@@ -834,7 +858,7 @@ class Console(QMainWindow):
 def main():
     parser = argparse.ArgumentParser(description="SM Automation native desktop console")
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources", "security"], default="connections")
+    parser.add_argument("--page", choices=["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources", "security", "backup-details"], default="connections")
     parser.add_argument("--mockup", type=Path, help="Render synthetic demo to PNG without connecting to any server")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
@@ -846,8 +870,22 @@ def main():
     app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
-        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources"].index(args.page) if args.page != "security" else 3)
+        window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources"].index(args.page) if args.page not in {"security", "backup-details"} else 3)
     preview = window
+    if args.page == "backup-details" and (args.demo or args.mockup):
+        prefix = "2026-10-09/app-rhel-01/synthetic-run"
+        preview = window.backup_results_dialog([{
+            "hostname": "app-rhel-01", "status": "partial", "result": {"directory": "BACKUP/" + prefix,
+            "artifacts": [
+                {"name": "configuration_files", "status": "completed", "size": 204800,
+                 "path": prefix + "/configuration_files.tar.enc", "exit_code": 0,
+                 "warnings": ["Missing optional path: /etc/netplan"]},
+                {"name": "network", "status": "partial", "size": 4096,
+                 "path": prefix + "/network.txt.enc", "exit_code": 1},
+                {"name": "account_expiry_chage", "status": "failed",
+                 "error": "Synthetic example: remote command timed out"},
+            ]}}])
+        preview.show()
     if args.page == "security" and (args.demo or args.mockup):
         preview = window.security_plan_dialog([
             {"hostname": "app-linux-01", "status": "completed", "result": {
