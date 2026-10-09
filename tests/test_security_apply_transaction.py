@@ -14,6 +14,12 @@ from engine.ssh import SSHClient, SSHCommandError
 from security.apply import apply_sshd_settings, build_sshd_apply_batch_command, validate_plan, _rollback_command
 
 
+@pytest.mark.parametrize("operating_system", ["Red Hat Enterprise Linux 9", "redhat", "RHEL 8.10", "Ubuntu 26.04"])
+def test_plan_accepts_supported_linux_inventory_names(operating_system):
+    records = plan()
+    assert validate_plan(records, [ServerRecord("TEST", "192.0.2.1", operating_system)]) == records
+
+
 ACTIONS = [
     {"type": "set_sshd_option", "parameter": "permitrootlogin", "current": "yes", "recommended": "no"},
     {"type": "set_sshd_option", "parameter": "pubkeyauthentication", "current": "no", "recommended": "yes"},

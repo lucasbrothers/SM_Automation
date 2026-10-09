@@ -7,6 +7,7 @@ from typing import Any
 
 from core.inventory import ServerRecord
 from engine.ssh import SSHClient, SSHCommandError
+from monitoring.connections import os_family
 
 
 _DIRECTIVES = {
@@ -252,7 +253,7 @@ def validate_plan(plan: object, servers: list[ServerRecord]) -> list[dict[str, A
         address = record.get("ip")
         if not isinstance(address, str) or ipaddress.ip_address(address) != ipaddress.ip_address(server.ip):
             raise ValueError(f"Plan IP does not match inventory: {hostname}")
-        if server.os.casefold() not in {"linux", "rhel", "rhel8", "rhel9", "rhel 8", "rhel 9"}:
+        if os_family(server.os) != "linux":
             raise ValueError(f"Unsupported apply platform: {server.os}")
         if record.get("scope") != "sshd_settings":
             raise ValueError("Plan scope must be sshd_settings; regenerate legacy plans")
