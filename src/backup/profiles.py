@@ -36,37 +36,45 @@ def unix_archive(paths: list[str]) -> str:
 def account_commands(tool: str) -> str:
     body = ("chage -l \"$account\"" if tool == "chage" else "sudo -n -l -U \"$account\"")
     return ("export LC_ALL=C; failed=0; "
-            "accounts=$(getent passwd 2>/dev/null || cat /etc/passwd); "
+            "accounts=$(getent passwd 2>/dev/null || cat /etc/passwd) || exit 1; "
+            "[ -n \"$accounts\" ] || { echo 'Account inventory is empty' >&2; exit 1; }; "
             "for account in $(printf '%s\\n' \"$accounts\" | cut -d: -f1); do "
             "printf '\\n===== %s =====\\n' \"$account\"; " + body +
             "; rc=$?; printf '\\nexit_code=%s\\n' \"$rc\"; [ \"$rc\" -eq 0 ] || failed=1; done; exit \"$failed\"")
 
 
+def command_group(*steps: str) -> str:
+    """Keep every command's output and preserve any failure in the group status."""
+    return "failed=0; " + "; ".join(
+        "( " + step + " ) || failed=1" for step in steps
+    ) + '; exit "$failed"'
+
+
 def commands(family: str) -> dict[str, str]:
     if family == "linux":
         return {
-            "system": "uname -a; cat /etc/os-release; uptime; hostname",
-            "accounts": "getent passwd; getent group",
+            "system": command_group("uname -a", "cat /etc/os-release", "uptime", "hostname"),
+            "accounts": command_group("getent passwd", "getent group"),
             "account_expiry_chage": account_commands("chage"),
             "account_sudo_privileges": account_commands("sudo"),
-            "storage": "df -hPT; lsblk -f; mount; cat /proc/swaps",
-            "network": "ip address; ip route; netstat -an",
-            "services": "systemctl list-unit-files --no-pager; systemctl list-units --type=service --no-pager",
+            "storage": command_group("df -hPT", "lsblk -f", "mount", "cat /proc/swaps"),
+            "network": command_group("ip address", "ip route", "netstat -an"),
+            "services": command_group("systemctl list-unit-files --no-pager", "systemctl list-units --type=service --no-pager"),
             "packages": "if [ -f /etc/debian_version ] && command -v dpkg-query >/dev/null; then dpkg-query -W; elif command -v rpm >/dev/null; then rpm -qa; elif command -v dpkg-query >/dev/null; then dpkg-query -W; else echo 'No supported package inventory tool' >&2; exit 1; fi",
             "kernel": "sysctl -a",
             "schedule": "export LC_ALL=C; failed=0; for account in $(cut -d: -f1 /etc/passwd); do printf '\\n===== %s =====\\n' \"$account\"; output=$(crontab -l -u \"$account\" 2>&1); rc=$?; printf '%s\\n' \"$output\"; if [ \"$rc\" -ne 0 ]; then case \"$output\" in *'no crontab for'*) :;; *) failed=1;; esac; fi; done; exit \"$failed\"",
         }
     if family == "aix":
         return {
-            "system": "uname -a; oslevel -s; prtconf; uptime",
-            "accounts": "lsuser -a ALL ALL; lsgroup ALL",
+            "system": command_group("uname -a", "oslevel -s", "prtconf", "uptime"),
+            "accounts": command_group("lsuser -a ALL ALL", "lsgroup ALL"),
             "account_expiry": "lsuser -a maxage minage maxexpired expires pwdwarntime ALL",
             "account_sudo_privileges": account_commands("sudo"),
-            "storage": "df -g; lsvg; lspv; mount",
-            "network": "ifconfig -a; netstat -rn; netstat -an",
+            "storage": command_group("df -g", "lsvg", "lspv", "mount"),
+            "network": command_group("ifconfig -a", "netstat -rn", "netstat -an"),
             "services": "lssrc -a",
-            "packages": "lslpp -L; emgr -l",
-            "kernel": "no -a; vmo -a; ioo -a; schedo -a",
+            "packages": command_group("lslpp -L", "emgr -l"),
+            "kernel": command_group("no -a", "vmo -a", "ioo -a", "schedo -a"),
         }
     scripts = {
         "system": "Get-ComputerInfo | Format-List; Get-CimInstance Win32_OperatingSystem | Format-List",
