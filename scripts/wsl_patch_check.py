@@ -17,7 +17,7 @@ def main():
         client = ServerClient(ConnectionSettings(address, 7443, str(ca), token))
         assert any(row["hostname"] == "wsl-ubuntu" and row["ip"] == "127.0.0.1" for row in client.call("inventory.list"))
 
-        def run(options):
+        def run(options, expected="completed"):
             job = client.call("job.start", kind="patches", hosts=["wsl-ubuntu"], options=options)
             deadline = time.monotonic() + 180
             while job["status"] in {"queued", "running"}:
@@ -25,8 +25,8 @@ def main():
                     raise TimeoutError("Inspect Linux patch history before retrying")
                 time.sleep(.2); job = client.call("job.get", id=job["id"])
             rows = client.results(job["id"])
-            assert job["status"] == "completed", rows
-            return job, rows[0]["result"]
+            assert job["status"] == expected, rows
+            return job, rows[0]["result"] if expected == "completed" else rows[0]
 
         _, result = run({"action": "list"})
         assert isinstance(result["packages"], list)
@@ -38,7 +38,11 @@ def main():
         assert "net-tools\t" + version in client.call("backup.preview", path=packages["path"])["text"]
         after = subprocess.check_output(command + ["dpkg-query", "-W", "net-tools"], text=True).split()[1]
         assert version == after
+        _, rejected = run({"action": "plan", "packages": ["net-tools=0"]}, expected="failed")
+        assert "downgrades are not supported" in rejected["error"], rejected
+        assert subprocess.check_output(command + ["dpkg-query", "-W", "net-tools"], text=True).split()[1] == version
         print("PASS: TLS patch query, exact-version plan, encrypted pre-patch backup and no-change apply on WSL")
+        print("PASS: lower-version plan rejected before package changes")
 
 
 if __name__ == "__main__":

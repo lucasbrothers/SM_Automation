@@ -103,6 +103,8 @@ def make_plan(client, packages, mode):
         version = requested or (match.group(1) if match else "")
         if not re.fullmatch(r"[A-Za-z0-9.+:~_-]+", version) or version == "(none)":
             raise ValueError("No package candidate: " + name)
+        execute(client, "dpkg --compare-versions " + shlex.quote(version) + " ge " + shlex.quote(installed[1]) +
+                " || { echo 'Package downgrades are not supported' >&2; exit 1; }", mode)
         pins.append(name + "=" + version)
         selected.append({"name": name, "installed": installed[1], "candidate": version})
     operations, output = simulate(client, pins, mode)
