@@ -810,9 +810,14 @@ class Console(QMainWindow):
         preview = QPlainTextEdit(); preview.setReadOnly(True)
         preview.setPlaceholderText("Select an artifact. Archive listings show paths, permissions and sizes without extracting files.")
         layout.addWidget(preview, 1)
+        request_number = [0]
+        dialog.finished.connect(lambda _: request_number.__setitem__(0, request_number[0] + 1))
         def view(item, _):
+            request_number[0] += 1
+            requested = request_number[0]
             path = item.data(0, Qt.ItemDataRole.UserRole)
             if not path:
+                preview.setPlainText(item.text(0))
                 return
             if not path.endswith((".txt.enc", ".json.enc", ".tar.enc")):
                 preview.setPlainText("Binary archive: use scripts/decrypt_artifact.py on the Linux server."); return
@@ -821,7 +826,8 @@ class Console(QMainWindow):
                 return
             preview.setPlainText("Loading preview from Linux...")
             def loaded(response):
-                preview.setPlainText(response["text"] + ("\n\n[Preview limited to 64 KiB]" if response["truncated"] else ""))
+                if requested == request_number[0]:
+                    preview.setPlainText(response["text"] + ("\n\n[Preview limited to 64 KiB]" if response["truncated"] else ""))
             method = "backup.contents" if path.endswith(".tar.enc") else "backup.preview"
             self.work(lambda: client.call(method, path=path), loaded)
         tree.itemDoubleClicked.connect(view)

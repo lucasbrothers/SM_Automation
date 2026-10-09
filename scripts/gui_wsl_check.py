@@ -104,7 +104,7 @@ def main():
                 assert not window.resource_timer.isActive()
                 print("PASS: native resource metrics, memory/disk bars and automatic refresh control")
                 window.start_job("backup"); stage[0] = 9
-            elif stage[0] == 9 and any(job["id"] == window.active_job and job["status"] == "completed" for job in window.jobs):
+            elif stage[0] == 9 and any(job["id"] == window.active_job and job["kind"] == "backup" and job["status"] == "completed" for job in window.jobs):
                 stage[0] = 10
                 def check_backup(rows):
                     dialog = window.backup_results_dialog(rows)
@@ -112,7 +112,7 @@ def main():
                     dialog.show()
                     tree = dialog.findChild(QTreeWidget)
                     server = tree.topLevelItem(0)
-                    assert server.childCount() == 11
+                    assert server.childCount() == 11, rows
                     archive = next(server.child(index) for index in range(server.childCount())
                                    if server.child(index).text(0) == "configuration_files")
                     assert any(archive.child(index).text(0).startswith("Missing optional path:")
@@ -125,8 +125,26 @@ def main():
             elif stage[0] == 11 and '"exit_code"' in backup_dialog[0].findChild(QPlainTextEdit).toPlainText():
                 text = backup_dialog[0].findChild(QPlainTextEdit).toPlainText()
                 assert '"stderr"' in text and "Missing optional path:" in text
+                dialog = backup_dialog[0]
+                tree = dialog.findChild(QTreeWidget)
+                artifact = tree.topLevelItem(0).child(0)
+                pending = []
+                original_work = window.work
+                try:
+                    window.work = lambda fn, loaded: pending.append(loaded)
+                    tree.itemDoubleClicked.emit(artifact, 0)
+                    tree.itemDoubleClicked.emit(artifact.child(artifact.childCount() - 1), 0)
+                finally:
+                    window.work = original_work
+                editor = dialog.findChild(QPlainTextEdit)
+                pending[1]({"text": "latest diagnostic", "truncated": False})
+                pending[0]({"text": "stale artifact", "truncated": False})
+                assert editor.toPlainText() == "latest diagnostic"
                 backup_dialog[0].close()
+                pending[1]({"text": "late closed-dialog result", "truncated": False})
+                assert editor.toPlainText() == "latest diagnostic"
                 print("PASS: native backup details, optional-path warnings and Linux-decrypted command diagnostics")
+                print("PASS: delayed backup preview responses cannot overwrite current or closed views")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
