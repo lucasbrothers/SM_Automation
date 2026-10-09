@@ -15,7 +15,7 @@ Linux가 모든 실제 작업을 수행하며 Windows는 네이티브 GUI와 TLS
 
 ## 완료한 확인
 
-- Linux 기존 회귀 테스트: 211 passed (계정·패치·예약·보안 권한 검증 포함).
+- Linux 기존 회귀 테스트: 214 passed (계정·패치·예약·보안 검증 포함).
 - Windows → Linux 검증 TLS 접속 및 잘못된 토큰 거부.
 - 실제 SSH 연결 수집, 자원 모니터링, Linux 보안 감사 작업 완료.
 - 백업 11개 아티팩트 정상 완료. 설정 tar의 sudoers/sudoers.d 포함 확인 및 계정별 chage 결과 미리보기 확인.
@@ -204,3 +204,15 @@ Overview의 Preview SSH policy는 Linux에서 감사를 수행하고 root 키 �
 WSL 실제 TLS/SSH 경로에서 계획 생성이 완료됐고 기존 211개 테스트가 통과했다.
 사용자 최신 지시: 입력을 기다리지 말고 사용량이 허용하는 동안 계속 진행한다. 자동화는 활성 상태로 유지한다.
 계획 적용은 아직 후속 구현이다. Ubuntu의 Include/Match 및 서비스 이름 차이를 처리해야 기존 적용 엔진을 안전하게 연결할 수 있다.
+
+## 2026-10-09 SSH 계획 적용 연결
+
+Activity에서 완료된 security_plan 결과를 열고 Apply this SSH plan으로 선택 대상에 적용 요청한다.
+Linux에 저장된 완료 계획만 사용하며 대상 주소/프로필 일치 및 1시간 유효기간을 확인한다.
+변경이 없으면 파일/서비스를 변경하지 않는다. 실제 변경은 전체 암호화 백업 후 기존 트랜잭션 적용기를 사용한다.
+실패 시 선행 백업 위치를 결과에 보존한다. 기존 적용기는 구문/유효 설정 검사, 재접속 확인 및 실패 복구를 수행한다.
+Ubuntu/Debian 서비스 이름 ssh와 RHEL의 sshd를 적용·복구 경로에 반영했다.
+현 적용기는 Include/Match가 있는 설정의 변경을 거부한다. sudo 또는 direct root 프로필만 지원한다.
+WSL의 변경 0건 적용 요청을 확인했고 전체 214개 테스트가 통과했다. 실제 인증 변경은 아직 미검증이다.
+검증 도구 scripts/wsl_integration_check.py --check-ssh-apply는 변경 0건 계획만 허용한다.
+다음 작업은 Include/Match 전용 어댑터와 실제 변경/복구 WSL 검증이다. 사용자 최신 지시대로 다음 단계로 즉시 이어간다.

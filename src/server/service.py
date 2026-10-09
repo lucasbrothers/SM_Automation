@@ -28,6 +28,7 @@ from server.scheduler import Scheduler
 from security.permissions import secure_ssh_config
 from backup.preview import archive_listing
 from security.remediation import build_remediation_plan
+from security.apply import apply_sshd_settings
 
 
 def now():
@@ -96,7 +97,7 @@ class ManagementService:
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
     def submit(self, kind, names, options=None):
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_permissions", "accounts", "patches"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -105,11 +106,25 @@ class ManagementService:
         if any(name not in indexed for name in names):
             raise ValueError("A selected server is no longer in the inventory")
         targets = [indexed[name] for name in dict.fromkeys(names)]
-        options = (validate_options(options or {}) if kind == "accounts" else
+        supplied = options or {}
+        options = (validate_options(supplied) if kind == "accounts" else
                    patch_options(options or {}) if kind == "patches" else {})
+        if kind == "security_apply":
+            plan_id = supplied.get("plan_id", "")
+            if not isinstance(plan_id, str) or not re.fullmatch(r"[a-f0-9]{32}", plan_id):
+                raise ValueError("SSH apply requires a completed plan ID")
+            options = {"plan_id": plan_id}
         if kind in {"accounts", "patches", "security_permissions"} and any(os_family(row["os"]) != "linux" for row in targets):
             raise ValueError("Account and patch management currently support Linux targets")
         with self.lock:
+            if kind == "security_apply":
+                plan = self.jobs.get(options["plan_id"], {})
+                if plan.get("kind") != "security_plan" or plan.get("status") != "completed":
+                    raise ValueError("A completed SSH plan is required")
+                if sorted(plan["targets"], key=lambda r: r["hostname"]) != sorted(targets, key=lambda r: r["hostname"]):
+                    raise ValueError("Targets changed; create a new SSH plan")
+                if (datetime.now().astimezone() - datetime.fromisoformat(plan["created_at"])).total_seconds() > 3600:
+                    raise ValueError("SSH plan expired; create a new plan")
             if kind == "patches" and options["action"] == "apply":
                 plan = self.jobs.get(options["plan_id"], {})
                 if plan.get("kind") != "patches" or plan.get("options", {}).get("action") != "plan" or plan.get("status") != "completed":
@@ -141,7 +156,7 @@ class ManagementService:
             return self.summary(job)
 
     def _target(self, job, row):
-        if job["kind"] == "security_permissions":
+        if job["kind"] in {"security_permissions", "security_apply"}:
             with self.lock:
                 target_lock = self.account_locks[row["ip"]]
             with target_lock:
@@ -188,6 +203,29 @@ class ManagementService:
                 if family != "linux":
                     raise ValueError("Resource monitoring currently supports Linux targets")
                 result = collect_linux_snapshot(client).to_dict()
+            elif kind == "security_apply":
+                with self.lock:
+                    plan = next(item["result"]["plan"] for item in self.jobs[job["options"]["plan_id"]]["results"] if item["hostname"] == row["hostname"])
+                if plan["status"] == "blocked":
+                    raise ValueError("SSH plan is blocked")
+                actions = plan["actions"]
+                if not actions:
+                    result = {"applied": 0, "note": "Policy already satisfied; no files or services changed"}
+                else:
+                    if mode != "sudo" and not (mode == "direct" and profile.get("user", self.config.ssh_user) == "root"):
+                        raise ValueError("SSH apply adapter currently requires sudo or direct root")
+                    before = backup_server(client, server, host_config, self.backups, job["id"])
+                    if before["status"] != "completed":
+                        return {**row, "status": "failed", "error": "Pre-policy backup incomplete", "result": {"backup": before}}
+                    with self.lock:
+                        if job.get("cancel_requested"):
+                            return {**row, "status": "cancelled", "result": {"backup": before}}
+                    try:
+                        service_name = "ssh" if any(name in server.os.casefold() for name in ("ubuntu", "debian")) else "sshd"
+                        output = apply_sshd_settings(client, actions, service_name=service_name)
+                        result = {"applied": len(actions), "output": output, "backup": before}
+                    except Exception as exc:
+                        return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
             elif kind == "security_permissions":
                 before = backup_server(client, server, host_config, self.backups, job["id"],
                                        lambda text: self._progress(job, text))

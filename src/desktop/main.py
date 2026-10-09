@@ -648,6 +648,9 @@ class Console(QMainWindow):
             dialog = QDialog(self); dialog.setWindowTitle("Linux job results"); dialog.resize(880, 620)
             layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
             text.setPlainText(json.dumps(rows, ensure_ascii=False, indent=2)); layout.addWidget(text)
+            if job.get("kind") == "security_plan" and job.get("status") == "completed":
+                layout.addWidget(label("Flat SSH configuration only. Include/Match configurations are refused before writing."))
+                layout.addWidget(button("Apply this SSH plan to selected targets", lambda: (dialog.accept(), self.start_job("security_apply", options={"plan_id": job_id})), True))
             layout.addWidget(button("Close", dialog.accept)); dialog.exec()
         self.work(lambda: client.results(job_id), show)
 

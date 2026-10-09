@@ -164,13 +164,16 @@ cmp -s "$backup" "$cfg"
     return "sudo -n sh -c " + shlex.quote(script)
 
 
-def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]]) -> str:
+def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd") -> str:
     """Apply one batch and verify a fresh authenticated connection before success."""
     validate_actions(actions)
-    output = client.execute(build_sshd_apply_batch_command(actions))
+    if service_name not in {"ssh", "sshd"}:
+        raise ValueError("SSH service name must be ssh or sshd")
+    command = build_sshd_apply_batch_command(actions).replace("systemctl reload sshd", "systemctl reload " + service_name)
+    output = client.execute(command)
     metadata = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
     backup, digest = metadata.get("backup", ""), metadata.get("digest", "")
-    rollback = _rollback_command(backup, digest)
+    rollback = _rollback_command(backup, digest).replace("systemctl reload sshd", "systemctl reload " + service_name)
     probe = SSHClient(client.hostname, client.ip, user=client.user, timeout=client.timeout,
                       password=client.password, key_filename=client.key_filename, port=client.port)
     try:

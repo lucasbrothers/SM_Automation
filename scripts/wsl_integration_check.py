@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test local WSL only; credentials stay in memory")
     parser.add_argument("--host", default="172.22.194.8")
     parser.add_argument("--secure-ssh-config", action="store_true", help="Back up and apply mode 600 to the authorized WSL SSH configuration")
+    parser.add_argument("--check-ssh-apply", action="store_true", help="Verify SSH apply only when the WSL plan requires no changes")
     args = parser.parse_args()
     token = wsl_read("/root/.config/sm-automation/api.token").decode().strip()
     with tempfile.TemporaryDirectory(prefix="sm-wsl-") as directory:
@@ -56,6 +57,15 @@ def main():
                 assert results[0]["result"]["connections"], "Active SSH connection was not observed"
             if kind == "security_plan":
                 assert results[0]["result"]["plan"]["status"] in {"no_changes", "action_required"}
+                if args.check_ssh_apply:
+                    assert results[0]["result"]["plan"]["status"] == "no_changes", "No-change test refuses to alter authentication"
+                    apply_job = client.call("job.start", kind="security_apply", hosts=["wsl-ubuntu"], options={"plan_id": job["id"]})
+                    apply_deadline = time.monotonic() + 30
+                    while apply_job["status"] in {"queued", "running"} and time.monotonic() < apply_deadline:
+                        time.sleep(.2); apply_job = client.call("job.get", id=apply_job["id"])
+                    applied = client.results(apply_job["id"])
+                    assert apply_job["status"] == "completed" and applied[0]["result"]["applied"] == 0
+                    print("PASS: completed SSH plan accepted with no authentication changes")
             if kind == "security_permissions":
                 assert results[0]["result"]["mode_owner"].startswith("600 root ")
                 assert results[0]["result"]["backup"]["status"] == "completed"

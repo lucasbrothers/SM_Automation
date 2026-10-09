@@ -29,3 +29,10 @@ def test_executor_failure_records_terminal_state():
     job = next(iter(instance.jobs.values()))
     assert job["status"] == "failed" and "finished_at" in job
     assert instance.data.write_json.call_count == 2
+
+
+def test_ssh_apply_requires_existing_completed_plan():
+    instance = service()
+    with pytest.raises(ValueError, match="completed SSH plan"):
+        instance.submit("security_apply", ["lab"], {"plan_id": "a" * 32})
+    instance.pool.submit.assert_not_called()
