@@ -89,6 +89,26 @@ def load_ssh_profiles(path):
     profiles = json.loads(read_secret(path)) if path.exists() else {}
     if not isinstance(profiles, dict):
         raise ValueError("SSH profiles must be a JSON object")
+    for name, profile in profiles.items():
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) or not isinstance(profile, dict):
+            raise ValueError("SSH profile names and records are invalid")
+        if set(profile) - {"user", "port", "key_file", "privilege", "password_env"}:
+            raise ValueError(f"SSH profile {name} has unsupported fields; passwords belong in environment variables")
+        if "user" in profile and (not isinstance(profile["user"], str) or not profile["user"].strip()
+                                   or len(profile["user"]) > 256 or any(ord(char) < 32 for char in profile["user"])):
+            raise ValueError(f"SSH profile {name}: invalid user")
+        if "port" in profile and (isinstance(profile["port"], bool) or not isinstance(profile["port"], int)
+                                   or not 1 <= profile["port"] <= 65535):
+            raise ValueError(f"SSH profile {name}: port must be an integer from 1 to 65535")
+        if "privilege" in profile and (not isinstance(profile["privilege"], str) or profile["privilege"] not in {"sudo", "sudo-su", "direct", "su"}):
+            raise ValueError(f"SSH profile {name}: invalid privilege mode")
+        key = profile.get("key_file")
+        if key is not None and (not isinstance(key, str) or not key.startswith(("/", "~/"))
+                                or any(ord(char) < 32 for char in key)):
+            raise ValueError(f"SSH profile {name}: key_file must be a Linux absolute or ~/ path")
+        if "password_env" in profile and (not isinstance(profile["password_env"], str) or
+                                           not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", profile["password_env"])):
+            raise ValueError(f"SSH profile {name}: invalid password environment variable name")
     return profiles
 
 

@@ -55,4 +55,5 @@ GUI에는 프로필 이름만 입력하며 키/비밀번호는 전송하지 않�
 CSV 선택 열 `profile` 또는 Manage inventory의 SSH profile에 `unix-admin`,
 `windows-admin` 등을 지정한다. 비워 두면 `default`(전역 설정)다.
 프로필 파일 변경 후 Linux 서비스를 재시작하면 반영된다.
+프로필을 읽을 때 사용자·포트·권한 방식·키 경로·환경변수 이름을 검사한다. 포트는 숫자로 1~65535를 지정하고 키는 Linux 절대 또는 `~/` 경로를 사용한다. `password` 같은 지원하지 않는 필드는 거부하며 비밀번호 값은 파일에 넣지 않는다.
 추가 권한 전환 `sudo-su`는 `sudo -n su - root -c ...`를 사용한다.
