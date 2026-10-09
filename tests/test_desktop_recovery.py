@@ -53,3 +53,14 @@ def test_connection_map_distinguishes_empty_and_cancelled_targets():
     assert "empty-lab" in labels and "cancelled-lab" in labels
     assert "No established connections" in labels and "Collection cancelled" in labels
     graph.close()
+
+
+@pytest.mark.parametrize("query", ["127.0.0.1", "10.0.0.1", "22", " LAB "])
+def test_map_search_includes_server_and_local_endpoint(query):
+    app = QApplication.instance() or QApplication([])
+    graph = ConnectionMap()
+    graph.set_results([{"hostname": "lab", "ip": "127.0.0.1", "os": "Linux", "status": "completed", "result": {
+        "connections": [{"local": {"address": "10.0.0.1", "port": "22"}, "remote": {"address": "192.0.2.1", "port": "51234"}}]}}], query)
+    labels = [item.text() for item in graph.scene().items() if hasattr(item, "text")]
+    assert "192.0.2.1" in labels and "No established connections" not in labels
+    graph.close()

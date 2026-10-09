@@ -54,7 +54,10 @@ class ConnectionMap(QGraphicsView):
             peers = defaultdict(list)
             for connection in row.get("result", {}).get("connections", []):
                 peer = connection["remote"]["address"]
-                if query and query not in (row["hostname"] + " " + peer + " " + connection["remote"]["port"]).casefold():
+                searchable = " ".join([row["hostname"], row["ip"],
+                                       f"{connection['local']['address']}:{connection['local']['port']}",
+                                       peer, connection["remote"]["port"], f"{peer}:{connection['remote']['port']}"])
+                if query and query not in searchable.casefold():
                     continue
                 peers[peer].append(connection)
             if peers or not query or query in (row["hostname"] + " " + row["ip"]).casefold():

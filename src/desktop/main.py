@@ -780,14 +780,14 @@ class Console(QMainWindow):
                                  (" Large results limited to 5,000 connections per host." if truncated else ""))
 
     def update_map(self, *_):
-        query = self.peer_search.text()
+        query = self.peer_search.text().strip()
         self.graph.set_results(self.connection_results, query)
         rows = []
         for row in self.connection_results:
             for connection in row.get("result", {}).get("connections", []):
                 local, remote = connection["local"], connection["remote"]
                 values = [row["hostname"], f"{local['address']}:{local['port']}", remote["address"], remote["port"]]
-                if not query or query.casefold() in " ".join(values).casefold():
+                if not query or query.casefold() in " ".join(values + [row["ip"], f"{remote['address']}:{remote['port']}"]).casefold():
                     rows.append(values)
         fill_table(self.connection_table, rows)
 
