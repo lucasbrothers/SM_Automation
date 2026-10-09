@@ -33,7 +33,7 @@ AIX_PATHS = [
 def unix_archive(paths: list[str]) -> str:
     lines = ["set --"]
     for path in paths:
-        lines.append(f"if [ -e {shlex.quote(path)} ]; then set -- \"$@\" {shlex.quote(path.lstrip('/'))}; "
+        lines.append(f"if [ -e {shlex.quote(path)} ] || [ -L {shlex.quote(path)} ]; then set -- \"$@\" {shlex.quote(path.lstrip('/'))}; "
                      f"else printf '%s\\n' {shlex.quote('Missing optional path: ' + path)} >&2; fi")
     lines.extend(['[ "$#" -gt 0 ] || exit 2', 'cd / && tar -cf - "$@"'])
     return "\n".join(lines)

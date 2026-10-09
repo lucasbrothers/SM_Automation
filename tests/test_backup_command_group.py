@@ -1,9 +1,24 @@
 import subprocess
 import sys
+import io
+import tarfile
 
 import pytest
 
-from backup.profiles import account_commands, command_group, commands
+from backup.profiles import account_commands, command_group, commands, unix_archive
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
+def test_configuration_archive_preserves_dangling_symlink(tmp_path):
+    link = tmp_path / "configuration-link"
+    link.symlink_to("missing-target")
+    absent = tmp_path / "absent"
+    result = subprocess.run(["sh", "-c", unix_archive([str(link), str(absent)])], capture_output=True)
+    assert result.returncode == 0
+    assert result.stderr.decode() == f"Missing optional path: {absent}\n"
+    with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
+        member = archive.getmember(str(link).lstrip("/"))
+        assert member.issym() and member.linkname == "missing-target"
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
