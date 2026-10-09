@@ -75,3 +75,17 @@ def test_connection_map_marks_capture_limit():
     assert "Capture limit reached: incomplete snapshot" in labels
     assert "Successful snapshot / 0 TCP peers" not in labels
     graph.close()
+
+
+def test_activity_history_survives_recent_poll_and_updates_existing_status():
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    def job(identity, status):
+        return {"id": identity, "created_at": "2026-10-09T01:00:00", "kind": "connections", "status": status, "done": 1, "total": 1}
+    window.set_jobs([job("old", "running")])
+    window.set_jobs([job("new", "completed"), job("old", "completed")])
+    window.set_jobs([job("new", "completed")])
+    assert len(window.jobs) == 2 and window.job_history["old"]["status"] == "completed"
+    window.disconnect_server()
+    assert not window.job_history and not window.jobs
+    window.close()

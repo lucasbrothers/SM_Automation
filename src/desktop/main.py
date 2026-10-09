@@ -211,6 +211,7 @@ class Console(QMainWindow):
         self.backup_history = {}
         self.backup_history_offset = 0
         self.history_errors = []
+        self.job_history = {}; self.job_history_offset = 100
         self.resource_loaded_job = None
         self.workers = set()
         self.build_ui()
@@ -376,6 +377,7 @@ class Console(QMainWindow):
     def build_activity(self):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
         frame, body = card(); body.addWidget(label("Server-side job history", "section"))
+        body.addWidget(button("Load older operations", self.load_job_history))
         self.jobs_table = table(["Created", "Operation", "Status", "Progress", "Job ID"])
         self.jobs_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.jobs[row]["id"]))
         body.addWidget(self.jobs_table)
@@ -609,6 +611,7 @@ class Console(QMainWindow):
         self.backup_history = {}
         self.backup_history_offset = 0
         self.resource_loaded_job = None
+        self.job_history = {}; self.job_history_offset = 100
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
         self.connection_badge.setText("CONNECTED  /  TLS")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
@@ -631,6 +634,7 @@ class Console(QMainWindow):
             return
         self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
         self.history_errors = []; self.subtitle.setToolTip("")
+        self.job_history = {}; self.job_history_offset = 100
         self.backup_history = {}
         self.backup_history_offset = 0
         self.resource_auto.setChecked(False); self.resource_loaded_job = None
@@ -746,8 +750,22 @@ class Console(QMainWindow):
         self.backup_jobs = sorted(self.backup_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
         fill_table(self.backup_table, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
 
+    def load_job_history(self):
+        if not self.require_client():
+            return
+        client = self.client; offset = self.job_history_offset
+        def loaded(jobs):
+            self.job_history_offset = offset + len(jobs)
+            self.set_jobs(jobs)
+            self.status_line.setText(f"Operation history: {len(self.job_history)} records loaded." +
+                                     (" No older operations in this page." if not jobs else ""))
+        self.work(lambda: client.call("job.list", offset=offset), loaded)
+
     def set_jobs(self, jobs):
-        self.poll_busy = False; self.jobs = jobs
+        self.poll_busy = False
+        self.job_history.update({job["id"]: job for job in jobs})
+        jobs = sorted(self.job_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
+        self.jobs = jobs
         fill_table(self.jobs_table, [[j["created_at"][11:19], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
         self.display_backup_history([j for j in jobs if j["kind"] == "backup"])
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
