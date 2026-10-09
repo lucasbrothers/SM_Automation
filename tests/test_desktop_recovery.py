@@ -7,6 +7,23 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+def test_schedule_action_uses_selected_identity_after_reordering(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    window = Console(); window.client = Mock()
+    def schedule(identity):
+        return {"id": identity, "next_run": "2026-10-09T16:00:00", "kind": "backup", "hosts": ["lab"],
+                "interval_seconds": 60, "enabled": True, "message": ""}
+    window.display_schedules([schedule("selected"), schedule("other")])
+    window.schedule_table.setCurrentCell(0, 0)
+    window.display_schedules([schedule("other"), schedule("selected")])
+    monkeypatch.setattr(window, "work", lambda fn, done: fn())
+    window.change_schedule(enabled=False)
+    window.client.call.assert_called_once_with("schedule.change", id="selected", enabled=False, delete=False)
+    window.display_schedules([schedule("other")])
+    assert window.schedule_table.currentRow() == -1
+    window.close()
+
+
 def test_history_selection_follows_job_identity_when_new_row_arrives():
     app = QApplication.instance() or QApplication([])
     window = Console()
