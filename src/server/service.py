@@ -43,6 +43,8 @@ def inventory_records(rows):
         raise ValueError("Inventory must contain at most 5000 servers")
     result, seen = [], set()
     for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Each inventory row must be an object")
         hostname = str(row.get("hostname", "")).strip()
         address = str(ipaddress.ip_address(str(row.get("ip", "")).strip()))
         platform = str(row.get("os", "")).strip()
@@ -55,6 +57,32 @@ def inventory_records(rows):
             raise ValueError("Invalid SSH profile name")
         result.append({"hostname": hostname, "ip": address, "os": platform, "profile": profile})
     return result
+
+
+def inventory_csv(content):
+    if not isinstance(content, str):
+        raise ValueError("Inventory CSV must be text")
+    reader = csv.DictReader(io.StringIO(content.lstrip("\ufeff")))
+    headers = [name.strip().casefold() for name in (reader.fieldnames or [])]
+    if len(headers) != len(set(headers)):
+        raise ValueError("Inventory CSV contains duplicate column names")
+    if not {"hostname", "ip", "os"}.issubset(headers):
+        raise ValueError("Inventory CSV requires hostname, ip and os columns; profile is optional")
+    reader.fieldnames = headers
+    rows = []
+    for row in reader:
+        if None in row:
+            raise ValueError(f"Inventory CSV row {reader.line_num} has extra values")
+        if any(not row.get(field) or not row[field].strip() for field in ("hostname", "ip", "os")):
+            raise ValueError(f"Inventory CSV row {reader.line_num} requires hostname, ip and os values")
+        try:
+            normalized = inventory_records([row])[0]
+        except ValueError as exc:
+            raise ValueError(f"Inventory CSV row {reader.line_num}: {exc}") from exc
+        rows.append(normalized)
+        if len(rows) > 5000:
+            raise ValueError("Inventory must contain at most 5000 servers")
+    return inventory_records(rows)
 
 
 class ManagementService:
@@ -406,8 +434,7 @@ class ManagementService:
         if method == "inventory.save":
             return self.save_inventory(params["servers"])
         if method == "inventory.import":
-            content = params["csv"]
-            return self.save_inventory(list(csv.DictReader(io.StringIO(content.lstrip("\ufeff")))))
+            return self.save_inventory(inventory_csv(params["csv"]))
         if method == "job.start":
             return self.submit(params["kind"], params["hosts"], params.get("options"))
         if method in {"backup.preview", "backup.contents"}:
