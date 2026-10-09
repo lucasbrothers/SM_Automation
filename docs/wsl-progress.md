@@ -520,3 +520,8 @@ Windows 클라이언트에서 검증된 TLS로 로컬 WSL Linux에 연결해 연
 
 목업 렌더링에서 errors 요약이 상세 트리에 아직 표시되지 않는 것을 발견해 Command error 행으로 연결했다. 합성 오류 예시를 목업에 포함했다.
 GUI 오류 표시를 포함한 화면 확인 22개와 WSL 백업 진단 검증이 통과했다. docs/images/backup-details-mockup.png에서 표시를 확인했다.
+
+## 2026-10-09 백업 오류 요약 제한 안내
+
+오류 50줄/줄당 1000자 제한에 걸리면 errors_truncated를 저장하고 GUI에서 전체 진단 파일 열기를 안내한다.
+긴 오류의 요약 한도와 metadata 원문 보존 검증을 포함한 관련 확인 24개 통과. 최신 Linux 코드를 WSL에 동기화하고 재시작했다.

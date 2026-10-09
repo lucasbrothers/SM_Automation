@@ -942,6 +942,8 @@ class Console(QMainWindow):
                     details.append("Collection error: " + artifact["error"])
                 details.extend(artifact.get("warnings", []))
                 details.extend("Command error: " + error for error in artifact.get("errors", []))
+                if artifact.get("errors_truncated"):
+                    details.append("Error summary limited; open command details for full diagnostics")
                 for detail in details:
                     child = QTreeWidgetItem([detail, "", "", ""])
                     child.setToolTip(0, detail)
