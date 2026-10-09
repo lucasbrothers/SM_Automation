@@ -16,7 +16,7 @@ def validate_options(options):
         packages = options.get("packages")
         if not isinstance(packages, list) or not 1 <= len(packages) <= 50:
             raise ValueError("Select between 1 and 50 installed packages")
-        if any(not isinstance(p, str) or not re.fullmatch(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9]+)?(?:=[A-Za-z0-9.+:~_-]+)?", p) for p in packages):
+        if any(not isinstance(p, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+._-]*(?::[A-Za-z0-9_]+)?(?:=[A-Za-z0-9.+:~_-]+)?", p) for p in packages):
             raise ValueError("Use package names, optionally followed by =version")
         result["packages"] = list(dict.fromkeys(packages))
     elif action == "apply":
@@ -72,6 +72,9 @@ def simulate(client, pins, mode):
 
 
 def make_plan(client, packages, mode):
+    if client.execute("if command -v apt-get >/dev/null 2>&1; then echo apt; elif command -v dnf >/dev/null 2>&1; then echo dnf; fi").strip() == "dnf":
+        from patch.rpm_plan import make_plan as rpm_plan
+        return rpm_plan(client, packages, mode)
     pins, selected = [], []
     for spec in packages:
         name, _, requested = spec.partition("=")
@@ -90,6 +93,8 @@ def make_plan(client, packages, mode):
 
 
 def apply_plan(client, plan, mode):
+    if plan.get("manager") == "dnf":
+        raise ValueError("RPM application adapter is pending; reviewed RHEL plan cannot yet be applied")
     operations, _ = simulate(client, plan["pins"], mode)
     if operations != plan["operations"]:
         raise ValueError("Package state changed since planning; create a fresh plan")

@@ -131,6 +131,8 @@ class ManagementService:
                 plan = self.jobs.get(options["plan_id"], {})
                 if plan.get("kind") != "patches" or plan.get("options", {}).get("action") != "plan" or plan.get("status") != "completed":
                     raise ValueError("A completed patch plan is required")
+                if any(not row.get("result", {}).get("apply_supported", True) for row in plan.get("results", [])):
+                    raise ValueError("This patch plan has no supported application adapter")
                 if sorted(plan["targets"], key=lambda r: r["hostname"]) != sorted(targets, key=lambda r: r["hostname"]):
                     raise ValueError("Targets changed; create a new patch plan")
                 if (datetime.now().astimezone() - datetime.fromisoformat(plan["created_at"])).total_seconds() > 3600:
@@ -305,7 +307,7 @@ class ManagementService:
                               "plan": build_remediation_plan([record], policy)[0],
                               "note": "Preview only; authentication settings have not been changed"}
                     unsupported = client.execute(privileged("awk '{key=tolower($1); sub(/=.*/, \"\", key)} key == \"include\" || key == \"match\" {print key}' /etc/ssh/sshd_config", mode)).strip()
-                    allow_includes = any(name in server.os.casefold() for name in ("ubuntu", "debian"))
+                    allow_includes = True
                     reason = "Flat SSH configuration"
                     if allow_includes:
                         from security.includes import scan_command
@@ -314,8 +316,9 @@ class ManagementService:
                             unsupported = ""
                             reason = "Bounded global Include configuration; conditional Match is unsupported"
                         except Exception:
-                            unsupported = "unsupported"
-                            reason = "Include scan failed: conditional, external, cyclic or unreadable configuration"
+                            allow_includes = False
+                            reason = ("Include scan failed: conditional, external, cyclic or unreadable configuration"
+                                      if unsupported else "Flat SSH configuration; system Python Include scanner unavailable")
                     elif unsupported:
                         reason = "Include/Match configuration requires a dedicated adapter"
                     result["adapter"] = {"supported": not bool(unsupported), "reason": reason,

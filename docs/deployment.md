@@ -87,7 +87,23 @@ sudo systemctl status sm-automation
 
 데모 모드는 실제 서버 접속과 작업 실행을 하지 않는다. PNG는 예시 데이터를 사용한다.
 
-### 혼합 OS 환경의 접속 프로필
+### Red Hat Enterprise Linux
+
+RHEL을 Linux 메인 서버 또는 SSH 관리 대상으로 사용할 수 있다. 시스템 Python과 DNF 실행 환경을 교체하지 않는다.
+RHEL 9.2 이상에서 별도 Python 3.11 환경을 사용하는 설치 예시는 다음과 같다. 폐쇄망은 동일 OS/CPU용 RPM·wheel을 먼저 준비한다.
+
+```sh
+dnf install python3.11 python3.11-pip openssh-clients openssh-server net-tools rsync
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements-runtime.txt
+```
+
+Python 버전 제공 기준: [Red Hat 공식 Python 설치 문서](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html-single/installing_and_using_dynamic_programming_languages/index).
+기존 Linux 서비스 설치 절차를 이어서 적용한다. SSH 서비스 이름은 `sshd`다. GUI용 TLS 7443 및 관리 서버에서 대상 SSH 포트에 접근할 수 있게 환경의 방화벽 정책을 구성한다.
+대상 RHEL의 DNF 계획은 시스템 DNF Python 바인딩을 사용한다. RHEL 8의 platform-python 또는 RHEL 9의 시스템 python3를 우선하며 서버 가상환경의 Python과 분리한다.
+현재 업데이트 조회 및 버전 고정 계획만 연결했고 실제 RPM 적용기는 다음 단계다. RHEL 실환경 테스트는 수행하지 않았다.
+
+### 서버별 SSH 프로필
 
 Linux에서 `config/ssh-profiles.example.json`을
 `~/.config/sm-automation/ssh-profiles.json`으로 복사하고 사용자·키·포트를 수정한다.

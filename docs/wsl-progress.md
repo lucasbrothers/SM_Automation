@@ -286,3 +286,11 @@ GUI에서 새 업데이트 조회를 시작하면 과거 패치 계획의 적용
 사용자 지시로 Red Hat Enterprise Linux를 관리 대상 및 Linux 메인 서버 지원 범위에 포함한다.
 Linux 공통 기능 외에 RPM/DNF 캐시 조회를 추가했고, RHEL 주요 설정인 sysconfig·SELinux·authselect·crypto-policies·firewalld·yum/dnf 저장소 설정을 암호화 백업 목록에 추가했다.
 RHEL 패치 계획·적용 개발은 다음 단계이며 실제 RHEL 접속/설치 테스트는 하지 않았다. 기존 WSL GUI 연동은 통과했다.
+
+## 2026-10-09 RHEL 버전 고정 계획 및 SSH Include
+
+RHEL/DNF 계획은 대상의 시스템 DNF API로 캐시에서 의존성을 해석한다. 기존 패키지의 한 버전/아키텍처를 선택하고 name:arch=version 형태로 고정한다.
+새 패키지 설치·다운로드는 하지 않으며 단순 제거·이름 교체·다운그레이드가 포함된 계획을 거부한다. 설치 상태 해시와 의존성/체크섬 정보를 저장한다.
+RPM 실제 적용기는 아직 미연결이며 GUI와 서버 API 모두 적용을 차단한다. 계획 경계와 변경 0건 처리 검증을 추가했고 실제 RHEL 실행은 미검증이다.
+SSH Include 스캐너도 RHEL 시스템 Python을 지원하도록 확장했다. WSL 적용 과정에서 조기 종료/잠금 잔류 문제를 발견해 수정하고 해당 빈 잠금을 정리했다. 설정 변경 전 발생한 문제였으며 실제 적용/자동 복구와 TLS 통합 경로를 다시 확인했다.
+조건부 Match 변경은 계속 거부한다. RHEL 설치 안내는 docs/deployment.md에 추가했다.

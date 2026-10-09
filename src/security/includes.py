@@ -9,12 +9,18 @@ from pathlib import Path
 def scan(filename, directory):
     root = Path(directory).resolve()
     seen = set()
+    def under_root(path):
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
     def visit(path, depth):
         source = Path(path)
         if source.is_symlink():
             raise ValueError('Symlink SSH configuration is unsupported')
         target = source.resolve()
-        if not target.is_relative_to(root):
+        if not under_root(target):
             raise ValueError('SSH Include must stay under configuration directory')
         if depth > 8 or len(seen) >= 1000:
             raise ValueError('SSH Include traversal limit exceeded')
@@ -40,7 +46,7 @@ def scan(filename, directory):
                     candidate = Path(pattern)
                     if not candidate.is_absolute():
                         candidate = root / candidate
-                    if not candidate.resolve().is_relative_to(root):
+                    if not under_root(candidate.resolve()):
                         raise ValueError('SSH Include must stay under configuration directory')
                     for included in sorted(glob.glob(str(candidate))):
                         visit(included, depth + 1)
@@ -49,4 +55,7 @@ def scan(filename, directory):
 
 
 def scan_command():
-    return "python3 -c " + shlex.quote(SCAN_SCRIPT + "\nscan('/etc/ssh/sshd_config', '/etc/ssh')\n")
+    script = SCAN_SCRIPT + "\nscan('/etc/ssh/sshd_config', '/etc/ssh')\n"
+    return ('(for interpreter in /usr/bin/python3 /usr/libexec/platform-python; do '
+            '[ -x "$interpreter" ] || continue; exec "$interpreter" -c ' + shlex.quote(script) +
+            "; done; echo 'SSH Include scan requires system Python 3' >&2; exit 1)")

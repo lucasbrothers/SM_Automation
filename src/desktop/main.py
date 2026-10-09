@@ -409,7 +409,7 @@ class Console(QMainWindow):
         self.patch_plan_id = None
         self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
         body.addWidget(self.patch_apply)
-        patch_note = label("Debian/Ubuntu: reviewed plans and backed-up apply. RPM/DNF: cached update discovery only. No automatic reboot.")
+        patch_note = label("Debian/Ubuntu: reviewed plans and backed-up apply. RHEL/DNF: cached discovery and version-pinned preview; apply pending. No automatic reboot.")
         patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -445,7 +445,8 @@ class Console(QMainWindow):
                 output.append("Reboot required. Restart manually during your maintenance window.")
         fill_table(self.patch_table, values); self.patch_output.setPlainText("\n\n".join(output)); self.navigate(5)
         if job.get("options", {}).get("action") == "plan" and job["status"] == "completed":
-            self.patch_plan_id = job["id"]; self.patch_apply.setEnabled(True)
+            self.patch_plan_id = job["id"]
+            self.patch_apply.setEnabled(bool(rows) and all(row.get("result", {}).get("apply_supported", True) for row in rows))
 
     def build_schedules(self):
         self.schedules = []
