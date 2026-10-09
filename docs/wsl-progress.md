@@ -532,3 +532,8 @@ Windows 명령 백업은 PowerShell 오류를 잡아 stderr와 실패 종료 코
 계정별 net user 실패는 각 종료 코드와 함께 누적하며 앞선 계정 실패를 마지막 계정 성공으로 덮지 않는다. net accounts 실패도 후속 reg 성공으로 덮지 않는다.
 WSL 백업 관련 회귀 확인 9개 통과. 실제 Windows SSH 실행은 검증하지 않았으며 외부 대상에 접속하지 않았다.
 참고: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_error_handling
+
+## 2026-10-09 Windows 수집 코드 문법 확인
+
+생성된 Windows 백업 명령 10개를 PowerShell 파서로 검사해 문법 오류가 없음을 확인했다. 명령 자체는 실행하지 않았고 Windows 관리 대상에 접속하지 않았다.
+최신 Windows 프로필 코드는 Linux WSL 작업본에 동기화되어 있으며 메인 서비스를 재시작했다. 실제 Windows SSH 수집 검증과는 구분한다.
