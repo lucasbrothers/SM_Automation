@@ -72,3 +72,5 @@ Unix 설정 파일은 tar 스트림을 받아 즉시 암호화한다. 원격/로
 상단에 이력 복구 안내가 보이면 마우스를 올려 대상 파일명과 오류 종류를 확인한다. Linux DATA/jobs의 파일을 보존하고 원래 암호화 키와 이력 백업을 복원한 뒤 서비스를 재시작한다. 키를 새로 생성하거나 손상 파일을 임의로 덮어쓰지 않는다. 복구 후 예약은 내용을 확인해 재개하거나 새 미래 예약을 만든다.
 
 Linux 설정 파일 수집은 /etc/apt·/etc/dpkg·/etc/default, 모듈 로딩/udev 설정, chrony 디렉터리, nftables 설정, hostname·timezone·localtime도 포함한다. 없는 경로는 선택 경로 경고로 기록한다.
+
+Linux의 cron.hourly/daily/weekly/monthly와 anacrontab을 수집하며 /etc/systemd 전체를 포함해 journald/logind/timesyncd 등 전역 설정도 보관한다.

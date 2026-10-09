@@ -557,3 +557,8 @@ GUI 실행 도구의 -Check가 프로젝트 밖 D:/Project에서도 환경을 �
 
 Windows 계정 만료 진단에서 빈 사용자 목록은 오류로 처리한다. 계정별 net user 실패는 계정명/종료 코드와 함께 stderr에 남겨 GUI 오류 요약에서 확인할 수 있다.
 생성 코드 문법 검사 통과. 실제 Windows 대상 명령은 실행하지 않았다. Linux WSL 작업본 동기화와 서비스 재시작 완료.
+
+## 2026-10-09 cron 및 systemd 전역 설정 백업
+
+주기별 cron 디렉터리 4개와 anacrontab을 추가하고 systemd/system 경로를 /etc/systemd 전체로 확장했다.
+실제 WSL TLS 백업에서 etc/systemd·etc/cron.daily 포함을 확인했다. 백업 11개 항목과 기존 연결·자원·SSH 진단/계획 흐름 통과.
