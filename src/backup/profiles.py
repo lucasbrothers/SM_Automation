@@ -14,6 +14,7 @@ LINUX_PATHS = [
     "/etc/rsyslog.conf", "/etc/rsyslog.d", "/etc/logrotate.conf", "/etc/logrotate.d",
     "/etc/redhat-release", "/etc/sysconfig", "/etc/selinux", "/etc/authselect",
     "/etc/crypto-policies", "/etc/firewalld", "/etc/yum.repos.d", "/etc/dnf", "/etc/yum.conf",
+    "/etc/sssd", "/etc/krb5.conf", "/etc/krb5.conf.d", "/etc/sudo.conf", "/etc/sudo_logsrvd.conf",
 ]
 AIX_PATHS = [
     "/etc/passwd", "/etc/group", "/etc/security", "/etc/sudoers", "/etc/sudoers.d",

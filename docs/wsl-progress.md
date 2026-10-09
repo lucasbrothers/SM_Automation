@@ -321,3 +321,8 @@ sudo 프로필은 기존 방식을 유지한다. 실제 RHEL 대상 테스트는
 
 Windows TLS 통합 확인에서 인증, 연결 맵, 자원, SSH 정책 계획 및 11개 백업 산출물 조회가 통과했다.
 기존 SSH 계획 검증 도구의 OS 판정을 공통 Linux 판정과 일치시켜 Red Hat Enterprise Linux 9, redhat, RHEL 8.10 등 목록 표기를 수용한다. 관련 검증 34개 통과.
+
+## 2026-10-09 Red Hat 인증 설정 백업 확대
+
+Linux 파일 백업에 /etc/sssd, /etc/krb5.conf 및 krb5.conf.d, sudo.conf, sudo_logsrvd.conf를 포함한다. 인증 관련 민감 설정도 기존 암호화 파일 백업에 저장한다.
+없는 설정 경로는 선택 경로 경고로 기록한다. 로컬 WSL에서 TLS 통합 확인과 11개 백업 산출물 수집·조회가 completed로 통과했다. 실제 RHEL 인증 설정 수집은 미검증이다.
