@@ -32,6 +32,9 @@ class Scheduler:
                     raise ValueError("Invalid stored schedule hosts")
                 if not isinstance(item.get("targets"), list) or not item["targets"] or any(not isinstance(row, dict) or not isinstance(row.get("hostname"), str) for row in item["targets"]):
                     raise ValueError("Invalid stored schedule targets")
+                target_names = [row["hostname"] for row in item["targets"]]
+                if len(set(item["hosts"])) != len(item["hosts"]) or len(set(target_names)) != len(target_names) or set(item["hosts"]) != set(target_names):
+                    raise ValueError("Stored schedule targets do not match execution hosts")
         except (InvalidToken, ValueError, UnicodeError, OSError, TypeError) as exc:
             self.items = []
             self.recovery_required = True
