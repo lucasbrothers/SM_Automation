@@ -7,6 +7,25 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+@pytest.mark.parametrize("kind", ["connections", "accounts", "patches", "monitoring"])
+def test_result_read_failure_retries_without_resubmitting_job(monkeypatch, kind):
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    window.client = Mock()
+    window.active_job = "saved-job"
+    job = {"id": "saved-job", "kind": kind, "created_at": "2026-10-09T15:00:00+09:00",
+           "status": "completed", "done": 1, "total": 1}
+    requests = []
+    monkeypatch.setattr(window, "work", lambda fn, done, **options: requests.append(options))
+    window.set_jobs([job])
+    assert len(requests) == 1
+    requests[0]["on_error"]()
+    window.set_jobs([job])
+    assert len(requests) == 2
+    window.client.call.assert_not_called()
+    window.close()
+
+
 def test_connection_warnings_visible_and_incomplete_not_counted_as_empty():
     app = QApplication.instance() or QApplication([])
     window = Console()

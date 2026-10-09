@@ -785,22 +785,28 @@ class Console(QMainWindow):
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
         if resource and resource["id"] != self.resource_loaded_job and self.client:
             self.resource_loaded_job = resource["id"]; client = self.client
-            self.work(lambda: client.results(resource["id"]), lambda rows: self.display_resources(rows, resource.get("finished_at", resource["created_at"])), quiet=True)
+            def resource_failed():
+                if self.resource_loaded_job == resource["id"]:
+                    self.resource_loaded_job = None
+            self.work(lambda: client.results(resource["id"]), lambda rows: self.display_resources(rows, resource.get("finished_at", resource["created_at"])), quiet=True, on_error=resource_failed)
         active = next((j for j in jobs if j["id"] == self.active_job), None)
         if active:
             self.progress.setValue(int(100 * active["done"] / max(1, active["total"])))
             self.status_line.setText(f"{active['kind']} / {active['status']} / {active.get('message', '')}")
             if active["status"] not in {"queued", "running"} and self.loaded_job != active["id"]:
                 self.loaded_job = active["id"]
+                def result_failed():
+                    if self.loaded_job == active["id"]:
+                        self.loaded_job = None
                 if active["kind"] == "connections":
                     client = self.client
-                    self.work(lambda: client.results(active["id"]), self.display_connections)
+                    self.work(lambda: client.results(active["id"]), self.display_connections, quiet=True, on_error=result_failed)
                 elif active["kind"] == "accounts":
                     client = self.client
-                    self.work(lambda: client.results(active["id"]), self.display_accounts)
+                    self.work(lambda: client.results(active["id"]), self.display_accounts, quiet=True, on_error=result_failed)
                 elif active["kind"] == "patches":
                     client = self.client
-                    self.work(lambda: client.results(active["id"]), lambda rows: self.display_patches(rows, active))
+                    self.work(lambda: client.results(active["id"]), lambda rows: self.display_patches(rows, active), quiet=True, on_error=result_failed)
 
     def display_connections(self, rows):
         self.connection_results = rows
