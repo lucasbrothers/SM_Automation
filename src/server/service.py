@@ -14,6 +14,7 @@ from collections import defaultdict
 from dataclasses import asdict, replace
 from datetime import datetime
 from pathlib import Path
+from cryptography.fernet import InvalidToken
 
 from backup.collector import backup_server
 from account.manager import manage_accounts, validate_options
@@ -68,11 +69,19 @@ class ManagementService:
         self.lock = threading.RLock()
         self.account_locks = defaultdict(threading.Lock)
         self.jobs = {}
+        self.history_errors = []
         self.closed = False
         self.pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="management")
         # Retain past output on disk; never repeat interrupted remote work automatically.
         for path in sorted(self.data.root.glob("jobs/*.json.enc"), key=lambda p: p.stat().st_mtime, reverse=True):
-            job = self.data.read_json(str(path.relative_to(self.data.root)))
+            try:
+                job = self.data.read_json(str(path.relative_to(self.data.root)))
+                if not isinstance(job, dict) or job.get("id") != path.name.removesuffix(".json.enc") or not all(
+                        field in job for field in ("status", "kind", "created_at")):
+                    raise ValueError("Invalid stored job record")
+            except (InvalidToken, ValueError, UnicodeError, OSError) as exc:
+                self.history_errors.append({"file": path.name, "error": type(exc).__name__})
+                continue
             if job["status"] in {"queued", "running"}:
                 job.update(status="interrupted", message="Server restarted; inspect partial artifacts before retrying", finished_at=now())
                 self.data.write_json(f"jobs/{job['id']}.json.enc", job)
@@ -99,6 +108,8 @@ class ManagementService:
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
     def submit(self, kind, names, options=None):
+        if self.history_errors:
+            raise RuntimeError("Job history recovery required on Linux; new operations are disabled")
         if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
@@ -388,7 +399,8 @@ class ManagementService:
             return {"platform": "Linux main server", "version": "0.2.0", "time": now(),
                     "scheduler_running": self.scheduler.thread.is_alive(),
                     "data_directory": str(self.config.data_directory), "backup_directory": str(self.config.backup_directory),
-                    "inventory_count": len(self.inventory()), "encrypted": True}
+                    "inventory_count": len(self.inventory()), "encrypted": True,
+                    "history_errors": self.history_errors, "operations_enabled": not self.history_errors}
         if method == "inventory.list":
             return self.inventory()
         if method == "inventory.save":

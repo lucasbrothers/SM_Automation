@@ -9,6 +9,7 @@ from storage.encrypted import EncryptedStore
 
 def service():
     instance = ManagementService.__new__(ManagementService)
+    instance.history_errors = []
     instance.lock = threading.RLock()
     instance.summary = lambda job: job
     instance.jobs = {str(index): {"id": str(index), "created_at": f"{index:05d}",
@@ -48,5 +49,26 @@ def test_restart_restores_backups_older_than_recent_hundred_jobs(tmp_path, monke
         first = restored.dispatch("job.list", {"kind": "backup"})
         second = restored.dispatch("job.list", {"kind": "backup", "offset": 100})
         assert len(first) == 100 and len(second) == 20
+    finally:
+        restored.close()
+
+
+def test_damaged_history_preserved_and_operations_blocked(tmp_path, monkeypatch):
+    key = tmp_path / "master.key"
+    key.write_bytes(Fernet.generate_key()); key.chmod(0o600)
+    config = SimpleNamespace(data_directory=tmp_path / "DATA", backup_directory=tmp_path / "BACKUP",
+                             key_file=key, ssh_profiles_file=tmp_path / "absent-profiles.json")
+    store = EncryptedStore(config.data_directory, key)
+    store.write_json("jobs/good.json.enc", {"id": "good", "kind": "backup", "status": "completed", "created_at": "2026"})
+    damaged = store.path("jobs/damaged.json.enc")
+    damaged.write_bytes(b"damaged ciphertext")
+    monkeypatch.setattr("server.service.Scheduler", lambda service: Mock())
+    restored = ManagementService(config)
+    try:
+        assert list(restored.jobs) == ["good"]
+        assert restored.history_errors == [{"file": "damaged.json.enc", "error": "InvalidToken"}]
+        with pytest.raises(RuntimeError, match="recovery required"):
+            restored.submit("backup", [])
+        assert damaged.read_bytes() == b"damaged ciphertext"
     finally:
         restored.close()

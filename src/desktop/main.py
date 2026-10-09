@@ -583,6 +583,9 @@ class Console(QMainWindow):
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
         self.connection_badge.setText("CONNECTED  /  TLS")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
+        if status.get("history_errors"):
+            self.subtitle.setText("Linux history recovery required: " + str(len(status["history_errors"])) +
+                                  " unreadable records. Existing results remain readable; new operations are disabled.")
         self.status_line.setText("Connected. All operational work executes on Linux."); self.reload()
 
     def connect_to(self, client):

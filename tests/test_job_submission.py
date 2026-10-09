@@ -8,6 +8,7 @@ from server.service import ManagementService
 
 def service():
     instance = ManagementService.__new__(ManagementService)
+    instance.history_errors = []
     instance.jobs = {}; instance.closed = False; instance.lock = threading.RLock()
     instance.pool = Mock(); instance.data = Mock()
     instance.inventory = lambda: [{"hostname": "lab", "ip": "127.0.0.1", "os": "Ubuntu", "profile": "default"}]
