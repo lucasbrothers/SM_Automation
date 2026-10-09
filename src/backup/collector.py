@@ -9,7 +9,7 @@ from engine.remote import capture, privileged
 from monitoring.connections import os_family
 
 
-def backup_server(client, server, config, store, run_id: str, progress=None) -> dict:
+def backup_server(client, server, config, store, run_id: str, progress=None, extra_commands=None) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,252}", server.hostname):
         raise ValueError("Hostname cannot be used as a backup folder")
     family = os_family(server.os)
@@ -19,6 +19,7 @@ def backup_server(client, server, config, store, run_id: str, progress=None) -> 
     steps = commands(family)
     archive = windows_files() if family == "windows" else unix_archive(AIX_PATHS if family == "aix" else LINUX_PATHS)
     steps = {"configuration_files": archive, **steps}
+    steps.update(extra_commands or {})
     for index, (name, command) in enumerate(steps.items(), 1):
         if progress:
             progress(f"{server.hostname}: {name} ({index}/{len(steps)})")

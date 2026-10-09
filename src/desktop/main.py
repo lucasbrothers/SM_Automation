@@ -292,6 +292,7 @@ class Console(QMainWindow):
             self.account_action.addItem(title, action)
         self.account_action.addItem("Set password maximum age", "password_age")
         self.account_action.addItem("Set account expiry date", "expiry")
+        self.account_action.addItem("Install SSH public key", "public_key")
         form.addRow("Action", self.account_action)
         self.account_fields = {}
         for name, title in [("username", "Username"), ("sr", "SR reference"), ("full_name", "Full name"), ("uid", "UID (optional)"), ("gid", "Existing GID (optional)")]:
@@ -301,6 +302,9 @@ class Console(QMainWindow):
         self.account_fields["max_days"] = QLineEdit(); form.addRow("Password maximum age (days)", self.account_fields["max_days"])
         self.account_fields["expiry_date"] = QLineEdit(); self.account_fields["expiry_date"].setPlaceholderText("YYYY-MM-DD or never")
         form.addRow("Account expiry", self.account_fields["expiry_date"])
+        self.account_fields["public_key"] = QLineEdit()
+        self.account_fields["public_key"].setPlaceholderText("ssh-ed25519 AAAA... (public key only)")
+        form.addRow("SSH public key", self.account_fields["public_key"])
         def update_fields():
             action = self.account_action.currentData()
             for name, field in self.account_fields.items():
@@ -309,6 +313,7 @@ class Console(QMainWindow):
                     "full_name": action in {"create", "modify"}, "uid": action == "create",
                     "gid": action == "create", "groups": action in {"groups", "remove_groups", "primary_group"},
                     "max_days": action == "password_age", "expiry_date": action == "expiry",
+                    "public_key": action == "public_key",
                 }[name]
                 field.setEnabled(required); form.setRowVisible(field, required)
         self.account_action.currentIndexChanged.connect(update_fields); update_fields()

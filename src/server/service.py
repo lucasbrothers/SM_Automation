@@ -254,8 +254,12 @@ class ManagementService:
                 if options["action"] != "list":
                     if options["username"] == login_user:
                         raise ValueError("The SSH management account cannot be changed")
+                    extra_commands = None
+                    if options["action"] == "public_key":
+                        from account.keys import key_command
+                        extra_commands = {"account_ssh_key_before": key_command(options["username"], "snapshot")}
                     before = backup_server(client, server, host_config, self.backups, job["id"],
-                                           lambda text: self._progress(job, text))
+                                           lambda text: self._progress(job, text), extra_commands=extra_commands)
                     if before["status"] != "completed":
                         return {**row, "status": "failed", "error": "Pre-change backup incomplete; account unchanged", "result": {"backup": before}}
                     with self.lock:

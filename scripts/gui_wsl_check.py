@@ -52,6 +52,8 @@ def main():
                 print("PASS: native Accounts page submits Linux job and displays real account rows")
                 window.account_action.setCurrentIndex(window.account_action.findData("create"))
                 assert window.account_fields["sr"].isVisible() and not window.account_fields["groups"].isVisible()
+                window.account_action.setCurrentIndex(window.account_action.findData("public_key"))
+                assert window.account_fields["public_key"].isVisible() and not window.account_fields["sr"].isVisible()
                 window.account_action.setCurrentIndex(window.account_action.findData("expiry"))
                 assert window.account_fields["expiry_date"].isVisible() and not window.account_fields["sr"].isVisible()
                 window.account_action.setCurrentIndex(window.account_action.findData("list"))

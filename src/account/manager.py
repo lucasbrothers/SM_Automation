@@ -12,7 +12,7 @@ def validate_options(options):
     if not isinstance(options, dict):
         raise ValueError("Account options must be an object")
     action = options.get("action", "list")
-    if action not in {"list", "create", "modify", "groups", "remove_groups", "primary_group", "password_age", "expiry", "lock", "unlock", "delete"}:
+    if action not in {"list", "create", "modify", "groups", "remove_groups", "primary_group", "password_age", "expiry", "lock", "unlock", "delete", "public_key"}:
         raise ValueError("Unknown account action")
     result = {"action": action}
     if action == "list":
@@ -21,6 +21,9 @@ def validate_options(options):
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", username):
         raise ValueError("Use a Linux username of at most 32 lowercase characters")
     result["username"] = username
+    if action == "public_key":
+        from account.keys import validate_public_key
+        result["public_key"] = validate_public_key(options.get("public_key"))
     if action == "expiry":
         value = str(options.get("expiry_date", "")).strip()
         if value == "never":
@@ -69,6 +72,9 @@ def account_command(options, login_user):
         raise ValueError("The SSH management account cannot be changed")
     user = shlex.quote(username)
     prefix = "set -eu; exec 9>/run/lock/sm-automation-accounts.lock; flock -w 30 9; "
+    if action == "public_key":
+        from account.keys import key_command
+        return prefix + key_command(username, "install", options["public_key"])
     if action == "create":
         command = f"useradd -m -s /bin/bash -c {shlex.quote(options['comment'])}"
         if "uid" in options:

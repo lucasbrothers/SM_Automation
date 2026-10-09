@@ -1,5 +1,6 @@
 """Exercise account jobs only on the authorized loopback WSL lab."""
 import subprocess
+import json
 import tempfile
 import time
 from pathlib import Path
@@ -37,6 +38,19 @@ def main():
             assert job["status"] == "completed", row
             created = True
             assert row["result"]["backup"]["status"] == "completed"
+            public_key = wsl_read("/root/.ssh/sm_automation_wsl.pub").decode().strip()
+            for position in range(2):
+                job, row = run("public_key", public_key=public_key)
+                assert job["status"] == "completed", row
+                before = next(item for item in row["result"]["backup"]["artifacts"] if item["name"] == "account_ssh_key_before")
+                snapshot = json.loads(client.call("backup.preview", path=before["path"])["text"])
+                assert snapshot["exists"] == bool(position)
+                assert ("already present" if position else "installed") in row["result"]["output"]
+            installed = wsl_read(f"/home/{username}/.ssh/authorized_keys").decode().splitlines()
+            assert len(installed) == 1 and installed[0].split() == public_key.split()[:2]
+            metadata = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "stat", "-c", "%a %U", f"/home/{username}/.ssh", f"/home/{username}/.ssh/authorized_keys"], text=True).splitlines()
+            assert metadata == ["700 " + username, "600 " + username], metadata
+            print("PASS: public-key install, idempotence, encrypted prior-key snapshot and owner/permissions")
             job, row = run("password_age", max_days="90")
             assert job["status"] == "completed", row
             assert any("Maximum number" in line and line.strip().endswith("90") for line in row["result"]["output"].splitlines()), row
