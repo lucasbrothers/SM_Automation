@@ -36,6 +36,10 @@ class Scheduler:
                 target_names = [row["hostname"] for row in item["targets"]]
                 if len(set(item["hosts"])) != len(item["hosts"]) or len(set(target_names)) != len(target_names) or set(item["hosts"]) != set(target_names):
                     raise ValueError("Stored schedule targets do not match execution hosts")
+                if not isinstance(item.get("message", ""), str) or not isinstance(item.get("dispatching", False), bool):
+                    raise ValueError("Invalid stored schedule state")
+                if item.get("last_job_id") is not None and not isinstance(item["last_job_id"], str):
+                    raise ValueError("Invalid stored schedule job reference")
         except (InvalidToken, ValueError, UnicodeError, OSError, TypeError) as exc:
             self.items = []
             self.recovery_required = True

@@ -79,7 +79,7 @@ def test_inventory_change_pauses(scheduler):
     assert not scheduler.items[0]["enabled"]
 
 
-@pytest.mark.parametrize("mutation", ["different", "duplicate_hosts", "duplicate_targets"])
+@pytest.mark.parametrize("mutation", ["different", "duplicate_hosts", "duplicate_targets", "message", "dispatching", "last_job_id"])
 def test_restart_rejects_inconsistent_schedule_targets(scheduler, mutation):
     due(scheduler)
     item = copy.deepcopy(scheduler.items[0])
@@ -87,8 +87,10 @@ def test_restart_rejects_inconsistent_schedule_targets(scheduler, mutation):
         item["hosts"] = ["other-host"]
     elif mutation == "duplicate_hosts":
         item["hosts"] *= 2
-    else:
+    elif mutation == "duplicate_targets":
         item["targets"] *= 2
+    else:
+        item[mutation] = {"invalid": "type"}
     service = Service([item])
     restored = Scheduler(service); restored.close(); restored.tick()
     assert service.count == 0 and restored.list() == []

@@ -7,6 +7,25 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+@pytest.mark.parametrize("status,expected", [
+    ({"scheduler_running": True}, "scheduler is running"),
+    ({"scheduler_running": False}, "scheduler stopped"),
+    ({"scheduler_running": True, "history_errors": [{"file": "schedules.json.enc"}]}, "recovery required"),
+])
+def test_schedule_refresh_reports_linux_execution_state(monkeypatch, status, expected):
+    app = QApplication.instance() or QApplication([])
+    window = Console(); window.client = Mock()
+    window.client.call.side_effect = [[], status]
+    monkeypatch.setattr(window, "work", lambda fn, done: done(fn()))
+    window.load_schedules()
+    assert expected in window.schedule_health.text()
+    assert window.client.call.call_args_list[0].args == ("schedule.list",)
+    assert window.client.call.call_args_list[1].args == ("status",)
+    window.disconnect_server()
+    assert "Refresh schedules" in window.schedule_health.text()
+    window.close()
+
+
 def test_backup_details_display_command_error_summary():
     from PySide6.QtWidgets import QTreeWidget
     app = QApplication.instance() or QApplication([])
