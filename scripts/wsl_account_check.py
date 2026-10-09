@@ -51,6 +51,11 @@ def main():
             metadata = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "stat", "-c", "%a %U", f"/home/{username}/.ssh", f"/home/{username}/.ssh/authorized_keys"], text=True).splitlines()
             assert metadata == ["700 " + username, "600 " + username], metadata
             print("PASS: public-key install, idempotence, encrypted prior-key snapshot and owner/permissions")
+            logged_in = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10", "-i", "/root/.ssh/sm_automation_wsl", username + "@127.0.0.1", "id -un"], text=True).strip()
+            assert logged_in == username
+            password_state = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "passwd", "-S", username], text=True).split()[1]
+            assert password_state == "L", password_state
+            print("PASS: fresh SSH key login to provisioned account; password remains locked")
             job, row = run("password_age", max_days="90")
             assert job["status"] == "completed", row
             assert any("Maximum number" in line and line.strip().endswith("90") for line in row["result"]["output"].splitlines()), row

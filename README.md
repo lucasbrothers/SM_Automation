@@ -27,6 +27,8 @@ Windows는 대상 선택, 요청 전송, 진행 상황과 결과 표시만 합�
 - Linux/AIX/Windows 주요 설정 파일 및 명령 출력 암호화 백업
 - 백업 경로: `./BACKUP/YYYY-MM-DD/hostname/run-id/`
 - 기존 Linux 자원 수집 및 보안 감사 호출
+- Linux 계정 관리·공개키 등록, Debian/Ubuntu 패치 계획·적용, 예약 수집/백업
+- SSH 정책 계획·암호화 백업 후 적용·재접속 실패 복구
 - Windows 데스크톱 GUI: Overview, Connection map, Backups, Activity
 
 ## 시작 안내
@@ -58,6 +60,7 @@ py -3.14 -m venv .venv-gui
 ![Accounts](docs/images/desktop-accounts.png)
 ![Patches](docs/images/desktop-patches.png)
 ![Schedules](docs/images/desktop-schedules.png)
+![SSH policy plan](docs/images/desktop-security-plan.png)
 
 ## 검증 상태
 
