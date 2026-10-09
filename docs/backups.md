@@ -76,3 +76,5 @@ Linux 설정 파일 수집은 /etc/apt·/etc/dpkg·/etc/default, 모듈 로딩/u
 Linux의 cron.hourly/daily/weekly/monthly와 anacrontab을 수집하며 /etc/systemd 전체를 포함해 journald/logind/timesyncd 등 전역 설정도 보관한다.
 
 Linux 저장장치/부팅 설정은 LVM·multipath·mdadm·dracut·crypttab·modules 경로도 포함한다. 이 구성 파일의 백업은 전체 디스크나 부팅 이미지의 복원을 의미하지 않는다.
+
+Linux의 firewall 명령 항목은 nft list ruleset 및 iptables-save/ip6tables-save로 현재 규칙을 읽는다. 도구 부재는 선택 도구 경고로 보존하고 전부 없으면 부분 완료다. 실행 실패와 stderr 진단은 부분 완료로 남기며 metadata에서 원문을 읽는다. 서비스 시작 및 규칙 적용/복원은 수행하지 않는다.

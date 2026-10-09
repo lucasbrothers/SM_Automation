@@ -56,6 +56,20 @@ def command_group(*steps: str) -> str:
     ) + '; exit "$failed"'
 
 
+def firewall_commands() -> str:
+    """Read kernel rules without changing the firewall or starting services."""
+    lines = ["export LC_ALL=C; failed=0; available=0"]
+    for tool, arguments in [("nft", "list ruleset"), ("iptables-save", ""), ("ip6tables-save", "")]:
+        lines.append(
+            f"if command -v {tool} >/dev/null 2>&1; then available=1; "
+            f"printf '\\n===== {tool} =====\\n'; {tool} {arguments} || failed=1; "
+            f"else printf '%s\\n' 'Missing optional tool: {tool}' >&2; fi"
+        )
+    lines.append('[ "$available" -eq 1 ] || { echo "No firewall rule collection tool available" >&2; failed=1; }')
+    lines.append('exit "$failed"')
+    return "; ".join(lines)
+
+
 def commands(family: str) -> dict[str, str]:
     if family == "linux":
         return {
@@ -68,6 +82,7 @@ def commands(family: str) -> dict[str, str]:
             "services": command_group("systemctl list-unit-files --no-pager", "systemctl list-units --type=service --no-pager"),
             "packages": "if [ -f /etc/debian_version ] && command -v dpkg-query >/dev/null; then dpkg-query -W; elif command -v rpm >/dev/null; then rpm -qa; elif command -v dpkg-query >/dev/null; then dpkg-query -W; else echo 'No supported package inventory tool' >&2; exit 1; fi",
             "kernel": "sysctl -a",
+            "firewall": firewall_commands(),
             "schedule": "export LC_ALL=C; failed=0; accounts=$(cut -d: -f1 /etc/passwd) || exit 1; [ -n \"$accounts\" ] || { echo 'Account inventory is empty' >&2; exit 1; }; for account in $accounts; do printf '\\n===== %s =====\\n' \"$account\"; output=$(crontab -l -u \"$account\" 2>&1); rc=$?; printf '%s\\n' \"$output\"; if [ \"$rc\" -ne 0 ]; then case \"$output\" in *'no crontab for'*) :;; *) failed=1;; esac; fi; done; exit \"$failed\"",
         }
     if family == "aix":

@@ -73,8 +73,14 @@ def main():
                 assert results[0]["result"]["sshd_config_mode"].startswith("600 root ")
             if kind == "backup":
                 artifacts = results[0]["result"]["artifacts"]
-                required = {"configuration_files", "account_expiry_chage", "account_sudo_privileges"}
+                required = {"configuration_files", "account_expiry_chage", "account_sudo_privileges", "firewall"}
                 assert required <= {item["name"] for item in artifacts}
+                firewall = next(item for item in artifacts if item["name"] == "firewall")
+                rules = client.call("backup.preview", path=firewall["path"])
+                assert "===== nft =====" in rules["text"] and "===== iptables-save =====" in rules["text"]
+                assert firewall["exit_code"] == 0, firewall
+                assert firewall["status"] == ("partial" if firewall["errors"] else "completed"), firewall
+                assert all(item["status"] == "completed" for item in artifacts if item["name"] != "firewall"), artifacts
                 expiry = next(item for item in artifacts if item["name"] == "account_expiry_chage")
                 preview = client.call("backup.preview", path=expiry["path"])
                 assert "root" in preview["text"]

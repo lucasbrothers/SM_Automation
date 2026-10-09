@@ -102,3 +102,8 @@ Windows 백업 명령의 PowerShell/외부 명령 실패와 빈 계정 목록을
 Linux 백업에 APT/dpkg·시간대·모듈/udev·주기별 cron·systemd 전역·LVM/multipath/mdadm/dracut/crypttab 설정을 추가했다. WSL 실제 TLS 백업 11개 항목 완료 및 주요 경로 포함 확인을 진행했다.
 다른 PC용 scripts/start_desktop.ps1을 추가했다. -Check는 설치 환경 확인, -Demo는 합성 화면 실행이며 인증정보를 저장하지 않는다.
 다음 점검 후보는 실행 중인 Linux 방화벽 규칙 수집이다. 구현할 경우 도구 부재와 실제 실패를 구분하고 기존 백업 항목 수를 가정한 확인 스크립트도 함께 조정한다. 외부 대상 테스트를 추가 승인 없이 확대하지 않는다.
+
+## 2026-10-09 방화벽 실행 상태 수집
+
+Linux 백업에 현재 nft/IPv4·IPv6 iptables 규칙을 추가했다. 없는 도구와 수집 실패를 구분하며 전체 도구 부재는 성공으로 처리하지 않는다.
+실제 WSL TLS/GUI 검증 통과. 백업은 12개 항목이며 nft 진단이 있는 경우 부분 완료와 원문을 보존한다. GUI 검증은 고정 항목 수 대신 실제 결과와 firewall 존재를 확인한다.

@@ -114,7 +114,7 @@ def main():
                 window.refresh_resources = original_refresh
                 print("PASS: native resource metrics, memory/disk bars and automatic refresh control")
                 window.start_job("backup"); stage[0] = 9
-            elif stage[0] == 9 and any(job["id"] == window.active_job and job["kind"] == "backup" and job["status"] == "completed" for job in window.jobs):
+            elif stage[0] == 9 and any(job["id"] == window.active_job and job["kind"] == "backup" and job["status"] in {"completed", "partial"} for job in window.jobs):
                 stage[0] = 10
                 def check_backup(rows):
                     dialog = window.backup_results_dialog(rows)
@@ -122,7 +122,8 @@ def main():
                     dialog.show()
                     tree = dialog.findChild(QTreeWidget)
                     server = tree.topLevelItem(0)
-                    assert server.childCount() == 11, rows
+                    assert server.childCount() == len(rows[0]["result"]["artifacts"]), rows
+                    assert any(server.child(index).text(0) == "firewall" for index in range(server.childCount()))
                     archive = next(server.child(index) for index in range(server.childCount())
                                    if server.child(index).text(0) == "configuration_files")
                     assert any(archive.child(index).text(0).startswith("Missing optional path:")

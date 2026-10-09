@@ -7,6 +7,18 @@ from backup.profiles import command_group, commands
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
+@pytest.mark.parametrize("scenario", ["missing", "failed", "success"])
+def test_firewall_backup_distinguishes_missing_tools_and_failed_collection(scenario):
+    availability = "return 1" if scenario == "missing" else '[ "$2" = "nft" ]'
+    stub = 'command() { ' + availability + '; }; nft() { echo rules; return ' + ("7" if scenario == "failed" else "0") + '; }; '
+    result = subprocess.run(["sh", "-c", stub + commands("linux")["firewall"]], capture_output=True, text=True)
+    assert result.returncode == (0 if scenario == "success" else 1)
+    assert "Missing optional tool: iptables-save" in result.stderr
+    assert ("No firewall rule collection tool available" in result.stderr) == (scenario == "missing")
+    assert ("rules" in result.stdout) == (scenario != "missing")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="POSIX shell check runs in WSL")
 @pytest.mark.parametrize("failure_position", [0, 1, 2, None])
 def test_command_group_retains_all_output_and_any_failure(failure_position):
     steps = [f"printf 'step{index}\\n'; exit {7 if index == failure_position else 0}" for index in range(3)]

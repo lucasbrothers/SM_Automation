@@ -567,3 +567,9 @@ Windows 계정 만료 진단에서 빈 사용자 목록은 오류로 처리한�
 
 LVM·multipath·mdadm·dracut·crypttab·modules 관련 경로 9개를 추가했다. 없는 선택 경로는 경고로 보존한다.
 WSL 동기화/서비스 재시작 후 실제 TLS 통합 확인에서 백업 11개 항목이 완료됐다. 실제 RHEL 저장장치 구성/복원 검증은 수행하지 않았다.
+
+## 2026-10-09 실행 중인 Linux 방화벽 규칙
+
+nft list ruleset, iptables-save, ip6tables-save의 출력은 firewall.txt.enc에 수집한다. 방화벽 변경이나 서비스 시작은 수행하지 않는다.
+없는 도구는 Missing optional tool 경고이며, 모든 도구가 없거나 실행 실패하면 완료로 처리하지 않는다. stderr 원문은 암호화 metadata에 보존한다.
+로컬 WSL 명령/진단 확인 12개 통과. 실제 TLS 백업 12개 항목과 GUI 통합 확인 통과. nft의 iptables-nft 관리 테이블 진단 때문에 firewall 및 전체 백업은 partial이며 나머지 11개 항목은 completed였다. 실제 RHEL 검증은 수행하지 않았다.
