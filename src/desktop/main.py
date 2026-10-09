@@ -150,26 +150,44 @@ class ConnectDialog(QDialog):
 
 
 class InventoryDialog(QDialog):
-    def __init__(self, parent, rows):
+    def __init__(self, parent, rows, profiles=None):
         super().__init__(parent); self.setWindowTitle("Manage server inventory"); self.resize(680, 450)
         layout = QVBoxLayout(self)
         layout.addWidget(label("Saved encrypted on the Linux main server.", "subtitle"))
         self.grid = table(["Hostname", "IP address", "Operating system", "SSH profile"])
         self.grid.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        self.profiles = sorted(set(profiles or ["default"]) | {"default"})
         fill_table(self.grid, [[r["hostname"], r["ip"], r["os"], r.get("profile", "default")] for r in rows]); layout.addWidget(self.grid)
+        for index, row in enumerate(rows):
+            self.profile_selector(index, row.get("profile") or "default")
         actions = QHBoxLayout()
-        actions.addWidget(button("Add server", lambda: self.grid.insertRow(self.grid.rowCount())))
+        actions.addWidget(button("Add server", self.add_server))
         actions.addWidget(button("Remove selected", self.remove)); actions.addStretch()
         layout.addLayout(actions)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
+
+    def profile_selector(self, row, selected="default"):
+        selector = QComboBox()
+        for profile in self.profiles:
+            selector.addItem(profile, profile)
+        if selected not in self.profiles:
+            selector.addItem(selected + " (not configured)", selected)
+        selector.setCurrentIndex(selector.findData(selected))
+        self.grid.setCellWidget(row, 3, selector)
+
+    def add_server(self):
+        row = self.grid.rowCount()
+        self.grid.insertRow(row)
+        self.profile_selector(row)
 
     def remove(self):
         for row in sorted({item.row() for item in self.grid.selectedItems()}, reverse=True):
             self.grid.removeRow(row)
 
     def rows(self):
-        return [{key: self.grid.item(row, col).text().strip() if self.grid.item(row, col) else ""
+        return [{key: self.grid.cellWidget(row, col).currentData() if col == 3 else
+                 (self.grid.item(row, col).text().strip() if self.grid.item(row, col) else "")
                  for col, key in enumerate(("hostname", "ip", "os", "profile"))} for row in range(self.grid.rowCount())]
 
 
@@ -660,10 +678,13 @@ class Console(QMainWindow):
     def edit_inventory(self):
         if not self.require_client():
             return
-        dialog = InventoryDialog(self, self.servers)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            rows = dialog.rows(); client = self.client
-            self.work(lambda: client.call("inventory.save", servers=rows), lambda _: self.reload())
+        client = self.client
+        def loaded(profiles):
+            dialog = InventoryDialog(self, self.servers, profiles)
+            if dialog.exec() == QDialog.DialogCode.Accepted and self.client is client:
+                rows = dialog.rows()
+                self.work(lambda: client.call("inventory.save", servers=rows), lambda _: self.reload())
+        self.work(lambda: client.call("ssh.profiles"), loaded)
 
     def import_csv(self):
         if not self.require_client():

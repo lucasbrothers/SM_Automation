@@ -51,6 +51,7 @@ Linux의 `~/.config/sm-automation/ssh-profiles.json`에 접속 프로필을 둘 
 프로필의 `key_file`은 **Linux 절대 경로 또는 ~ 경로**를 사용한다.
 비밀번호가 필요하면 `password_env`에 Linux 환경변수 이름만 지정한다.
 GUI에는 프로필 이름만 입력하며 키/비밀번호는 전송하지 않는다.
+Manage inventory 화면은 Linux에 구성된 프로필 이름을 선택 목록으로 제공한다. 기존 목록의 이름이 구성에 없으면 'not configured'로 표시하며 저장 전 올바른 프로필을 선택한다.
 
 CSV 선택 열 `profile` 또는 Manage inventory의 SSH profile에 `unix-admin`,
 `windows-admin` 등을 지정한다. 비워 두면 `default`(전역 설정)다.

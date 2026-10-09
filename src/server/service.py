@@ -459,6 +459,8 @@ class ManagementService:
                     "history_errors": self.history_errors, "operations_enabled": not self.history_errors}
         if method == "inventory.list":
             return self.inventory()
+        if method == "ssh.profiles":
+            return sorted(set(self.profiles) | {"default"})
         if method == "inventory.save":
             return self.save_inventory(params["servers"])
         if method == "inventory.import":

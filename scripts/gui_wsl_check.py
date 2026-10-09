@@ -39,6 +39,8 @@ def main():
             if time.monotonic() > deadline:
                 print("FAIL: GUI timed out: " + window.status_line.text()); app.exit(1); return
             if stage[0] == 0 and window.servers:
+                profiles = window.client.call("ssh.profiles")
+                assert "default" in profiles and all(isinstance(name, str) for name in profiles)
                 assert window.servers[0]["hostname"] == "wsl-ubuntu"
                 window.navigate(1)
                 window.select_all.setChecked(False)
