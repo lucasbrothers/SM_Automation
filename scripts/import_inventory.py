@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from common.config import load_config
-from server.service import inventory_csv
+from server.service import inventory_csv, load_ssh_profiles, verify_inventory_profiles
 from storage.encrypted import EncryptedStore
 
 
@@ -19,6 +19,7 @@ def main():
     config = load_config(args.config)
     with args.csv_file.open(encoding="utf-8-sig", newline="") as handle:
         rows = inventory_csv(handle.read())
+    verify_inventory_profiles(rows, load_ssh_profiles(config.ssh_profiles_file))
     store = EncryptedStore(config.data_directory, config.key_file)
     store.write_json("inventory.json.enc", rows)
     print(f"Imported {len(rows)} servers into encrypted Linux storage")

@@ -85,15 +85,25 @@ def inventory_csv(content):
     return inventory_records(rows)
 
 
+def load_ssh_profiles(path):
+    profiles = json.loads(read_secret(path)) if path.exists() else {}
+    if not isinstance(profiles, dict):
+        raise ValueError("SSH profiles must be a JSON object")
+    return profiles
+
+
+def verify_inventory_profiles(rows, profiles):
+    for row in rows:
+        if row["profile"] != "default" and row["profile"] not in profiles:
+            raise ValueError(f"SSH profile is not configured on Linux: {row['profile']}")
+
+
 class ManagementService:
     def __init__(self, config):
         self.config = config
         self.data = EncryptedStore(config.data_directory, config.key_file)
         self.backups = EncryptedStore(config.backup_directory, config.key_file)
-        self.profiles = (json.loads(read_secret(config.ssh_profiles_file))
-                         if config.ssh_profiles_file.exists() else {})
-        if not isinstance(self.profiles, dict):
-            raise ValueError("SSH profiles must be a JSON object")
+        self.profiles = load_ssh_profiles(config.ssh_profiles_file)
         self.lock = threading.RLock()
         self.account_locks = defaultdict(threading.Lock)
         self.jobs = {}
@@ -122,9 +132,7 @@ class ManagementService:
 
     def save_inventory(self, rows):
         rows = inventory_records(rows)
-        for row in rows:
-            if row["profile"] != "default" and row["profile"] not in self.profiles:
-                raise ValueError(f"SSH profile is not configured on Linux: {row['profile']}")
+        verify_inventory_profiles(rows, self.profiles)
         with self.lock:
             self.data.write_json("inventory.json.enc", rows)
         return {"count": len(rows)}
