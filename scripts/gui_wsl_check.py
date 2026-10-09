@@ -105,10 +105,13 @@ def main():
             elif stage[0] == 8 and window.resource_loaded_job == window.active_job and window.resource_table.rowCount():
                 assert window.resource_table.cellWidget(0, 2) is not None
                 assert window.resource_table.cellWidget(0, 3) is not None
+                original_refresh = window.refresh_resources
+                window.refresh_resources = lambda: None
                 window.resource_auto.setChecked(True)
                 assert window.resource_timer.isActive()
                 window.resource_auto.setChecked(False)
                 assert not window.resource_timer.isActive()
+                window.refresh_resources = original_refresh
                 print("PASS: native resource metrics, memory/disk bars and automatic refresh control")
                 window.start_job("backup"); stage[0] = 9
             elif stage[0] == 9 and any(job["id"] == window.active_job and job["kind"] == "backup" and job["status"] == "completed" for job in window.jobs):
