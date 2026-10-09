@@ -213,6 +213,9 @@ class ManagementService:
                 if plan["status"] == "blocked":
                     raise ValueError("SSH plan is blocked")
                 actions = plan["actions"]
+                if any(action.get("parameter") == "permitrootlogin" and action.get("current") == "no"
+                       and action.get("recommended") != "no" for action in actions):
+                    raise ValueError("Disabled root login must remain disabled; regenerate the SSH plan")
                 if not actions:
                     result = {"applied": 0, "note": "Policy already satisfied; no files or services changed"}
                 else:
@@ -291,9 +294,8 @@ class ManagementService:
                     raise ValueError("Security audit currently supports Linux targets")
                 result = asdict(audit_linux_server(client, privilege=mode))
                 if kind == "security_plan":
-                    policy = {"os": "linux", "allowed_sshd_settings": {
-                        "permitrootlogin": ["prohibit-password", "without-password"],
-                        "pubkeyauthentication": ["yes"]}}
+                    from security.policy import default_ssh_policy
+                    policy = default_ssh_policy()
                     record = {**row, **result, "root_accounts": list(result["root_accounts"]), "status": "passed"}
                     result = {"observations": result, "policy": policy,
                               "plan": build_remediation_plan([record], policy)[0],

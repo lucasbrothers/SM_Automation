@@ -11,6 +11,14 @@ SUPPORTED_SETTINGS = {
 }
 
 
+def default_ssh_policy():
+    """Preserve disabled root access while restricting existing root login to keys."""
+    return {"os": "linux", "allowed_sshd_settings": {
+        "permitrootlogin": ["prohibit-password", "without-password", "no"],
+        "pubkeyauthentication": ["yes"],
+    }}
+
+
 def _string_list(value: Any, name: str) -> list[str]:
     if not isinstance(value, list):
         raise ValueError(f"{name} must be a list of strings")

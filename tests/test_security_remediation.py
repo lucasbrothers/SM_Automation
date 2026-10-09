@@ -1,4 +1,15 @@
 from security.remediation import build_remediation_plan
+from security.policy import default_ssh_policy
+
+
+def test_default_policy_does_not_reenable_disabled_root_login():
+    for root_login in ("no", "prohibit-password", "without-password"):
+        plan = build_remediation_plan([{
+            "hostname": "TEST", "ip": "192.0.2.1", "status": "passed",
+            "sshd_settings": {"permitrootlogin": root_login, "pubkeyauthentication": "yes"},
+        }], default_ssh_policy())[0]
+        assert plan["status"] == "no_changes"
+        assert plan["actions"] == []
 
 
 def test_remediation_plan_lists_only_noncompliant_settings():
