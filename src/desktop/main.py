@@ -941,6 +941,7 @@ class Console(QMainWindow):
                 if artifact.get("error"):
                     details.append("Collection error: " + artifact["error"])
                 details.extend(artifact.get("warnings", []))
+                details.extend("Command error: " + error for error in artifact.get("errors", []))
                 for detail in details:
                     child = QTreeWidgetItem([detail, "", "", ""])
                     child.setToolTip(0, detail)
@@ -1043,7 +1044,8 @@ def main():
                  "path": prefix + "/configuration_files.tar.enc", "exit_code": 0,
                  "warnings": ["Missing optional path: /etc/netplan"]},
                 {"name": "network", "status": "partial", "size": 4096,
-                 "path": prefix + "/network.txt.enc", "exit_code": 1},
+                 "path": prefix + "/network.txt.enc", "exit_code": 1,
+                 "errors": ["Synthetic example: network command returned permission denied"]},
                 {"name": "account_expiry_chage", "status": "failed",
                  "error": "Synthetic example: remote command timed out"},
             ]}}], {"status": "interrupted", "total": 4,

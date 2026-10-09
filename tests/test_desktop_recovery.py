@@ -7,6 +7,17 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+def test_backup_details_display_command_error_summary():
+    from PySide6.QtWidgets import QTreeWidget
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    dialog = window.backup_results_dialog([{"hostname": "lab", "status": "partial", "result": {
+        "artifacts": [{"name": "network", "status": "partial", "errors": ["Permission denied"]}]}}])
+    artifact = dialog.findChild(QTreeWidget).topLevelItem(0).child(0)
+    assert any(artifact.child(index).text(0) == "Command error: Permission denied" for index in range(artifact.childCount()))
+    dialog.close(); window.close()
+
+
 def test_inventory_refresh_preserves_selection_and_requires_changed_targets_to_be_selected():
     from PySide6.QtCore import Qt
     app = QApplication.instance() or QApplication([])
