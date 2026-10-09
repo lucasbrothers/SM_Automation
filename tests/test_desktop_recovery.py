@@ -7,6 +7,22 @@ from desktop.main import Console, InventoryDialog
 from desktop.graph import ConnectionMap
 
 
+def test_history_selection_follows_job_identity_when_new_row_arrives():
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    def job(identity, time):
+        return {"id": identity, "created_at": time, "kind": "backup", "status": "running", "done": 0, "total": 1}
+    window.set_jobs([job("old", "2026-10-09T01:00:00")])
+    window.jobs_table.setCurrentCell(0, 0)
+    window.backup_table.setCurrentCell(0, 0)
+    window.set_jobs([job("new", "2026-10-09T02:00:00")])
+    assert window.jobs[window.jobs_table.currentRow()]["id"] == "old"
+    assert window.backup_jobs[window.backup_table.currentRow()]["id"] == "old"
+    window.disconnect_server()
+    assert window.jobs_table.currentRow() == window.backup_table.currentRow() == -1
+    window.close()
+
+
 @pytest.mark.parametrize("reconnect", [False, True])
 def test_connection_change_clears_previous_account_patch_and_schedule_views(monkeypatch, reconnect):
     app = QApplication.instance() or QApplication([])

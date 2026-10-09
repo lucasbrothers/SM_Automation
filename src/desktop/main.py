@@ -93,6 +93,19 @@ def fill_table(widget, rows):
             widget.setItem(r, c, item)
 
 
+def fill_job_table(widget, jobs, rows):
+    selected = widget.item(widget.currentRow(), 0)
+    identity = selected.data(Qt.ItemDataRole.UserRole) if selected else None
+    fill_table(widget, rows)
+    widget.clearSelection()
+    widget.setCurrentCell(-1, -1)
+    for index, job in enumerate(jobs):
+        widget.item(index, 0).setData(Qt.ItemDataRole.UserRole, job["id"])
+        if job["id"] == identity:
+            widget.setCurrentCell(index, 0)
+            widget.selectRow(index)
+
+
 class WorkerSignals(QObject):
     done = Signal(object)
     error = Signal(str)
@@ -771,7 +784,7 @@ class Console(QMainWindow):
     def display_backup_history(self, jobs):
         self.backup_history.update({job["id"]: job for job in jobs})
         self.backup_jobs = sorted(self.backup_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
-        fill_table(self.backup_table, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
+        fill_job_table(self.backup_table, self.backup_jobs, [[j["created_at"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in self.backup_jobs])
 
     def load_job_history(self):
         if not self.require_client():
@@ -789,7 +802,7 @@ class Console(QMainWindow):
         self.job_history.update({job["id"]: job for job in jobs})
         jobs = sorted(self.job_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
         self.jobs = jobs
-        fill_table(self.jobs_table, [[j["created_at"], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
+        fill_job_table(self.jobs_table, jobs, [[j["created_at"], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
         self.display_backup_history([j for j in jobs if j["kind"] == "backup"])
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
         if resource and resource["id"] != self.resource_loaded_job and self.client:
