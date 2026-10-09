@@ -1,11 +1,12 @@
 # Linux 서버와 Windows GUI 배포
 
-2026-10-08 개발 초안. 이 문서는 다음 PC에서 실행하기 위한 절차이며, 이번 PC에서
-Linux 서비스 설치나 실서버 접속을 수행했다는 의미가 아니다.
+2026-10-09 기준 배포 안내. 로컬 Ubuntu WSL의 root 서비스와 Windows GUI 연결은
+확인했으며 상세 결과는 docs/wsl-progress.md에 기록했다. 실제 RHEL/AIX/Windows 대상 검증은 남아 있다.
 
 ## 1. Linux 메인 서버
 
-Python 3.14 환경을 준비한다. Linux 배포판별 패키지 가용성은 대상 PC에서 확인한다.
+아래 예시는 검증한 Ubuntu WSL의 Python 3.14 환경을 기준으로 한다.
+RHEL은 이 문서 아래의 별도 Python 3.11 설치 절차를 사용한다. 배포판별 패키지 가용성은 대상 PC에서 확인한다.
 아래는 프로젝트 디렉터리에서 실행한다.
 
 ```sh

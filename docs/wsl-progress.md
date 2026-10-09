@@ -547,3 +547,8 @@ WSL에 반영하고 실제 TLS 백업에서 etc/apt와 etc/hostname 포함을 �
 
 start_desktop.ps1은 프로젝트 위치를 기준으로 .venv-gui 또는 .venv를 찾아 GUI/합성 데모를 실행한다. -Check는 PySide6 설치 상태만 확인한다.
 현재 환경의 -Check가 통과했다. 인증정보 저장/자동 설치는 하지 않으며 배포 문서에 사용법을 추가했다.
+
+## 2026-10-09 배포 안내 정합성
+
+GUI 실행 도구의 -Check가 프로젝트 밖 D:/Project에서도 환경을 찾는 것을 확인했다.
+배포 문서의 오래된 '설치하지 않았다' 설명을 실제 WSL 설치/연결 확인 상태로 수정했다. Ubuntu Python 3.14 예시와 RHEL Python 3.11 절차를 명확히 구분했다.
