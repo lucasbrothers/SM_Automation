@@ -135,8 +135,10 @@ class ManagementService:
             try:
                 job = self.data.read_json(str(path.relative_to(self.data.root)))
                 if not isinstance(job, dict) or job.get("id") != path.name.removesuffix(".json.enc") or not all(
-                        field in job for field in ("status", "kind", "created_at")):
+                        isinstance(job.get(field), str) and job[field] for field in ("status", "kind", "created_at")):
                     raise ValueError("Invalid stored job record")
+                if any(field in job and not isinstance(job[field], list) for field in ("results", "targets")):
+                    raise ValueError("Invalid stored job collections")
             except (InvalidToken, ValueError, UnicodeError, OSError) as exc:
                 self.history_errors.append({"file": path.name, "error": type(exc).__name__})
                 continue

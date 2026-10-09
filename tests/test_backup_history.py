@@ -72,3 +72,27 @@ def test_damaged_history_preserved_and_operations_blocked(tmp_path, monkeypatch)
         assert damaged.read_bytes() == b"damaged ciphertext"
     finally:
         restored.close()
+
+
+@pytest.mark.parametrize("field,value", [("status", []), ("created_at", 42), ("kind", None),
+                                        ("results", {}), ("targets", "invalid")])
+def test_malformed_history_is_preserved_without_breaking_startup(tmp_path, monkeypatch, field, value):
+    key = tmp_path / "master.key"
+    key.write_bytes(Fernet.generate_key()); key.chmod(0o600)
+    config = SimpleNamespace(data_directory=tmp_path / "DATA", backup_directory=tmp_path / "BACKUP",
+                             key_file=key, ssh_profiles_file=tmp_path / "absent-profiles.json")
+    store = EncryptedStore(config.data_directory, key)
+    good = {"id": "good", "kind": "backup", "status": "completed", "created_at": "2026"}
+    store.write_json("jobs/good.json.enc", good)
+    store.write_json("jobs/bad.json.enc", {**good, "id": "bad", field: value})
+    original = store.path("jobs/bad.json.enc").read_bytes()
+    monkeypatch.setattr("server.service.Scheduler", lambda service: Mock())
+    restored = ManagementService(config)
+    try:
+        assert restored.dispatch("job.list", {}) == [good]
+        assert restored.history_errors == [{"file": "bad.json.enc", "error": "ValueError"}]
+        with pytest.raises(RuntimeError, match="recovery required"):
+            restored.submit("backup", [])
+        assert store.path("jobs/bad.json.enc").read_bytes() == original
+    finally:
+        restored.close()
