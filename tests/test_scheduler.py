@@ -44,6 +44,17 @@ def future():
     return (datetime.now().astimezone() + timedelta(minutes=5)).isoformat()
 
 
+@pytest.mark.parametrize("stored", [{"bad": "collection"}, [None], [{"id": "bad"}]])
+def test_malformed_schedule_collection_is_preserved_and_blocks_new_work(stored):
+    service = Service(stored)
+    restored = Scheduler(service); restored.close()
+    assert restored.list() == []
+    assert service.data.items == stored
+    assert service.history_errors == [{"file": "schedules.json.enc", "error": "ValueError"}]
+    with pytest.raises(RuntimeError, match="recovery"):
+        restored.create("backup", ["lab"], future())
+
+
 def due(scheduler, repeat=0):
     scheduler.create("connections", ["lab"], future(), repeat)
     scheduler.items[0]["next_run"] = (datetime.now().astimezone() - timedelta(seconds=2)).isoformat()

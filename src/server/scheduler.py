@@ -5,12 +5,37 @@ from datetime import datetime, timedelta
 import threading
 import uuid
 import copy
+from cryptography.fernet import InvalidToken
 
 
 class Scheduler:
     def __init__(self, service):
         self.service = service
-        self.items = service.data.read_json("schedules.json.enc", [])
+        self.recovery_required = False
+        try:
+            self.items = service.data.read_json("schedules.json.enc", [])
+            if not isinstance(self.items, list) or len(self.items) > 100:
+                raise ValueError("Invalid stored schedule collection")
+            identities = set()
+            for item in self.items:
+                if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"] or item["id"] in identities:
+                    raise ValueError("Invalid stored schedule identity")
+                identities.add(item["id"])
+                if item.get("kind") not in {"connections", "backup", "monitoring", "security_audit"} or not isinstance(item.get("enabled"), bool):
+                    raise ValueError("Invalid stored schedule operation")
+                interval = item.get("interval_seconds")
+                if isinstance(interval, bool) or not isinstance(interval, int) or (interval != 0 and not 60 <= interval <= 31536000):
+                    raise ValueError("Invalid stored schedule interval")
+                if not isinstance(item.get("next_run"), str) or datetime.fromisoformat(item["next_run"]).tzinfo is None:
+                    raise ValueError("Invalid stored schedule time")
+                if not isinstance(item.get("hosts"), list) or not item["hosts"] or any(not isinstance(host, str) for host in item["hosts"]):
+                    raise ValueError("Invalid stored schedule hosts")
+                if not isinstance(item.get("targets"), list) or not item["targets"] or any(not isinstance(row, dict) or not isinstance(row.get("hostname"), str) for row in item["targets"]):
+                    raise ValueError("Invalid stored schedule targets")
+        except (InvalidToken, ValueError, UnicodeError, OSError, TypeError) as exc:
+            self.items = []
+            self.recovery_required = True
+            service.history_errors.append({"file": "schedules.json.enc", "error": type(exc).__name__})
         self.lock = threading.RLock()
         self.stop = threading.Event()
         # An uncertain dispatch after a crash must not be automatically repeated.
@@ -24,6 +49,8 @@ class Scheduler:
         self.thread.start()
 
     def save(self):
+        if self.recovery_required:
+            return
         self.service.data.write_json("schedules.json.enc", self.items)
 
     def list(self):

@@ -96,3 +96,22 @@ def test_malformed_history_is_preserved_without_breaking_startup(tmp_path, monke
         assert store.path("jobs/bad.json.enc").read_bytes() == original
     finally:
         restored.close()
+
+
+def test_damaged_encrypted_schedule_preserves_original_and_keeps_service_readable(tmp_path):
+    key = tmp_path / "master.key"
+    key.write_bytes(Fernet.generate_key()); key.chmod(0o600)
+    config = SimpleNamespace(data_directory=tmp_path / "DATA", backup_directory=tmp_path / "BACKUP",
+                             key_file=key, ssh_profiles_file=tmp_path / "absent-profiles.json")
+    store = EncryptedStore(config.data_directory, key)
+    damaged = store.path("schedules.json.enc"); damaged.write_bytes(b"damaged schedule")
+    restored = ManagementService(config)
+    try:
+        assert restored.dispatch("job.list", {}) == []
+        assert restored.scheduler.list() == []
+        assert restored.history_errors == [{"file": "schedules.json.enc", "error": "InvalidToken"}]
+        with pytest.raises(RuntimeError, match="recovery required"):
+            restored.submit("backup", [])
+        assert damaged.read_bytes() == b"damaged schedule"
+    finally:
+        restored.close()
