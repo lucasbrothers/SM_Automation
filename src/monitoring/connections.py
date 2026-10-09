@@ -50,7 +50,7 @@ def parse_netstat(text: str) -> list[dict]:
 
 
 def collect_connections(client, family: str, timeout: int) -> dict:
-    command = {"linux": "LC_ALL=C netstat -nt", "aix": "LC_ALL=C netstat -an -f inet; netstat -an -f inet6",
+    command = {"linux": "LC_ALL=C netstat -nt", "aix": "failed=0; LC_ALL=C netstat -an -f inet || failed=1; LC_ALL=C netstat -an -f inet6 || failed=1; exit $failed",
                "windows": "netstat -ano"}[family]
     result = capture(client, command, timeout=timeout, max_bytes=8 * 1024 * 1024)
     if result.exit_code != 0:
