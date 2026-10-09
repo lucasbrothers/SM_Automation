@@ -35,8 +35,25 @@ def execute(client, command, mode, timeout=180):
     return result.stdout.decode("utf-8", errors="replace")
 
 
+MANAGER_COMMAND = (
+    "if test -f /etc/debian_version; then "
+    "command -v apt-get >/dev/null 2>&1 && command -v dpkg-query >/dev/null 2>&1 && echo apt || echo unsupported; "
+    "elif test -f /etc/redhat-release; then "
+    "command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 && echo dnf || echo unsupported; "
+    "elif command -v apt-get >/dev/null 2>&1 && command -v dpkg-query >/dev/null 2>&1; then echo apt; "
+    "elif command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1; then echo dnf; else echo unsupported; fi"
+)
+
+
+def package_manager(client):
+    manager = client.execute(MANAGER_COMMAND).strip()
+    if manager not in {"apt", "dnf"}:
+        raise ValueError("No supported native package manager is available")
+    return manager
+
+
 def list_updates(client, mode):
-    manager = client.execute("if command -v apt-get >/dev/null 2>&1; then echo apt; elif command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1; then echo dnf; else echo unsupported; fi").strip()
+    manager = package_manager(client)
     if manager == "dnf":
         from patch.rpm import list_updates as rpm_updates
         return rpm_updates(client, mode)
@@ -72,7 +89,7 @@ def simulate(client, pins, mode):
 
 
 def make_plan(client, packages, mode):
-    if client.execute("if command -v apt-get >/dev/null 2>&1; then echo apt; elif command -v dnf >/dev/null 2>&1; then echo dnf; fi").strip() == "dnf":
+    if package_manager(client) == "dnf":
         from patch.rpm_plan import make_plan as rpm_plan
         return rpm_plan(client, packages, mode)
     pins, selected = [], []
