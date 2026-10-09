@@ -181,3 +181,16 @@ def test_scheduler_reports_failure_without_exposing_exception_details(scheduler,
     monkeypatch.setattr(scheduler, "tick", fail)
     scheduler.run()
     assert scheduler.stop.is_set() and scheduler.failure == "OSError"
+
+
+def test_stopped_scheduler_rejects_new_or_resumed_work_but_allows_pause_and_delete(scheduler):
+    item = scheduler.create("backup", ["lab"], future())
+    scheduler.failure = "OSError"
+    with pytest.raises(RuntimeError, match="scheduler stopped"):
+        scheduler.create("backup", ["lab"], future())
+    with pytest.raises(RuntimeError, match="scheduler stopped"):
+        scheduler.change(item["id"], enabled=True)
+    assert len(scheduler.items) == 1
+    assert not scheduler.change(item["id"], enabled=False)["enabled"]
+    scheduler.change(item["id"], delete=True)
+    assert scheduler.items == []

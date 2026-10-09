@@ -68,6 +68,8 @@ class Scheduler:
     def create(self, kind, hosts, run_at, interval_seconds=0):
         if self.service.history_errors:
             raise RuntimeError("History recovery required before creating schedules")
+        if self.failure:
+            raise RuntimeError("Linux scheduler stopped; recover storage and restart before creating schedules")
         if kind not in {"connections", "backup", "monitoring", "security_audit"}:
             raise ValueError("Schedules support collection, monitoring, audit and backup only")
         timestamp = datetime.fromisoformat(run_at)
@@ -96,6 +98,8 @@ class Scheduler:
     def change(self, schedule_id, enabled=None, delete=False):
         if enabled is True and not delete and self.service.history_errors:
             raise RuntimeError("History recovery required before resuming schedules")
+        if enabled is True and not delete and self.failure:
+            raise RuntimeError("Linux scheduler stopped; recover storage and restart before resuming schedules")
         if not isinstance(delete, bool):
             raise ValueError("Delete must be a boolean")
         with self.lock:
