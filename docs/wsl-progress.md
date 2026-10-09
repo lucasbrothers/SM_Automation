@@ -542,3 +542,8 @@ WSL 백업 관련 회귀 확인 9개 통과. 실제 Windows SSH 실행은 검증
 
 APT/dpkg 저장소·기본 서비스 옵션·커널 모듈/udev·chrony·nftables·호스트명/시간대 경로 11개를 추가했다. 없는 경로는 기존 선택 경로 경고로 남긴다.
 WSL에 반영하고 실제 TLS 백업에서 etc/apt와 etc/hostname 포함을 확인했다. 백업 11개 항목과 연결·자원·SSH 진단/계획 흐름 통과.
+
+## 2026-10-09 다른 PC용 GUI 실행 도구
+
+start_desktop.ps1은 프로젝트 위치를 기준으로 .venv-gui 또는 .venv를 찾아 GUI/합성 데모를 실행한다. -Check는 PySide6 설치 상태만 확인한다.
+현재 환경의 -Check가 통과했다. 인증정보 저장/자동 설치는 하지 않으며 배포 문서에 사용법을 추가했다.

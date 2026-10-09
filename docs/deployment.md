@@ -48,6 +48,16 @@ py -3.14 -m venv .venv-gui
 .venv-gui/Scripts/python.exe scripts/run_desktop.py
 ```
 
+설치 후에는 아래 실행 도구를 사용할 수 있다. 프로젝트 위치에 관계없이 `.venv-gui`를 우선 찾고, 없으면 `.venv`를 사용한다.
+
+```powershell
+./scripts/start_desktop.ps1 -Check   # GUI 설치 상태만 확인
+./scripts/start_desktop.ps1          # 연결 화면 실행
+./scripts/start_desktop.ps1 -Demo    # 합성 화면 예시
+```
+
+이 도구는 패키지를 자동 설치하거나 인증정보를 저장하지 않는다.
+
 1. Linux에서 생성한 공개 `ca.crt`를 Windows로 전달한다.
 2. API 토큰은 승인된 별도 전달 수단으로 운영자에게 제공한다.
 3. GUI의 **Connect server**에서 Linux 주소, 7443, CA 파일, 토큰을 입력한다.
