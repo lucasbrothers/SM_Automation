@@ -34,6 +34,8 @@ def main():
         assert result["operations"] == [] and result["pins"] == ["net-tools=" + version]
         _, result = run({"action": "apply", "plan_id": plan["id"]})
         assert result["backup"]["status"] == "completed"
+        packages = next(item for item in result["backup"]["artifacts"] if item["name"] == "packages")
+        assert "net-tools\t" + version in client.call("backup.preview", path=packages["path"])["text"]
         after = subprocess.check_output(command + ["dpkg-query", "-W", "net-tools"], text=True).split()[1]
         assert version == after
         print("PASS: TLS patch query, exact-version plan, encrypted pre-patch backup and no-change apply on WSL")

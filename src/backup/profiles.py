@@ -51,7 +51,7 @@ def commands(family: str) -> dict[str, str]:
             "storage": "df -hPT; lsblk -f; mount; cat /proc/swaps",
             "network": "ip address; ip route; netstat -an",
             "services": "systemctl list-unit-files --no-pager; systemctl list-units --type=service --no-pager",
-            "packages": "if command -v rpm >/dev/null; then rpm -qa; else dpkg-query -W; fi",
+            "packages": "if [ -f /etc/debian_version ] && command -v dpkg-query >/dev/null; then dpkg-query -W; elif command -v rpm >/dev/null; then rpm -qa; elif command -v dpkg-query >/dev/null; then dpkg-query -W; else echo 'No supported package inventory tool' >&2; exit 1; fi",
             "kernel": "sysctl -a",
             "schedule": "export LC_ALL=C; failed=0; for account in $(cut -d: -f1 /etc/passwd); do printf '\\n===== %s =====\\n' \"$account\"; output=$(crontab -l -u \"$account\" 2>&1); rc=$?; printf '%s\\n' \"$output\"; if [ \"$rc\" -ne 0 ]; then case \"$output\" in *'no crontab for'*) :;; *) failed=1;; esac; fi; done; exit \"$failed\"",
         }
