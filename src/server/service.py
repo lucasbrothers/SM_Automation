@@ -29,6 +29,8 @@ from security.permissions import secure_ssh_config
 from backup.preview import archive_listing
 from security.remediation import build_remediation_plan
 from security.apply import apply_sshd_settings
+from security.plan import verify_observations
+from engine.remote import privileged
 
 
 def now():
@@ -205,7 +207,9 @@ class ManagementService:
                 result = collect_linux_snapshot(client).to_dict()
             elif kind == "security_apply":
                 with self.lock:
-                    plan = next(item["result"]["plan"] for item in self.jobs[job["options"]["plan_id"]]["results"] if item["hostname"] == row["hostname"])
+                    planned = next(item["result"] for item in self.jobs[job["options"]["plan_id"]]["results"] if item["hostname"] == row["hostname"])
+                    plan = planned["plan"]
+                verify_observations(planned["observations"], asdict(audit_linux_server(client, privilege=mode)))
                 if plan["status"] == "blocked":
                     raise ValueError("SSH plan is blocked")
                 actions = plan["actions"]
@@ -292,6 +296,12 @@ class ManagementService:
                     result = {"observations": result, "policy": policy,
                               "plan": build_remediation_plan([record], policy)[0],
                               "note": "Preview only; authentication settings have not been changed"}
+                    unsupported = client.execute(privileged("awk '{key=tolower($1); sub(/=.*/, \"\", key)} key == \"include\" || key == \"match\" {print key}' /etc/ssh/sshd_config", mode)).strip()
+                    result["adapter"] = {"supported": not bool(unsupported),
+                                         "reason": "Include/Match configuration requires a dedicated adapter" if unsupported else "Flat SSH configuration"}
+                    if unsupported and result["plan"]["actions"]:
+                        result["plan"]["status"] = "blocked"
+                        result["plan"]["reasons"].append(result["adapter"]["reason"])
             return {**row, "status": result.pop("status", "completed"), "result": result}
         except Exception as exc:
             return {**row, "status": "failed", "error": str(exc)[:1500]}

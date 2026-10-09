@@ -56,7 +56,7 @@ def main():
             if kind == "connections":
                 assert results[0]["result"]["connections"], "Active SSH connection was not observed"
             if kind == "security_plan":
-                assert results[0]["result"]["plan"]["status"] in {"no_changes", "action_required"}
+                assert results[0]["result"]["plan"]["status"] in {"no_changes", "action_required", "blocked"}
                 if args.check_ssh_apply:
                     assert results[0]["result"]["plan"]["status"] == "no_changes", "No-change test refuses to alter authentication"
                     apply_job = client.call("job.start", kind="security_apply", hosts=["wsl-ubuntu"], options={"plan_id": job["id"]})
