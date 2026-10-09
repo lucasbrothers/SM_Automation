@@ -57,8 +57,8 @@ def _checks(actions: list[dict[str, Any]], field: str) -> str:
     return "\n".join(checks)
 
 
-def build_sshd_apply_batch_command(actions: list[dict[str, Any]]) -> str:
-    """One Linux transaction; refuse conditional or included configuration.
+def build_sshd_apply_batch_command(actions: list[dict[str, Any]], allow_includes: bool = False) -> str:
+    """One Linux transaction with optional bounded global Include support.
 
     The original file is backed up once, before any action. Failed writes,
     validation, reload or effective-value checks restore that original file.
@@ -103,6 +103,11 @@ if awk '{key=tolower($1); sub(/=.*/, "", key)} key == "include" || key == "match
 fi
 sshd -t -f "$cfg"
 '''
+    if allow_includes:
+        from security.includes import scan_command
+        start = script.index('if awk ')
+        end = script.index('sshd -t -f "$cfg"', start)
+        script = script[:start] + scan_command() + "\n" + script[end:]
     script += _checks(actions, "current") + "\n"
     script += r'''
 backupdir=$(mktemp -d /etc/ssh/.sm_automation.XXXXXXXXXX)
@@ -164,12 +169,12 @@ cmp -s "$backup" "$cfg"
     return "sudo -n sh -c " + shlex.quote(script)
 
 
-def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd") -> str:
+def apply_sshd_settings(client: SSHClient, actions: list[dict[str, Any]], service_name: str = "sshd", allow_includes: bool = False) -> str:
     """Apply one batch and verify a fresh authenticated connection before success."""
     validate_actions(actions)
     if service_name not in {"ssh", "sshd"}:
         raise ValueError("SSH service name must be ssh or sshd")
-    command = build_sshd_apply_batch_command(actions).replace("systemctl reload sshd", "systemctl reload " + service_name)
+    command = build_sshd_apply_batch_command(actions, allow_includes=allow_includes).replace("systemctl reload sshd", "systemctl reload " + service_name)
     output = client.execute(command)
     metadata = dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
     backup, digest = metadata.get("backup", ""), metadata.get("digest", "")

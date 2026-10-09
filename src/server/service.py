@@ -226,7 +226,8 @@ class ManagementService:
                             return {**row, "status": "cancelled", "result": {"backup": before}}
                     try:
                         service_name = "ssh" if any(name in server.os.casefold() for name in ("ubuntu", "debian")) else "sshd"
-                        output = apply_sshd_settings(client, actions, service_name=service_name)
+                        output = apply_sshd_settings(client, actions, service_name=service_name,
+                                                     allow_includes=planned.get("adapter", {}).get("allow_includes", False))
                         result = {"applied": len(actions), "output": output, "backup": before}
                     except Exception as exc:
                         return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
@@ -297,8 +298,21 @@ class ManagementService:
                               "plan": build_remediation_plan([record], policy)[0],
                               "note": "Preview only; authentication settings have not been changed"}
                     unsupported = client.execute(privileged("awk '{key=tolower($1); sub(/=.*/, \"\", key)} key == \"include\" || key == \"match\" {print key}' /etc/ssh/sshd_config", mode)).strip()
-                    result["adapter"] = {"supported": not bool(unsupported),
-                                         "reason": "Include/Match configuration requires a dedicated adapter" if unsupported else "Flat SSH configuration"}
+                    allow_includes = any(name in server.os.casefold() for name in ("ubuntu", "debian"))
+                    reason = "Flat SSH configuration"
+                    if allow_includes:
+                        from security.includes import scan_command
+                        try:
+                            client.execute(privileged(scan_command(), mode))
+                            unsupported = ""
+                            reason = "Bounded global Include configuration; conditional Match is unsupported"
+                        except Exception:
+                            unsupported = "unsupported"
+                            reason = "Include scan failed: conditional, external, cyclic or unreadable configuration"
+                    elif unsupported:
+                        reason = "Include/Match configuration requires a dedicated adapter"
+                    result["adapter"] = {"supported": not bool(unsupported), "reason": reason,
+                                         "allow_includes": allow_includes and not bool(unsupported)}
                     if unsupported and result["plan"]["actions"]:
                         result["plan"]["status"] = "blocked"
                         result["plan"]["reasons"].append(result["adapter"]["reason"])
