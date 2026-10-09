@@ -175,6 +175,17 @@ def main():
                 assert not window.job_history and window.job_history_offset == 100
                 print("PASS: real filtered backup history button, polling preservation and disconnect reset")
                 print("PASS: real older operational history button and cache reset")
+                assert not window.account_table.rowCount() and not window.patch_table.rowCount()
+                assert not window.schedule_table.rowCount() and window.patch_plan_id is None
+                window.connect_to(ServerClient(ConnectionSettings(address, 7443, str(ca), token)))
+                stage[0] = 14
+            elif stage[0] == 14 and window.servers and window.jobs:
+                assert window.servers[0]["hostname"] == "wsl-ubuntu"
+                assert window.jobs_table.rowCount() == len(window.jobs)
+                assert not window.account_table.rowCount() and not window.patch_table.rowCount()
+                assert not window.patch_apply.isEnabled()
+                print("PASS: real TLS reconnect restores Linux inventory/history without prior account or patch views")
+                window.disconnect_server()
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
