@@ -187,6 +187,14 @@ class InventoryDialog(QDialog):
         for row in sorted({item.row() for item in self.grid.selectedItems()}, reverse=True):
             self.grid.removeRow(row)
 
+    def accept(self):
+        missing = [str(index + 1) for index, row in enumerate(self.rows()) if row["profile"] not in self.profiles]
+        if missing:
+            QMessageBox.information(self, "Choose configured SSH profiles",
+                                    "Choose a configured Linux SSH profile for rows: " + ", ".join(missing))
+            return
+        super().accept()
+
     def rows(self):
         return [{key: self.grid.cellWidget(row, col).currentData() if col == 3 else
                  (self.grid.item(row, col).text().strip() if self.grid.item(row, col) else "")

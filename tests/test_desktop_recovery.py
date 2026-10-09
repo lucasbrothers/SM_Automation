@@ -24,12 +24,16 @@ def test_recovery_details_prevent_desktop_job_submission(monkeypatch):
     window.close()
 
 
-def test_inventory_profile_selection_preserves_unconfigured_name():
+def test_inventory_profile_selection_preserves_unconfigured_name(monkeypatch):
     app = QApplication.instance() or QApplication([])
     dialog = InventoryDialog(None, [{"hostname": "lab", "ip": "127.0.0.1", "os": "RHEL 9", "profile": "old-profile"}], ["rhel-admin", "default"])
     assert dialog.rows()[0]["profile"] == "old-profile"
     selector = dialog.grid.cellWidget(0, 3)
     assert "not configured" in selector.currentText()
+    messages = []
+    monkeypatch.setattr(QMessageBox, "information", lambda parent, title, text: messages.append(text))
+    dialog.accept()
+    assert "rows: 1" in messages[0] and dialog.result() == 0
     selector.setCurrentIndex(selector.findData("rhel-admin"))
     assert dialog.rows()[0]["profile"] == "rhel-admin"
     dialog.add_server()
