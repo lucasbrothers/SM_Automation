@@ -89,3 +89,19 @@ def test_activity_history_survives_recent_poll_and_updates_existing_status():
     window.disconnect_server()
     assert not window.job_history and not window.jobs
     window.close()
+
+
+def test_duplicate_click_waits_for_submission_acknowledgement(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    window = Console(); window.client = Mock()
+    monkeypatch.setattr(window, "checked_hosts", lambda: ["lab"])
+    requests = []
+    monkeypatch.setattr(window, "work", lambda fn, done, **kwargs: requests.append((done, kwargs)))
+    window.start_job("backup"); window.start_job("backup")
+    assert len(requests) == 1 and window.submission_pending
+    requests[0][1]["on_error"]()
+    window.start_job("backup")
+    assert len(requests) == 2
+    window.disconnect_server()
+    assert not window.submission_pending
+    window.close()

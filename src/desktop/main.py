@@ -211,6 +211,7 @@ class Console(QMainWindow):
         self.backup_history = {}
         self.backup_history_offset = 0
         self.history_errors = []
+        self.submission_pending = False
         self.job_history = {}; self.job_history_offset = 100
         self.resource_loaded_job = None
         self.workers = set()
@@ -576,7 +577,7 @@ class Console(QMainWindow):
         if index == 6 and self.client:
             self.load_schedules()
 
-    def work(self, fn, done, quiet=False):
+    def work(self, fn, done, quiet=False, on_error=None):
         worker = Worker(fn); self.workers.add(worker)
         epoch = self.epoch
         def success(result):
@@ -587,6 +588,8 @@ class Console(QMainWindow):
             self.workers.discard(worker); self.poll_busy = False
             if epoch != self.epoch:
                 return
+            if on_error:
+                on_error()
             self.status_line.setText("Request failed: " + message[:160])
             if not quiet:
                 QMessageBox.warning(self, "Operation could not finish", message)
@@ -608,6 +611,7 @@ class Console(QMainWindow):
     def attach_client(self, client, status):
         settings = client.settings
         self.epoch += 1; self.client = client; self.loaded_job = None; self.active_job = None
+        self.submission_pending = False
         self.backup_history = {}
         self.backup_history_offset = 0
         self.resource_loaded_job = None
@@ -634,6 +638,7 @@ class Console(QMainWindow):
             return
         self.epoch += 1; self.client = None; self.active_job = None; self.poll_busy = False
         self.history_errors = []; self.subtitle.setToolTip("")
+        self.submission_pending = False
         self.job_history = {}; self.job_history_offset = 100
         self.backup_history = {}
         self.backup_history_offset = 0
@@ -718,14 +723,21 @@ class Console(QMainWindow):
         if self.history_errors:
             QMessageBox.information(self, "Linux history recovery required", self.subtitle.toolTip())
             return
+        if self.submission_pending:
+            self.status_line.setText("Waiting for Linux to acknowledge the submitted operation.")
+            return
         hosts = [row["hostname"] for row in self.servers] if all_hosts else self.checked_hosts()
         if not hosts:
             QMessageBox.information(self, "Select targets", "Select at least one server in Connection map."); return
         client = self.client
+        self.submission_pending = True
+        def failed():
+            self.submission_pending = False
         def started(job):
+            self.submission_pending = False
             self.active_job = job["id"]; self.loaded_job = None
             self.status_line.setText(f"{kind}: submitted to Linux for {len(hosts)} servers."); self.poll()
-        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts, options=options or {}), started)
+        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts, options=options or {}), started, on_error=failed)
 
     def poll(self):
         if not self.client or self.poll_busy:
