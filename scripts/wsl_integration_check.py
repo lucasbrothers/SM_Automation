@@ -66,6 +66,9 @@ def main():
                 expiry = next(item for item in artifacts if item["name"] == "account_expiry_chage")
                 preview = client.call("backup.preview", path=expiry["path"])
                 assert "root" in preview["text"]
+                archive = next(item for item in artifacts if item["name"] == "configuration_files")
+                contents = client.call("backup.contents", path=archive["path"])
+                assert "etc/sudoers" in contents["text"]
                 print(f"PASS: backup artifacts={len(artifacts)}, status={job['status']}, expiry preview readable")
             else:
                 print(f"PASS: {kind}, status={job['status']}")

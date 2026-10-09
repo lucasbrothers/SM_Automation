@@ -15,7 +15,7 @@ Linux가 모든 실제 작업을 수행하며 Windows는 네이티브 GUI와 TLS
 
 ## 완료한 확인
 
-- Linux 기존 회귀 테스트: 210 passed (계정·패치·예약·보안 권한 검증 포함).
+- Linux 기존 회귀 테스트: 211 passed (계정·패치·예약·보안 권한 검증 포함).
 - Windows → Linux 검증 TLS 접속 및 잘못된 토큰 거부.
 - 실제 SSH 연결 수집, 자원 모니터링, Linux 보안 감사 작업 완료.
 - 백업 11개 아티팩트 정상 완료. 설정 tar의 sudoers/sudoers.d 포함 확인 및 계정별 chage 결과 미리보기 확인.
@@ -189,3 +189,10 @@ Overview의 Protect SSH config (600)는 선택한 Linux 대상의 /etc/ssh/sshd_
 WSL에서 백업 후 권한 적용과 새로운 SSH 감사 연결을 확인했다. 전체 210개 테스트 통과.
 검증 실행: scripts/wsl_integration_check.py --secure-ssh-config (기본 실행은 권한 정책을 적용하지 않음).
 SSH 인증 정책 설정, 자격 증명 관리 및 다른 OS 지원은 남아 있다. GUI 버튼은 권한 정책 하나만 적용한다.
+
+## 2026-10-09 백업 압축파일 목록
+
+백업 결과 창에서 configuration_files를 두 번 클릭하면 tar의 경로·파일 권한·크기를 표시한다.
+Linux에서 암호화 파일을 복호화하고 메모리에서 목록만 읽는다. 멤버 내용을 반환하거나 디스크에 추출하지 않는다.
+목록은 최대 2000개/약 64 KiB로 제한한다. 실제 WSL 백업의 sudoers 포함을 TLS API로 확인했고 전체 211개 테스트 통과.
+압축파일 복원·대용량 전송은 후속 범위다.

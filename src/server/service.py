@@ -26,6 +26,7 @@ from security.audit import audit_linux_server
 from storage.encrypted import EncryptedStore, read_secret
 from server.scheduler import Scheduler
 from security.permissions import secure_ssh_config
+from backup.preview import archive_listing
 
 
 def now():
@@ -316,13 +317,16 @@ class ManagementService:
             return self.save_inventory(list(csv.DictReader(io.StringIO(content.lstrip("\ufeff")))))
         if method == "job.start":
             return self.submit(params["kind"], params["hosts"], params.get("options"))
-        if method == "backup.preview":
+        if method in {"backup.preview", "backup.contents"}:
             path = params["path"]
-            if not isinstance(path, str) or not path.endswith((".txt.enc", ".json.enc")):
+            endings = (".tar.enc",) if method == "backup.contents" else (".txt.enc", ".json.enc")
+            if not isinstance(path, str) or not path.endswith(endings):
                 raise ValueError("Only text and JSON artifacts support preview; export archives on Linux")
             if self.backups.path(path).stat().st_size > 96 * 1024 * 1024:
                 raise ValueError("Artifact is too large to preview; export it on Linux")
             content = self.backups.read_bytes(path)
+            if method == "backup.contents":
+                return archive_listing(content)
             return {"text": content[:65536].decode("utf-8", errors="replace"),
                     "truncated": len(content) > 65536, "bytes": len(content)}
         with self.lock:

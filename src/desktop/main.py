@@ -654,7 +654,7 @@ class Console(QMainWindow):
         dialog = QDialog(self); dialog.setWindowTitle("Backup artifacts on Linux"); dialog.resize(1060, 720)
         layout = QVBoxLayout(dialog)
         layout.addWidget(label("Browse encrypted backups", "section"))
-        layout.addWidget(label("Double-click a text artifact to preview it. Decryption runs on Linux; the preview stays in memory.", "subtitle"))
+        layout.addWidget(label("Double-click an artifact to preview text or list archive files. Decryption runs on Linux.", "subtitle"))
         tree = QTreeWidget(); tree.setHeaderLabels(["Server / artifact", "Status", "Size", "Linux storage path"])
         tree.setColumnWidth(0, 260); tree.setColumnWidth(1, 100); tree.setColumnWidth(2, 90)
         for row in rows:
@@ -669,13 +669,13 @@ class Console(QMainWindow):
             parent.setExpanded(True)
         layout.addWidget(tree, 2)
         preview = QPlainTextEdit(); preview.setReadOnly(True)
-        preview.setPlaceholderText("Select a text artifact. Archive files are exported explicitly on the Linux server.")
+        preview.setPlaceholderText("Select an artifact. Archive listings show paths, permissions and sizes without extracting files.")
         layout.addWidget(preview, 1)
         def view(item, _):
             path = item.data(0, Qt.ItemDataRole.UserRole)
             if not path:
                 return
-            if not path.endswith((".txt.enc", ".json.enc")):
+            if not path.endswith((".txt.enc", ".json.enc", ".tar.enc")):
                 preview.setPlainText("Binary archive: use scripts/decrypt_artifact.py on the Linux server."); return
             client = self.client
             if client is None:
@@ -683,7 +683,8 @@ class Console(QMainWindow):
             preview.setPlainText("Loading preview from Linux...")
             def loaded(response):
                 preview.setPlainText(response["text"] + ("\n\n[Preview limited to 64 KiB]" if response["truncated"] else ""))
-            self.work(lambda: client.call("backup.preview", path=path), loaded)
+            method = "backup.contents" if path.endswith(".tar.enc") else "backup.preview"
+            self.work(lambda: client.call(method, path=path), loaded)
         tree.itemDoubleClicked.connect(view)
         layout.addWidget(button("Close", dialog.accept)); dialog.exec()
 
