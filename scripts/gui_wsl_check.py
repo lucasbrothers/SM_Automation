@@ -9,7 +9,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import QApplication, QPushButton, QTreeWidget, QPlainTextEdit
+from PySide6.QtWidgets import QApplication, QPushButton, QTreeWidget, QPlainTextEdit, QMessageBox
 from desktop.client import ConnectionSettings, ServerClient
 from desktop.main import Console, STYLE
 
@@ -22,6 +22,11 @@ def main():
         ca = Path(directory) / "ca.crt"; ca.write_bytes(read("/root/.config/sm-automation/ca.crt"))
         token = read("/root/.config/sm-automation/api.token").decode().strip()
         app = QApplication([])
+        def unexpected_warning(parent, title, message):
+            print("FAIL: " + title + ": " + message[:200])
+            app.exit(1)
+            return QMessageBox.StandardButton.Ok
+        QMessageBox.warning = unexpected_warning
         for name in ("segoeui.ttf", "segoeuib.ttf"):
             QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + name)
         app.setStyle("Fusion"); app.setStyleSheet(STYLE)
