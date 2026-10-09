@@ -9,7 +9,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QPushButton, QTreeWidget, QPlainTextEdit
 from desktop.client import ConnectionSettings, ServerClient
 from desktop.main import Console, STYLE
 
@@ -27,7 +27,8 @@ def main():
         app.setStyle("Fusion"); app.setStyleSheet(STYLE)
         window = Console(); window.show()
         window.connect_to(ServerClient(ConnectionSettings(address, 7443, str(ca), token)))
-        stage, deadline, passed = [0], time.monotonic() + 60, [False]
+        stage, deadline, passed = [0], time.monotonic() + 90, [False]
+        backup_dialog = [None]
         timer = QTimer()
         def tick():
             if time.monotonic() > deadline:
@@ -102,6 +103,30 @@ def main():
                 window.resource_auto.setChecked(False)
                 assert not window.resource_timer.isActive()
                 print("PASS: native resource metrics, memory/disk bars and automatic refresh control")
+                window.start_job("backup"); stage[0] = 9
+            elif stage[0] == 9 and any(job["id"] == window.active_job and job["status"] == "completed" for job in window.jobs):
+                stage[0] = 10
+                def check_backup(rows):
+                    dialog = window.backup_results_dialog(rows)
+                    backup_dialog[0] = dialog
+                    dialog.show()
+                    tree = dialog.findChild(QTreeWidget)
+                    server = tree.topLevelItem(0)
+                    assert server.childCount() == 11
+                    archive = next(server.child(index) for index in range(server.childCount())
+                                   if server.child(index).text(0) == "configuration_files")
+                    assert any(archive.child(index).text(0).startswith("Missing optional path:")
+                               for index in range(archive.childCount()))
+                    metadata = archive.child(archive.childCount() - 1)
+                    assert metadata.text(3).endswith("configuration_files.metadata.json.enc")
+                    tree.itemDoubleClicked.emit(metadata, 0)
+                    stage[0] = 11
+                window.work(lambda: window.client.results(window.active_job), check_backup)
+            elif stage[0] == 11 and '"exit_code"' in backup_dialog[0].findChild(QPlainTextEdit).toPlainText():
+                text = backup_dialog[0].findChild(QPlainTextEdit).toPlainText()
+                assert '"stderr"' in text and "Missing optional path:" in text
+                backup_dialog[0].close()
+                print("PASS: native backup details, optional-path warnings and Linux-decrypted command diagnostics")
                 passed[0] = True; app.quit()
         timer.timeout.connect(tick); timer.start(100)
         result = app.exec()
