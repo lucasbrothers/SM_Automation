@@ -298,3 +298,38 @@ def test_account_targets_share_selection_and_export_csv(monkeypatch, tmp_path):
     window.disconnect_server()
     assert window.account_targets.rowCount() == 0
     window.close()
+
+
+def test_export_includes_query_tables_text_and_tree(monkeypatch, tmp_path):
+    import csv
+    from PySide6.QtWidgets import QWidget, QVBoxLayout, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QFileDialog
+    from desktop.main import table, fill_table
+    app = QApplication.instance() or QApplication([])
+    window = Console(); panel = QWidget(); layout = QVBoxLayout(panel)
+    grid = table(["Server", "Result"]); layout.addWidget(grid)
+    fill_table(grid, [["local", "홍길동,운영"], ["hidden", "no"]]); grid.setRowHidden(1, True)
+    text = QPlainTextEdit(); text.setReadOnly(True); text.setPlainText("line1\nline2"); layout.addWidget(text)
+    tree = QTreeWidget(); tree.setHeaderLabels(["Artifact", "Path"]); layout.addWidget(tree)
+    top = QTreeWidgetItem(tree, ["configuration", "/tmp/file"]); QTreeWidgetItem(top, ["child", "=1"])
+    path = tmp_path / "results.csv"; monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(path), ""))
+    window.export_widgets(panel)
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.reader(stream))
+    assert ["", "local", "홍길동,운영"] in rows
+    assert ["Text result", "line1\nline2"] in rows
+    assert ["", "child", "'=1"] in rows
+    assert not any("hidden" in row for row in rows)
+    panel.close(); window.close()
+
+
+def test_zoom_changes_spacing_without_accumulating():
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    window.zoom_control.setValue(60)
+    assert "6.0pt" in window.styleSheet()
+    window.zoom_control.setValue(140)
+    assert "14.0pt" in window.styleSheet()
+    window.zoom_control.setValue(100)
+    assert window.workspace_scroll.widgetResizable()
+    assert window.pages.count() == 9
+    window.close()

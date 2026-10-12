@@ -181,7 +181,7 @@ class ManagementService:
     def submit(self, kind, names, options=None):
         if self.history_errors:
             raise RuntimeError("Job history recovery required on Linux; new operations are disabled")
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -193,6 +193,16 @@ class ManagementService:
         supplied = options or {}
         options = (validate_options(supplied) if kind == "accounts" else
                    patch_options(options or {}) if kind == "patches" else {})
+        if kind == "transfer":
+            from server.files import validate
+            options = validate(supplied)
+            if len(targets) != 1:
+                raise ValueError("Select exactly one CLIENT for file transfer")
+        if kind == "command":
+            command = supplied.get("command")
+            if not isinstance(command, str) or not command.strip() or len(command) > 16384 or "\x00" in command:
+                raise ValueError("Command must be nonempty text up to 16384 characters")
+            options = {"command": command}
         if kind == "security_apply":
             plan_id = supplied.get("plan_id", "")
             if not isinstance(plan_id, str) or not re.fullmatch(r"[a-f0-9]{32}", plan_id):
@@ -242,7 +252,7 @@ class ManagementService:
             return self.summary(job)
 
     def _target(self, job, row):
-        if job["kind"] in {"security_permissions", "security_apply"}:
+        if job["kind"] in {"security_permissions", "security_apply", "command", "transfer"}:
             with self.lock:
                 target_lock = self.account_locks[row["ip"]]
             with target_lock:
@@ -276,7 +286,13 @@ class ManagementService:
                                port=int(profile.get("port", self.config.ssh_port)), timeout=self.config.ssh_timeout)
             family = os_family(server.os)
             kind = job["kind"]
-            if kind == "backup":
+            if kind == "transfer":
+                from server.files import transfer
+                result = transfer(client, job["options"])
+            elif kind == "command":
+                result = client.execute_result(job["options"]["command"])
+                result["status"] = "completed" if result["exit_code"] == 0 else "failed"
+            elif kind == "backup":
                 result = backup_server(client, server, host_config, self.backups, job["id"],
                                        lambda text: self._progress(job, text))
             elif kind == "connections":

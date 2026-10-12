@@ -1,0 +1,46 @@
+"""Validate commands and CLIENT/SERVER transfer on authorized loopback WSL only."""
+import sys
+import tempfile
+import time
+import uuid
+import subprocess
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from desktop.client import ConnectionSettings, ServerClient
+
+def read(path):
+    return subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "cat", path])
+
+def main():
+    host = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "hostname", "-I"], text=True).split()[0]
+    with tempfile.TemporaryDirectory() as directory:
+        ca = Path(directory) / "ca.crt"; ca.write_bytes(read("/root/.config/sm-automation/ca.crt"))
+        client = ServerClient(ConnectionSettings(host, 7443, str(ca), read("/root/.config/sm-automation/api.token").decode().strip()))
+        inventory = client.call("inventory.list")
+        assert any(row["hostname"] == "wsl-ubuntu" and row["ip"] == "127.0.0.1" for row in inventory)
+        def run(kind, options):
+            job = client.call("job.start", kind=kind, hosts=["wsl-ubuntu"], options=options)
+            deadline = time.monotonic() + 60
+            while job["status"] in {"queued", "running"}:
+                assert time.monotonic() < deadline
+                time.sleep(.2); job = next(row for row in client.call("job.list") if row["id"] == job["id"])
+            return job, client.results(job["id"])
+        job, rows = run("command", {"command": "printf command-ok; printf diagnostic >&2; exit 7"})
+        assert job["status"] == "failed" and rows[0]["result"] == {"stdout": "command-ok", "stderr": "diagnostic", "exit_code": 7}
+        print("PASS: selected CLIENT command preserves stdout, stderr and nonzero exit status")
+        prefix = "/opt/SM_Automation/sm-transfer-" + uuid.uuid4().hex
+        source, remote, returned = prefix + "-server", prefix + "-client", prefix + "-returned"
+        try:
+            job, _ = run("command", {"command": "printf 'round-trip-data' > " + source})
+            assert job["status"] == "completed"
+            options = {"direction": "download", "server_path": source, "client_path": remote}
+            job, rows = run("transfer", options); assert job["status"] == "completed", rows
+            job, _ = run("transfer", {"direction": "upload", "server_path": returned, "client_path": remote})
+            assert job["status"] == "completed" and read(returned) == b"round-trip-data"
+            job, _ = run("transfer", options); assert job["status"] == "failed"
+            assert read(remote) == b"round-trip-data"
+            print("PASS: SERVER to CLIENT and CLIENT to SERVER round trip; existing destination preserved")
+        finally:
+            subprocess.check_call(["wsl", "-d", "Ubuntu", "-u", "root", "--", "rm", "-f", "--", source, remote, returned])
+if __name__ == "__main__":
+    main()

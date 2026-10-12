@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
     QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget,
+    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget, QScrollArea,
 )
 
 from desktop.client import ConnectionSettings, ServerClient
@@ -242,7 +243,7 @@ class Console(QMainWindow):
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
-        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules", "08   Resources"]):
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules", "08   Resources", "09   Commands / Files"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
         nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
@@ -251,10 +252,15 @@ class Console(QMainWindow):
         nav.addWidget(button("Disconnect", self.disconnect_server))
         nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
         root.addWidget(sidebar)
-        workspace = QWidget(); workspace.setObjectName("workspace"); root.addWidget(workspace, 1)
+        workspace = QWidget(); workspace.setObjectName("workspace")
+        self.workspace_scroll = QScrollArea(); self.workspace_scroll.setWidgetResizable(True)
+        self.workspace_scroll.setWidget(workspace); root.addWidget(self.workspace_scroll, 1)
         content = QVBoxLayout(workspace); content.setContentsMargins(28, 24, 28, 18); content.setSpacing(18)
         top = QHBoxLayout(); top.addWidget(label("OPERATIONS  /  INFRASTRUCTURE", "subtitle")); top.addStretch()
-        self.connection_badge = label("OFFLINE", "badge"); top.addWidget(self.connection_badge); content.addLayout(top)
+        self.connection_badge = label("OFFLINE", "badge"); top.addWidget(self.connection_badge); self.zoom_control = QSpinBox(); self.zoom_control.setRange(60, 140); self.zoom_control.setValue(100); self.zoom_control.setSuffix("%")
+        self.zoom_control.valueChanged.connect(self.set_zoom)
+        top.addWidget(label("Zoom")); top.addWidget(self.zoom_control)
+        top.addWidget(button("Save query results", lambda: self.export_widgets(self.pages.currentWidget()))); content.addLayout(top)
         self.title = label("Infrastructure overview", "title"); content.addWidget(self.title)
         self.subtitle = label("One control console. All operational work on your Linux server.", "subtitle"); content.addWidget(self.subtitle)
         metrics = QHBoxLayout(); metrics.setSpacing(14)
@@ -270,10 +276,27 @@ class Console(QMainWindow):
             self.metric_values.append(number)
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
-        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules(); self.build_resources()
+        self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules(); self.build_resources(); self.build_tools()
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
+
+    def set_zoom(self, percent):
+        scale = percent / 100
+        self.setStyleSheet(re.sub(r"(\d+(?:\.\d+)?)(px|pt)",
+                                 lambda match: str(round(float(match[1]) * scale, 2)) + match[2], STYLE))
+        # Qt layout margins are independent of stylesheet dimensions.
+        for layout in self.findChildren(QVBoxLayout) + self.findChildren(QHBoxLayout) + self.findChildren(QFormLayout):
+            if layout.property("original_spacing") is None:
+                layout.setProperty("original_spacing", layout.spacing())
+                margins = layout.contentsMargins()
+                layout.setProperty("original_margins", [margins.left(), margins.top(), margins.right(), margins.bottom()])
+            spacing = layout.property("original_spacing")
+            if spacing >= 0:
+                layout.setSpacing(round(spacing * scale))
+            layout.setContentsMargins(*[round(value * scale) for value in layout.property("original_margins")])
+        for widget in self.findChildren(QTableWidget):
+            widget.verticalHeader().setDefaultSectionSize(round(39 * scale))
 
     def build_overview(self):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
@@ -399,6 +422,71 @@ class Console(QMainWindow):
         body.addWidget(button("Cancel pending targets of selected job", self.cancel_selected_job))
         body.addWidget(label("Closing this console does not stop Linux jobs. Reconnect to see results.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
+
+    def export_widgets(self, parent):
+        rows = []
+        for widget in parent.findChildren(QTableWidget):
+            if widget in (self.account_targets, self.target_table):
+                continue
+            rows.append(["Table", *[widget.horizontalHeaderItem(c).text() for c in range(widget.columnCount())]])
+            for r in range(widget.rowCount()):
+                if not widget.isRowHidden(r):
+                    rows.append(["", *[widget.item(r, c).text() if widget.item(r, c) else "" for c in range(widget.columnCount())]])
+        for widget in parent.findChildren(QPlainTextEdit):
+            if widget.isReadOnly():
+                rows.append(["Text result", widget.toPlainText()])
+        for widget in parent.findChildren(QTreeWidget):
+            rows.append(["Tree", *[widget.headerItem().text(c) for c in range(widget.columnCount())]])
+            def visit(item):
+                rows.append(["", *[item.text(c) for c in range(widget.columnCount())]])
+                for i in range(item.childCount()):
+                    visit(item.child(i))
+            for i in range(widget.topLevelItemCount()):
+                visit(widget.topLevelItem(i))
+        path, _ = QFileDialog.getSaveFileName(self, "Save displayed results", "results.csv", "CSV (*.csv)")
+        if path:
+            if not path.lower().endswith(".csv"):
+                path += ".csv"
+            try:
+                with open(path, "w", encoding="utf-8-sig", newline="") as stream:
+                    csv.writer(stream).writerows([["'" + str(v) if str(v).lstrip().startswith(("=", "+", "-", "@")) else v for v in row] for row in rows])
+            except OSError:
+                QMessageBox.warning(self, "Export failed", "Check the destination and permissions.")
+
+    def build_tools(self):
+        page = QWidget(); layout = QVBoxLayout(page)
+        layout.addWidget(label("Commands on selected servers", "section"))
+        self.command_targets = QLabel(); self.command_targets.setWordWrap(True); layout.addWidget(self.command_targets)
+        layout.addWidget(button("Choose servers in Connection map", lambda: self.navigate(1)))
+        self.command_input = QPlainTextEdit(); self.command_input.setPlaceholderText("Command for the selected servers' native shell")
+        layout.addWidget(self.command_input); layout.addWidget(button("Run command", self.run_command, True))
+        layout.addWidget(label("Results are in Activity. Execution uses the configured SSH user."))
+        layout.addWidget(label("CLIENT (managed target) ↔ SERVER (Linux main server)", "section"))
+        self.linux_file_path = QLineEdit(); self.linux_file_path.setPlaceholderText("SERVER absolute path: /tmp/server-file.txt")
+        self.client_file_path = QLineEdit(); self.client_file_path.setPlaceholderText("CLIENT absolute path: /tmp/client-file.txt")
+        layout.addWidget(self.linux_file_path); layout.addWidget(self.client_file_path)
+        layout.addWidget(button("Upload: CLIENT → SERVER", lambda: self.transfer_file("upload")))
+        layout.addWidget(button("Download: SERVER → CLIENT", lambda: self.transfer_file("download")))
+        note = label("Select exactly one CLIENT. Up to 8 MiB per file. Destination must be new; parent directory must exist. GUI console does not store transferred files.")
+        note.setWordWrap(True); layout.addWidget(note)
+        self.pages.addWidget(page)
+
+    def run_command(self):
+        command = self.command_input.toPlainText(); hosts = self.checked_hosts()
+        if not command.strip() or not hosts or not self.require_client():
+            self.status_line.setText("Enter a command and select target servers."); return
+        if QMessageBox.question(self, "Review command", "Targets: " + ", ".join(hosts) + "\n\n" + command) == QMessageBox.Yes:
+            self.start_job("command", options={"command": command})
+
+    def transfer_file(self, direction):
+        hosts = self.checked_hosts()
+        if len(hosts) != 1 or not self.require_client():
+            self.status_line.setText("Select exactly one CLIENT in Connection map."); return
+        options = {"direction": direction, "server_path": self.linux_file_path.text().strip(),
+                   "client_path": self.client_file_path.text().strip()}
+        review = "CLIENT: " + hosts[0] + "\n" + direction + "\nSERVER: " + options["server_path"] + "\nCLIENT: " + options["client_path"]
+        if QMessageBox.question(self, "Review file transfer", review) == QMessageBox.Yes:
+            self.start_job("transfer", options=options)
 
     def build_accounts(self):
         page = QWidget(); layout = QVBoxLayout(page)
@@ -636,7 +724,7 @@ class Console(QMainWindow):
         for metric in self.metric_cards:
             metric.setVisible(index < 4)
         self.pages.setCurrentIndex(index)
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources", "Commands and Linux files"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
                         "Selected servers and their established TCP peers. All collection runs on Linux.",
@@ -645,7 +733,7 @@ class Console(QMainWindow):
                         "Account changes run on Linux after an encrypted backup.",
                         "Preview exact versions, then apply the reviewed plan from your Linux main server.",
                         "Encrypted Linux schedules continue independently of your Windows console.",
-                        "Linux collects load, memory and root disk observations over SSH."]
+                        "Linux collects load, memory and root disk observations over SSH.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console."]
         self.subtitle.setText(descriptions[index])
         if self.history_errors:
             self.subtitle.setText(f"Linux history recovery required: {len(self.history_errors)} unreadable records. New operations are disabled.")
@@ -777,6 +865,8 @@ class Console(QMainWindow):
 
     def selection_changed(self, *_):
         hosts = self.checked_hosts(); self.metric_values[1].setText(str(len(hosts)))
+        if hasattr(self, "command_targets"):
+            self.command_targets.setText("Selected targets: " + (", ".join(hosts) or "None"))
         if hasattr(self, "account_targets"):
             self.account_targets.blockSignals(True)
             fill_table(self.account_targets, [["", r["hostname"], r["ip"], r["os"]] for r in self.servers])
@@ -958,13 +1048,13 @@ class Console(QMainWindow):
                 layout.addWidget(label("Review flags are guidance. No security policy has been changed."))
                 findings = table(["Server", "Setting", "Observed value", "Assessment"])
                 fill_table(findings, audit_rows(rows)); layout.addWidget(findings)
-                layout.addWidget(button("Close", dialog.accept)); dialog.exec(); return
+                layout.addWidget(button("Save results CSV", lambda: self.export_widgets(dialog))); layout.addWidget(button("Close", dialog.accept)); dialog.exec(); return
             if job.get("kind") == "security_plan":
                 self.security_plan_dialog(rows, job_id, job.get("status") == "completed").exec(); return
             dialog = QDialog(self); dialog.setWindowTitle("Linux job results"); dialog.resize(880, 620)
             layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
             text.setPlainText(json.dumps({"job": job, "results": rows}, ensure_ascii=False, indent=2)); layout.addWidget(text)
-            layout.addWidget(button("Close", dialog.accept)); dialog.exec()
+            layout.addWidget(button("Save results CSV", lambda: self.export_widgets(dialog))); layout.addWidget(button("Close", dialog.accept)); dialog.exec()
         self.work(lambda: client.results(job_id), show)
 
     def security_plan_dialog(self, rows, job_id, completed=False):
@@ -981,7 +1071,7 @@ class Console(QMainWindow):
         apply_button = button("Apply reviewed SSH plan", lambda: (dialog.accept(), self.start_job("security_apply", options={"plan_id": job_id})), True)
         apply_button.setEnabled(completed and supported and targets_match and not self.demo)
         layout.addWidget(apply_button)
-        layout.addWidget(button("Close", dialog.accept))
+        layout.addWidget(button("Save results CSV", lambda: self.export_widgets(dialog))); layout.addWidget(button("Close", dialog.accept))
         return dialog
 
     def show_backup_results(self, rows, job=None):
@@ -1056,7 +1146,7 @@ class Console(QMainWindow):
             method = "backup.contents" if path.endswith(".tar.enc") else "backup.preview"
             self.work(lambda: client.call(method, path=path), loaded)
         tree.itemDoubleClicked.connect(view)
-        layout.addWidget(button("Close", dialog.accept))
+        layout.addWidget(button("Save results CSV", lambda: self.export_widgets(dialog))); layout.addWidget(button("Close", dialog.accept))
         return dialog
 
     def load_demo(self):

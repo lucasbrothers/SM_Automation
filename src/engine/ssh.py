@@ -111,6 +111,32 @@ class SSHClient:
 
         return output
 
+    def execute_result(self, command, limit=1024 * 1024):
+        """Drain both streams with a deadline and a combined output bound."""
+        import time
+        if self._client is None:
+            self.connect()
+        channel = self._client.get_transport().open_session(timeout=self.timeout)
+        output = bytearray(); errors = bytearray(); deadline = time.monotonic() + self.timeout
+        try:
+            channel.exec_command(command); channel.shutdown_write()
+            while True:
+                if time.monotonic() >= deadline:
+                    raise SSHCommandError("Command timed out; remote command may still be running")
+                for ready, receive, buffer in ((channel.recv_ready, channel.recv, output),
+                                                (channel.recv_stderr_ready, channel.recv_stderr, errors)):
+                    if ready():
+                        buffer.extend(receive(32768))
+                if len(output) + len(errors) > limit:
+                    raise SSHCommandError("Command output exceeds 1 MiB; remote command may still be running")
+                if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
+                    break
+                time.sleep(0.01)
+            return {"stdout": output.decode("utf-8", errors="replace"),
+                    "stderr": errors.decode("utf-8", errors="replace"), "exit_code": channel.recv_exit_status()}
+        finally:
+            channel.close()
+
     def close(self) -> None:
         """Close the SSH connection."""
         if self._client is not None:

@@ -15,3 +15,12 @@
 DATA와 BACKUP은 WSL `/opt/SM_Automation` 아래에 암호화 저장된다. 키를 삭제하거나 새로 생성하지 않는다. 비밀번호·키·토큰을 안내서나 Git에 복사하지 않는다.
 
 화면만 미리 보려면 PowerShell에서 `./scripts/start_desktop.ps1 -Demo`를 실행한다. 데모 데이터는 실제 서버 결과가 아니다.
+
+
+## 추가 실습
+
+- Accounts의 `1. Target servers` → `2. Account details` → `3. Review and run` 순서로 진행한다. 탭 아래 분할선을 드래그해 목록 높이를 조절한다.
+- 상단 `Zoom`을 60–140%로 조절한다. 작은 창에서는 작업 영역을 스크롤한다.
+- 상단 `Save query results`로 현재 화면에 로드된 조회 결과를 CSV 저장한다. 결과 팝업의 `Save results CSV`도 사용할 수 있다. 엑셀에서 CSV를 열 수 있다.
+- `09 Commands / Files`에서 선택 CLIENT를 확인하고 `hostname` 같은 명령을 실행한다. Activity에서 작업을 더블클릭해 stdout/stderr/exit_code를 조회·저장한다.
+- 파일 업로드는 CLIENT→SERVER, 다운로드는 SERVER→CLIENT다. SERVER는 Linux 메인 서버이고 GUI콘솔은 Windows다. 양쪽의 절대 경로를 입력하고 CLIENT 한 대를 선택한다. 부모 디렉터리는 미리 존재해야 하며 대상 파일은 새 이름이어야 한다. 파일은 8 MiB 이하 일반 파일로 제한된다.
