@@ -356,6 +356,7 @@ def test_command_results_show_each_target_and_download_details(monkeypatch, tmp_
         exported = list(csv.reader(stream))
     assert ["", "first", "Success", "0", "ok\n", ""] in exported
     assert ["", "third", "Failed", "", "", "SSH unavailable"] in exported
+    assert not any(row and row[0] == "Text result" for row in exported)
     window.disconnect_server()
     assert window.command_results_table.rowCount() == 0 and not window.command_details.toPlainText()
     window.close()

@@ -471,7 +471,7 @@ class Console(QMainWindow):
                 if not widget.isRowHidden(r):
                     rows.append(["", *[widget.item(r, c).text() if widget.item(r, c) else "" for c in range(widget.columnCount())]])
         for widget in parent.findChildren(QPlainTextEdit):
-            if widget.isReadOnly():
+            if widget.isReadOnly() and widget is not getattr(self, "command_details", None):
                 rows.append(["Text result", widget.toPlainText()])
         for widget in parent.findChildren(QTreeWidget):
             rows.append(["Tree", *[widget.headerItem().text(c) for c in range(widget.columnCount())]])
