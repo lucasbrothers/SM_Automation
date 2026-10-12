@@ -360,3 +360,13 @@ def test_command_results_show_each_target_and_download_details(monkeypatch, tmp_
     window.disconnect_server()
     assert window.command_results_table.rowCount() == 0 and not window.command_details.toPlainText()
     window.close()
+
+
+def test_account_auth_failure_is_visible_on_accounts_page():
+    app=QApplication.instance() or QApplication([])
+    window=Console()
+    window.display_accounts([{"hostname":"lab","status":"failed","error":"Authentication failed."}])
+    assert "Authentication failed." in window.account_result_status.text()
+    assert "CLIENT login settings" in window.account_result_status.text()
+    assert window.account_table.rowCount()==0
+    window.close()

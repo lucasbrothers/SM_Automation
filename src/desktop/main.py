@@ -580,6 +580,7 @@ class Console(QMainWindow):
         self.account_targets = table(["Select", "Server", "IP", "OS"])
         self.account_targets.itemChanged.connect(self.account_target_changed)
         target_layout.addWidget(self.account_targets)
+        target_layout.addWidget(button("Query account list", lambda: self.start_job("accounts", options={"action": "list"}), True))
         self.account_tabs.addTab(targets, "1. Target servers")
         operation = QWidget(); operation.setObjectName("accountPage"); operation_layout = QVBoxLayout(operation)
         self.account_tabs.addTab(operation, "2. Account details")
@@ -625,6 +626,8 @@ class Console(QMainWindow):
         note.setWordWrap(True); operation_layout.addWidget(note); operation_layout.addStretch()
         self.account_table = table(["Server", "Username", "UID", "GID", "Comment", "Home", "Shell"])
         results = QWidget(); results_layout = QVBoxLayout(results)
+        self.account_result_status = QLabel("Choose CLIENT targets and query the account list.")
+        self.account_result_status.setWordWrap(True); results_layout.addWidget(self.account_result_status)
         results_layout.addWidget(button("Download account CSV", self.export_accounts))
         results_layout.addWidget(self.account_table)
         self.account_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -677,6 +680,10 @@ class Console(QMainWindow):
             for account in row.get("result", {}).get("accounts", []):
                 values.append([row["hostname"], *[account[key] for key in ("username", "uid", "gid", "comment", "home", "shell")]])
         fill_table(self.account_table, values); self.navigate(4)
+        failures = [row["hostname"] + ": " + row.get("error", row.get("message", row["status"]))
+                    for row in rows if row["status"] != "completed"]
+        self.account_result_status.setText("Accounts: " + str(len(values)) + "\n" + "\n".join(failures)
+                                          + ("\nCheck CLIENT login settings (SSH account/password/key); SERVER GUI login is separate." if failures else ""))
         self.status_line.setText(f"Account results: {len(values)} accounts; {sum(row['status'] == 'failed' for row in rows)} failed servers. Details are in Activity.")
 
     def build_patches(self):
@@ -900,6 +907,7 @@ class Console(QMainWindow):
         self.set_inventory([]); self.update_map(); self.set_jobs([])
         self.metric_values[2].setText("—"); self.progress.setValue(0)
         self.account_table.setRowCount(0)
+        self.account_result_status.setText("Choose CLIENT targets and query the account list.")
         self.command_results_table.setRowCount(0); self.command_details.clear()
         self.patch_table.setRowCount(0)
         self.patch_output.clear()
