@@ -272,3 +272,29 @@ def test_duplicate_click_waits_for_submission_acknowledgement(monkeypatch):
     window.disconnect_server()
     assert not window.submission_pending
     window.close()
+
+
+def test_account_targets_share_selection_and_export_csv(monkeypatch, tmp_path):
+    import csv
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QFileDialog
+    from desktop.main import fill_table
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    window.set_inventory([{"hostname": "local", "ip": "127.0.0.1", "os": "Linux"}])
+    window.account_targets.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+    assert window.checked_hosts() == []
+    window.check_all(True)
+    assert window.account_targets.item(0, 0).checkState() == Qt.CheckState.Checked
+    path = tmp_path / "accounts.csv"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(path), "CSV"))
+    fill_table(window.account_table, [["local", "tester", "1001", "1001", "=1+1", "/home/tester", "/bin/bash"],
+                                      ["local", "other", "1002", "1002", "홍길동, 운영", "/home/other", "/bin/bash"]])
+    window.export_accounts()
+    assert path.read_bytes().startswith(b"\xef\xbb\xbf")
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.reader(stream))
+    assert len(rows) == 3 and rows[1][4] == "'=1+1" and rows[2][4] == "홍길동, 운영"
+    window.disconnect_server()
+    assert window.account_targets.rowCount() == 0
+    window.close()

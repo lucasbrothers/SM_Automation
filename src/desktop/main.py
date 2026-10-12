@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
     QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit,
+    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget,
 )
 
 from desktop.client import ConnectionSettings, ServerClient
@@ -402,7 +403,24 @@ class Console(QMainWindow):
     def build_accounts(self):
         page = QWidget(); layout = QVBoxLayout(page)
         frame, body = card(); body.addWidget(label("Linux accounts", "section"))
-        body.addWidget(label("Targets follow the checkboxes in Connection map. Changes require a complete encrypted backup."))
+        self.account_tabs = QTabWidget()
+        targets = QWidget(); target_layout = QVBoxLayout(targets)
+        target_layout.addWidget(label("Choose target servers. Selection is shared with Connection map."))
+        target_layout.addWidget(button("Select all", lambda: self.check_all(True)))
+        target_layout.addWidget(button("Clear selection", lambda: self.check_all(False)))
+        self.account_targets = table(["Select", "Server", "IP", "OS"])
+        self.account_targets.itemChanged.connect(self.account_target_changed)
+        target_layout.addWidget(self.account_targets)
+        self.account_tabs.addTab(targets, "1. Target servers")
+        operation = QWidget(); operation_layout = QVBoxLayout(operation)
+        self.account_tabs.addTab(operation, "2. Account details")
+        review = QWidget(); review_layout = QVBoxLayout(review)
+        self.account_review = QLabel(); self.account_review.setWordWrap(True)
+        review_layout.addWidget(self.account_review)
+        review_layout.addWidget(button("Run account operation", self.run_accounts, True))
+        review_layout.addStretch()
+        self.account_tabs.addTab(review, "3. Review and run")
+        self.account_tabs.currentChanged.connect(lambda _: self.update_account_review())
         form = QFormLayout(); self.account_action = QComboBox()
         form.setVerticalSpacing(10)
         for action, title in [("list", "List accounts"), ("create", "Create account"), ("modify", "Update SR and name"), ("groups", "Add supplementary groups"), ("remove_groups", "Remove supplementary groups"), ("primary_group", "Change primary group (one name)"), ("lock", "Lock password login"), ("unlock", "Unlock password login"), ("delete", "Delete account (retain home)")]:
@@ -414,7 +432,7 @@ class Console(QMainWindow):
         self.account_fields = {}
         for name, title in [("username", "Username"), ("sr", "SR reference"), ("full_name", "Full name"), ("uid", "UID (optional)"), ("gid", "Existing GID (optional)")]:
             field = QLineEdit(); self.account_fields[name] = field; form.addRow(title, field)
-        body.addLayout(form)
+        operation_layout.addLayout(form)
         self.account_fields["groups"] = QLineEdit(); form.addRow("Groups (comma separated)", self.account_fields["groups"])
         self.account_fields["max_days"] = QLineEdit(); form.addRow("Password maximum age (days)", self.account_fields["max_days"])
         self.account_fields["expiry_date"] = QLineEdit(); self.account_fields["expiry_date"].setPlaceholderText("YYYY-MM-DD or never")
@@ -434,10 +452,44 @@ class Console(QMainWindow):
                 }[name]
                 field.setEnabled(required); form.setRowVisible(field, required)
         self.account_action.currentIndexChanged.connect(update_fields); update_fields()
-        body.addWidget(label("New accounts have no password set. Delete retains the home directory. Lock controls password authentication."))
-        body.addWidget(button("Run account operation", self.run_accounts, True))
+        note = label("New accounts have no password set. Delete retains the home directory. Changes require an encrypted backup.")
+        note.setWordWrap(True); operation_layout.addWidget(note); operation_layout.addStretch()
         self.account_table = table(["Server", "Username", "UID", "GID", "Comment", "Home", "Shell"])
-        body.addWidget(self.account_table, 1); layout.addWidget(frame); self.pages.addWidget(page)
+        results = QWidget(); results_layout = QVBoxLayout(results)
+        results_layout.addWidget(button("Download account CSV", self.export_accounts))
+        results_layout.addWidget(self.account_table)
+        self.account_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.account_splitter.addWidget(self.account_tabs); self.account_splitter.addWidget(results)
+        self.account_splitter.setChildrenCollapsible(False); self.account_splitter.setSizes([430, 250])
+        body.addWidget(self.account_splitter, 1); layout.addWidget(frame); self.pages.addWidget(page)
+
+    def account_target_changed(self, item):
+        if item.column() == 0 and item.row() < self.target_table.rowCount():
+            self.target_table.item(item.row(), 0).setCheckState(item.checkState())
+
+    def update_account_review(self):
+        self.account_review.setText("Targets: " + (", ".join(self.checked_hosts()) or "None selected")
+                                   + "\nAction: " + self.account_action.currentText()
+                                   + "\nUsername: " + self.account_fields["username"].text().strip())
+
+    def export_accounts(self):
+        if not self.account_table.rowCount():
+            QMessageBox.information(self, "Account export", "Query the account list first."); return
+        path, _ = QFileDialog.getSaveFileName(self, "Download account list", "accounts.csv", "CSV (*.csv)")
+        if not path:
+            return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        try:
+            with open(path, "w", encoding="utf-8-sig", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow([self.account_table.horizontalHeaderItem(c).text() for c in range(self.account_table.columnCount())])
+                for r in range(self.account_table.rowCount()):
+                    values = [self.account_table.item(r, c).text() if self.account_table.item(r, c) else "" for c in range(self.account_table.columnCount())]
+                    writer.writerow(["'" + v if v.lstrip().startswith(("=", "+", "-", "@")) else v for v in values])
+            self.status_line.setText("Account CSV saved: " + path)
+        except OSError:
+            QMessageBox.warning(self, "Account export", "Could not save the file. Check the destination and permissions.")
 
     def run_accounts(self):
         options = {name: field.text().strip() for name, field in self.account_fields.items()}
@@ -725,6 +777,15 @@ class Console(QMainWindow):
 
     def selection_changed(self, *_):
         hosts = self.checked_hosts(); self.metric_values[1].setText(str(len(hosts)))
+        if hasattr(self, "account_targets"):
+            self.account_targets.blockSignals(True)
+            fill_table(self.account_targets, [["", r["hostname"], r["ip"], r["os"]] for r in self.servers])
+            for row, server in enumerate(self.servers):
+                check = self.account_targets.item(row, 0)
+                check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+                check.setCheckState(Qt.CheckState.Checked if server["hostname"] in hosts else Qt.CheckState.Unchecked)
+            self.account_targets.blockSignals(False)
+            self.update_account_review()
         self.select_all.blockSignals(True); self.select_all.setChecked(bool(self.servers) and len(hosts) == len(self.servers)); self.select_all.blockSignals(False)
 
     def check_all(self, checked):
