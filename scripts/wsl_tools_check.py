@@ -18,6 +18,12 @@ def main():
         client = ServerClient(ConnectionSettings(host, 7443, str(ca), read("/root/.config/sm-automation/api.token").decode().strip()))
         inventory = client.call("inventory.list")
         assert any(row["hostname"] == "wsl-ubuntu" and row["ip"] == "127.0.0.1" for row in inventory)
+        current = client.call("client.credentials.get", hostname="wsl-ubuntu")
+        assert "password" not in current
+        if not current["password_saved"]:
+            saved = client.call("client.credentials.save", hostname="wsl-ubuntu", user=current["user"], port=current["port"], use_password=False)
+            assert saved == current and "password" not in saved
+        print("PASS: CLIENT login settings API never returns passwords")
         def run(kind, options):
             job = client.call("job.start", kind=kind, hosts=["wsl-ubuntu"], options=options)
             deadline = time.monotonic() + 60

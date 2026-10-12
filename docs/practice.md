@@ -24,3 +24,6 @@ DATA와 BACKUP은 WSL `/opt/SM_Automation` 아래에 암호화 저장된다. 키
 - 상단 `Save query results`로 현재 화면에 로드된 조회 결과를 CSV 저장한다. 결과 팝업의 `Save results CSV`도 사용할 수 있다. 엑셀에서 CSV를 열 수 있다.
 - `09 Commands / Files`에서 선택 CLIENT를 확인하고 `hostname` 같은 명령을 실행한다. Activity에서 작업을 더블클릭해 stdout/stderr/exit_code를 조회·저장한다.
 - 파일 업로드는 CLIENT→SERVER, 다운로드는 SERVER→CLIENT다. SERVER는 Linux 메인 서버이고 GUI콘솔은 Windows다. 양쪽의 절대 경로를 입력하고 CLIENT 한 대를 선택한다. 부모 디렉터리는 미리 존재해야 하며 대상 파일은 새 이름이어야 한다. 파일은 8 MiB 이하 일반 파일로 제한된다.
+
+- 명령 실행 결과는 Commands / Files의 대상별 결과 표에 표시된다. 행을 선택하면 상세 출력이 보이며 Download detailed results CSV로 저장한다.
+- Connection map에서 CLIENT 한 대를 선택한 뒤 왼쪽 CLIENT login settings를 연다. SSH 계정·포트 및 비밀번호 인증을 설정해 저장한다. 기존 비밀번호가 있으면 빈 칸으로 저장해 유지할 수 있다. 비밀번호 인증을 해제하면 저장 비밀번호를 지우고 기존 SSH 키/프로필을 사용한다. 실제 실행 권한은 해당 CLIENT 계정과 기존 프로필을 따른다.

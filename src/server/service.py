@@ -172,6 +172,45 @@ class ManagementService:
             self.data.write_json("inventory.json.enc", rows)
         return {"count": len(rows)}
 
+    def client_credentials(self, hostname):
+        row = next((r for r in self.inventory() if r["hostname"] == hostname), None)
+        if row is None:
+            raise ValueError("Select an inventory CLIENT")
+        saved = self.data.read_json("client-credentials.json.enc", {}).get(hostname, {})
+        if saved.get("ip") != row["ip"]:
+            saved = {}
+        profile = self.profiles.get(row.get("profile", "default"), {})
+        return row, saved, profile
+
+    def credentials_get(self, hostname):
+        with self.lock:
+            row, saved, profile = self.client_credentials(hostname)
+            return {"hostname": hostname, "ip": row["ip"],
+                    "user": saved.get("user", profile.get("user", self.config.ssh_user)),
+                    "port": saved.get("port", profile.get("port", self.config.ssh_port)),
+                    "password_saved": bool(saved.get("password"))}
+
+    def credentials_save(self, params):
+        hostname = params.get("hostname"); user = params.get("user"); port = params.get("port")
+        password = params.get("password", ""); use_password = params.get("use_password", False)
+        if not isinstance(user, str) or not user.strip() or len(user) > 256 or any(ord(c) < 32 for c in user):
+            raise ValueError("Invalid CLIENT login account")
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError("SSH port must be 1–65535")
+        if not isinstance(password, str) or len(password) > 4096 or "\x00" in password or not isinstance(use_password, bool):
+            raise ValueError("Invalid CLIENT password settings")
+        with self.lock:
+            row, saved, _ = self.client_credentials(hostname)
+            if any(j["status"] in {"queued", "running"} and any(t["hostname"] == hostname for t in j["targets"]) for j in self.jobs.values()):
+                raise ValueError("Wait for this CLIENT's active jobs before changing login settings")
+            if use_password and not (password or saved.get("password")):
+                raise ValueError("Enter a CLIENT password")
+            records = self.data.read_json("client-credentials.json.enc", {})
+            records[hostname] = {"ip": row["ip"], "user": user.strip(), "port": port,
+                                 "password": (password or saved.get("password", "")) if use_password else ""}
+            self.data.write_json("client-credentials.json.enc", records)
+            return self.credentials_get(hostname)
+
     def summary(self, job):
         return {key: value for key, value in job.items() if key not in {"results", "targets"}}
 
@@ -280,10 +319,16 @@ class ManagementService:
                 raise ValueError("Invalid SSH profile privilege mode")
             host_config = replace(self.config, privilege=mode)
             key_file = profile.get("key_file", self.config.ssh_key_file)
-            client = SSHClient(server.hostname, server.ip, user=profile.get("user", self.config.ssh_user),
-                               password=os.environ.get(profile.get("password_env", "SM_AUTOMATION_SSH_PASSWORD")),
-                               key_filename=Path(key_file).expanduser() if key_file else None,
-                               port=int(profile.get("port", self.config.ssh_port)), timeout=self.config.ssh_timeout)
+            with self.lock:
+                current_target, saved_credentials, _ = self.client_credentials(server.hostname)
+                if current_target["ip"] != row["ip"]:
+                    raise ValueError("CLIENT address changed; submit a new job")
+            password = saved_credentials.get("password") or os.environ.get(profile.get("password_env", "SM_AUTOMATION_SSH_PASSWORD"))
+            client = SSHClient(server.hostname, server.ip,
+                               user=saved_credentials.get("user", profile.get("user", self.config.ssh_user)),
+                               password=password,
+                               key_filename=None if saved_credentials.get("password") else (Path(key_file).expanduser() if key_file else None),
+                               port=saved_credentials.get("port", int(profile.get("port", self.config.ssh_port))), timeout=self.config.ssh_timeout)
             family = os_family(server.os)
             kind = job["kind"]
             if kind == "transfer":
@@ -319,7 +364,7 @@ class ManagementService:
                 if not actions:
                     result = {"applied": 0, "note": "Policy already satisfied; no files or services changed"}
                 else:
-                    if mode != "sudo" and not (mode == "direct" and profile.get("user", self.config.ssh_user) == "root"):
+                    if mode != "sudo" and not (mode == "direct" and client.user == "root"):
                         raise ValueError("SSH apply adapter currently requires sudo or direct root")
                     before = backup_server(client, server, host_config, self.backups, job["id"])
                     if before["status"] != "completed":
@@ -350,7 +395,7 @@ class ManagementService:
                 result["backup"] = before
             elif kind == "accounts":
                 options = job["options"]
-                login_user = profile.get("user", self.config.ssh_user)
+                login_user = client.user
                 if options["action"] != "list":
                     if options["username"] == login_user:
                         raise ValueError("The SSH management account cannot be changed")
@@ -469,6 +514,10 @@ class ManagementService:
                     pass
 
     def dispatch(self, method, params):
+        if method == "client.credentials.get":
+            return self.credentials_get(params.get("hostname"))
+        if method == "client.credentials.save":
+            return self.credentials_save(params)
         if method == "schedule.list":
             return self.scheduler.list()
         if method == "schedule.create":

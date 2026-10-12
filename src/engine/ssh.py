@@ -66,6 +66,8 @@ class SSHClient:
             kwargs["key_filename"] = self.key_filename
         if self.password is not None:
             kwargs["password"] = self.password
+            kwargs["look_for_keys"] = False
+            kwargs["allow_agent"] = False
 
         try:
             client.connect(**kwargs)

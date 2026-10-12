@@ -256,6 +256,7 @@ class Console(QMainWindow):
         self.server_badge = label("Not connected"); self.server_badge.setWordWrap(True); nav.addWidget(self.server_badge)
         nav.addWidget(button("Connect server", self.connect_server))
         nav.addWidget(button("Disconnect", self.disconnect_server))
+        nav.addWidget(button("CLIENT login settings", self.edit_client_credentials))
         nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
         root.addWidget(sidebar)
         workspace = QWidget(); workspace.setObjectName("workspace")
@@ -303,6 +304,37 @@ class Console(QMainWindow):
             layout.setContentsMargins(*[round(value * scale) for value in layout.property("original_margins")])
         for widget in self.findChildren(QTableWidget):
             widget.verticalHeader().setDefaultSectionSize(round(39 * scale))
+
+    def edit_client_credentials(self):
+        if not self.require_client():
+            return
+        hosts = self.checked_hosts()
+        if len(hosts) != 1:
+            QMessageBox.information(self, "CLIENT login settings", "Select exactly one CLIENT in Connection map."); return
+        client = self.client; hostname = hosts[0]
+        def show(current):
+            dialog = QDialog(self); dialog.setWindowTitle("CLIENT login: " + hostname); dialog.resize(530, 300)
+            layout = QVBoxLayout(dialog); form = QFormLayout()
+            layout.addWidget(label(hostname + " / " + current["ip"]))
+            user = QLineEdit(current["user"]); port = QSpinBox(); port.setRange(1, 65535); port.setValue(current["port"])
+            use_password = QCheckBox("Use password authentication"); use_password.setChecked(current["password_saved"])
+            password = QLineEdit(); password.setEchoMode(QLineEdit.EchoMode.Password)
+            password.setPlaceholderText("Saved password retained if blank" if current["password_saved"] else "Enter password")
+            form.addRow("CLIENT SSH account", user); form.addRow("SSH port", port)
+            form.addRow(use_password); form.addRow("Password", password); layout.addLayout(form)
+            note = label("Encrypted on Linux SERVER. Password is never returned to the GUI. Uncheck to use the existing SSH key/profile.")
+            note.setWordWrap(True); layout.addWidget(note)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+            buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                params = {"hostname": hostname, "user": user.text().strip(), "port": port.value(),
+                          "use_password": use_password.isChecked(), "password": password.text()}
+                password.clear()
+                self.work(lambda: client.call("client.credentials.save", **params),
+                          lambda _: self.status_line.setText("CLIENT login settings saved on Linux: " + hostname))
+            else:
+                password.clear()
+        self.work(lambda: client.call("client.credentials.get", hostname=hostname), show)
 
     def build_overview(self):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
