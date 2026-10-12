@@ -13,8 +13,8 @@ from desktop.main import Console, STYLE, ConnectDialog
 
 def main():
     def read(path):
-        return subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "cat", path])
-    address = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "hostname", "-I"], text=True).split()[0]
+        return subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "cat", path], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    address = subprocess.check_output(["wsl", "-d", "Ubuntu", "-u", "root", "--", "hostname", "-I"], text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).split()[0]
     with tempfile.TemporaryDirectory(prefix="sm-wsl-gui-") as directory:
         ca = Path(directory) / "ca.crt"; ca.write_bytes(read("/root/.config/sm-automation/ca.crt"))
         app = QApplication(sys.argv)
