@@ -535,6 +535,9 @@ class ManagementService:
                 self.command_passwords.pop(job["id"], None)
 
     def dispatch(self, method, params):
+        if method in {"file.upload", "file.download"}:
+            from server.files import gui_transfer
+            return gui_transfer(method, params)
         if method == "gui.account.save":
             from server.auth import save_account
             with self.lock:
