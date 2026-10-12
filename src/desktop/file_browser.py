@@ -31,6 +31,7 @@ class FileList(QTreeWidget):
         self.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True); self.setAcceptDrops(True)
         self.setColumnWidth(0, 280)
+        self.setAlternatingRowColors(True)
 
     def startDrag(self, actions):
         files = [i.data(0, Qt.ItemDataRole.UserRole) for i in self.selectedItems()]
@@ -58,6 +59,23 @@ class FileList(QTreeWidget):
 class FileBrowser(QDialog):
     def __init__(self, client, parent=None):
         super().__init__(parent); self.client = client; self.task = None
+        self.setStyleSheet("""
+            QDialog, QWidget { background: #f3f6fb; color: #20354d; }
+            QTreeWidget { background: #ffffff; color: #20354d;
+                alternate-background-color: #f0f5fb; border: 1px solid #cbd5e1; }
+            QTreeWidget::item { min-height: 28px; padding: 3px; }
+            QTreeWidget::item:hover { background: #e6effc; color: #172d48; }
+            QTreeWidget::item:selected { background: #cfe2ff; color: #102a4c; }
+            QHeaderView::section { background: #e4ecf7; color: #172d48;
+                padding: 8px; border: 1px solid #cbd5e1; font-weight: bold; }
+            QLineEdit { background: #ffffff; color: #20354d;
+                selection-background-color: #cfe2ff; selection-color: #102a4c; }
+            QPushButton { background: #ffffff; color: #20354d; border: 1px solid #cbd5e1; }
+            QPushButton:hover { background: #e6effc; }
+            QSplitter::handle { background: #d6dfec; }
+            QScrollBar { background: #edf2f8; }
+            QScrollBar::handle { background: #a9b9ce; border-radius: 4px; min-width: 12px; min-height: 12px; }
+        """)
         self.setWindowTitle('GUI (Windows) ↔ SERVER (Linux) — File browser'); self.resize(1100, 680)
         layout = QVBoxLayout(self); splitter = QSplitter(); layout.addWidget(splitter)
         self.paths = {}; self.lists = {}
