@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
     QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget, QScrollArea,
+    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget, QScrollArea, QInputDialog,
 )
 
 from desktop.client import ConnectionSettings, ServerClient
@@ -509,7 +509,7 @@ class Console(QMainWindow):
         layout.addWidget(label("Commands on selected servers", "section"))
         self.command_targets = QLabel(); self.command_targets.setWordWrap(True); layout.addWidget(self.command_targets)
         layout.addWidget(button("Choose servers in Connection map", lambda: self.navigate(1)))
-        self.command_input = QPlainTextEdit(); self.command_input.setPlaceholderText("Command for the selected servers' native shell")
+        self.command_input = QPlainTextEdit(); self.command_input.setPlaceholderText("Command executed as root (sudo first, then su fallback)")
         layout.addWidget(self.command_input); layout.addWidget(button("Run command", self.run_command, True))
         layout.addWidget(label("Target results appear below. Select a row for details."))
         self.command_results_panel = QWidget(); results_layout = QVBoxLayout(self.command_results_panel)
@@ -557,7 +557,9 @@ class Console(QMainWindow):
         if not command.strip() or not hosts or not self.require_client():
             self.status_line.setText("Enter a command and select target servers."); return
         if QMessageBox.question(self, "Review command", "Targets: " + ", ".join(hosts) + "\n\n" + command) == QMessageBox.Yes:
-            self.start_job("command", options={"command": command})
+            root_password, accepted = QInputDialog.getText(self, "Root transition", "Root password for su fallback (leave blank if sudo works). Kept only for this job:", QLineEdit.EchoMode.Password)
+            if accepted:
+                self.start_job("command", options={"command": command, "root_password": root_password})
 
     def transfer_file(self, direction):
         hosts = self.checked_hosts()

@@ -188,3 +188,9 @@ WSL 조회 명령 창은 CREATE_NO_WINDOW로 숨기고 TLS 문맥을 연결별�
 Overview의 Download clients Excel로 hostname/ip/os/profile 열의 .xlsx를 저장하고 Import CSV / Excel로 가져온다. 서버 측 목록 검증을 그대로 거치며 기존 목록 교체 방식이다. Manage inventory의 개별 추가/수정도 유지했다.
 선택 CLIENT에 Deploy SERVER public key 메뉴를 추가했다. 기존 로그인 계정의 .ssh/authorized_keys를 SFTP로 보존·중복 검사·원자적 교체하고 키 접속을 확인한다. 초기 접속 비밀번호는 CLIENT login settings에서 지정해야 하며 known_hosts는 사전 신뢰 등록이 필요하다. 키가 없으면 Linux 비밀 디렉터리에 보호된 Ed25519 키를 생성한다. 기존 키 제한 옵션은 보존한다. 검증 후 비밀번호 인증 해제는 사용자가 선택한다.
 엑셀 왕복·GUI·SSH 검증 37개와 승인된 로컬 root의 기존 키 인식/키 로그인 검증 통과. 현재 사용자가 지정한 D25950 CLIENT 접속은 인증 실패로 확인됐으며 사용자 설정을 임의 변경하지 않았다. 최초 비밀번호 접속으로 새 키를 추가하는 운영환경 및 AIX/Windows SFTP 적용은 미검증이다. 자동화는 사용자 지시에 따라 일시정지 유지한다.
+
+
+## 2026-10-12 09 명령 root 전환
+
+09 명령은 Linux/AIX CLIENT에서 root 실행한다. root 로그인은 직접 실행하고 그 외는 sudo -S로 로그인 비밀번호를 stdin 전달한다. root 확인 표시가 나오기 전에 전환이 실패하면 입력한 root 비밀번호로 su를 재시도한다. 명령이 시작된 뒤 비정상 종료한 경우에는 중복 실행하지 않는다. su는 PTY echo를 끄고 Password 프롬프트 뒤에만 비밀번호를 전송한다. root 비밀번호는 작업 메모리에서만 유지하고 이력/옵션/문서에 저장하지 않으며 종료 후 제거한다. 명령 stdin은 /dev/null로 분리한다.
+기존 화면·SSH 검증 37개, 전환 분기 검증 2개 및 로컬 WSL 직접 root 실행 통과. 실제 비밀번호 sudo/su 전환은 아직 미검증이며 유효한 CLIENT SSH 접속 설정이 필요하다. 자동화 일시정지 유지.

@@ -32,3 +32,5 @@ DATA와 BACKUP은 WSL `/opt/SM_Automation` 아래에 암호화 저장된다. 키
 
 - Overview의 Download clients Excel / Import CSV / Excel로 .xlsx 목록을 저장·가져온다. 열은 hostname, ip, os, profile이다. 가져오기는 기존 목록을 교체한다. Manage inventory에서 개별 입력도 가능하다.
 - 최초 키 배포는 CLIENT login settings에 기존 계정의 유효한 비밀번호를 설정한 뒤 CLIENT를 선택하고 Deploy SERVER public key를 실행한다. 결과는 Activity에서 확인한다. 성공 후 비밀번호 인증을 해제하면 키 인증을 사용한다. 공개키만 CLIENT로 전달하며 개인키는 SERVER에 남는다.
+
+- 09 명령은 root로 실행한다. sudo는 CLIENT 로그인 비밀번호를 사용하고 실패 시 입력한 root 비밀번호로 su를 시도한다. sudo가 되면 root 비밀번호 입력란을 비워도 된다. 취소하면 명령을 제출하지 않는다. root 비밀번호는 작업에만 사용한다.

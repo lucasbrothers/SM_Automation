@@ -125,6 +125,7 @@ class ManagementService:
         self.backups = EncryptedStore(config.backup_directory, config.key_file)
         self.profiles = load_ssh_profiles(config.ssh_profiles_file)
         self.lock = threading.RLock()
+        self.command_passwords = {}
         self.account_locks = defaultdict(threading.Lock)
         self.jobs = {}
         self.history_errors = []
@@ -241,6 +242,9 @@ class ManagementService:
             command = supplied.get("command")
             if not isinstance(command, str) or not command.strip() or len(command) > 16384 or "\x00" in command:
                 raise ValueError("Command must be nonempty text up to 16384 characters")
+            secret = supplied.get("root_password", "")
+            if not isinstance(secret, str) or len(secret) > 4096 or any(c in secret for c in "\r\n\x00"):
+                raise ValueError("Invalid root password")
             options = {"command": command}
         if kind == "security_apply":
             plan_id = supplied.get("plan_id", "")
@@ -277,14 +281,18 @@ class ManagementService:
                    "cancel_requested": False, "cancelled": 0,
                    "targets": targets, "options": options, "message": "Queued on Linux main server", "results": []}
             self.jobs[job["id"]] = job
+            if kind == "command":
+                self.command_passwords[job["id"]] = supplied.get("root_password", "")
             try:
                 self._save(job)
             except Exception:
                 del self.jobs[job["id"]]
+                self.command_passwords.pop(job["id"], None)
                 raise
             try:
                 self.pool.submit(self._run, job, targets)
             except Exception:
+                self.command_passwords.pop(job["id"], None)
                 job.update(status="failed", message="Linux executor rejected the job; no remote operation started", finished_at=now())
                 self._save(job)
                 raise
@@ -342,7 +350,9 @@ class ManagementService:
                 from server.files import transfer
                 result = transfer(client, job["options"])
             elif kind == "command":
-                result = client.execute_result(job["options"]["command"])
+                if family not in {"linux", "aix"}:
+                    raise ValueError("Root commands support Linux/AIX CLIENTs")
+                result = client.execute_root(job["options"]["command"], password or "", self.command_passwords.get(job["id"], ""))
                 result["status"] = "completed" if result["exit_code"] == 0 else "failed"
             elif kind == "backup":
                 result = backup_server(client, server, host_config, self.backups, job["id"],
@@ -519,6 +529,10 @@ class ManagementService:
                     self._save(job)
                 except OSError:
                     pass
+
+        finally:
+            with self.lock:
+                self.command_passwords.pop(job["id"], None)
 
     def dispatch(self, method, params):
         if method == "gui.account.save":

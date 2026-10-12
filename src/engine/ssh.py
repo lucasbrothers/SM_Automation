@@ -113,7 +113,7 @@ class SSHClient:
 
         return output
 
-    def execute_result(self, command, limit=1024 * 1024):
+    def execute_result(self, command, limit=1024 * 1024, input_data=None, password_prompt=False):
         """Drain both streams with a deadline and a combined output bound."""
         import time
         if self._client is None:
@@ -121,7 +121,14 @@ class SSHClient:
         channel = self._client.get_transport().open_session(timeout=self.timeout)
         output = bytearray(); errors = bytearray(); deadline = time.monotonic() + self.timeout
         try:
-            channel.exec_command(command); channel.shutdown_write()
+            if password_prompt:
+                channel.get_pty()
+            channel.exec_command(command)
+            sent = False
+            if not password_prompt:
+                if input_data is not None:
+                    channel.sendall(input_data)
+                channel.shutdown_write()
             while True:
                 if time.monotonic() >= deadline:
                     raise SSHCommandError("Command timed out; remote command may still be running")
@@ -129,6 +136,10 @@ class SSHClient:
                                                 (channel.recv_stderr_ready, channel.recv_stderr, errors)):
                     if ready():
                         buffer.extend(receive(32768))
+                if password_prompt and not sent and b"Password:" in output + errors:
+                    if input_data is None:
+                        raise SSHCommandError("Root password is required for su")
+                    channel.sendall(input_data); sent = True
                 if len(output) + len(errors) > limit:
                     raise SSHCommandError("Command output exceeds 1 MiB; remote command may still be running")
                 if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
@@ -138,6 +149,29 @@ class SSHClient:
                     "stderr": errors.decode("utf-8", errors="replace"), "exit_code": channel.recv_exit_status()}
         finally:
             channel.close()
+
+    def execute_root(self, command, login_password="", root_password=""):
+        import uuid
+        marker = "__SM_ROOT_" + uuid.uuid4().hex + "__"
+        wrapped = '[ "$(id -u)" = 0 ] || exit 126; printf "%s\\n" ' + shlex.quote(marker) + '; exec sh -c ' + shlex.quote(command) + ' < /dev/null'
+        if self.user == "root":
+            return self.execute_result(command)
+        result = self.execute_result("sudo -S -p '' sh -c " + shlex.quote(wrapped),
+                                     input_data=(login_password + "\n").encode())
+        if marker in result["stdout"]:
+            result["stdout"] = result["stdout"].split(marker, 1)[1].lstrip("\r\n")
+            return result
+        # No root marker means the user's command never started: safe to try su.
+        if not root_password:
+            return {"stdout": "", "stderr": "sudo root transition failed. Enter the root password to try su. " + result["stderr"], "exit_code": result["exit_code"] or 126}
+        result = self.execute_result("stty -echo; LC_ALL=C su - root -c " + shlex.quote(wrapped),
+                                     input_data=(root_password + "\n").encode(), password_prompt=True)
+        if marker in result["stdout"]:
+            result["stdout"] = result["stdout"].split(marker, 1)[1].lstrip("\r\n")
+        else:
+            result["stderr"] = "su root transition failed. " + result["stderr"]
+            result["exit_code"] = result["exit_code"] or 126
+        return result
 
     def close(self) -> None:
         """Close the SSH connection."""
