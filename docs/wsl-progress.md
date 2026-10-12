@@ -697,3 +697,9 @@ CLIENT는 관리 대상 SSH 서버, SERVER는 WSL Linux 메인 서버, GUI콘솔
 Commands / Files 화면에서 대상별 성공/실패·종료 코드·stdout·stderr를 직접 확인하고 상세 CSV를 저장한다. Activity의 이전 명령도 이 화면으로 불러온다. GUI 검증 29개 및 실제 WSL 명령 결과 표시 확인 통과.
 왼쪽 CLIENT login settings에서 선택한 한 CLIENT의 SSH 계정·포트·비밀번호를 설정한다. 비밀번호는 Linux DATA/client-credentials.json.enc에 암호화 저장하고 API 조회에는 저장 여부만 반환한다. 빈 비밀번호는 기존 값 유지, 비밀번호 인증 해제는 저장 비밀번호 삭제 및 기존 키/프로필 사용이다. 주소 변경 시 이전 설정을 사용하지 않으며 활성 작업 중 접속 설정 변경은 거부한다. 관련 검증 8개와 실제 WSL 설정 조회/동일 계정 저장/명령·파일 왕복 확인 통과. WSL root 비밀번호 로그인을 활성화하지 않았으므로 실제 비밀번호 SSH 인증은 실행하지 않았다.
 Accounts 단계 탭은 흰 배경·진한 글씨로 고정해 Windows 테마에 따른 어두운 배경 문제를 수정했다.
+
+
+## 2026-10-12 SERVER–GUI 전용 계정 로그인
+
+GUI 연결 화면은 Server IP / Port / ID / Password로 변경했고 인증서·토큰 입력 항목을 제거했다. TLS 암호화와 서버 검증은 유지한다. 로컬 WSL CA는 로컬 OS를 통해 자동 신뢰하며 다른 SERVER는 운영체제의 신뢰 저장소를 사용한다. GUI 전용 계정은 Linux DATA/gui-accounts.json.enc에 salt+scrypt 해시로 암호화 저장한다. 기본 admin 계정은 사용자 지시에 따라 로컬 WSL에 등록했으며 비밀번호 원문은 코드·문서·Git에 저장하지 않았다. SERVER GUI account 화면에서 계정 생성/비밀번호 변경이 가능하다. 실습 실행 파일은 로그인 화면부터 시작한다.
+화면/인증 검증 30개 및 실제 WSL ID/비밀번호 인증·틀린 비밀번호 거부·인증서 선택 없이 검증 TLS 연결 확인 통과. 기존 통합 도구의 토큰 인증은 호환 유지한다.

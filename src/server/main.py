@@ -49,7 +49,14 @@ class Handler(socketserver.BaseRequestHandler):
             with self.server.context.wrap_socket(self.request, server_side=True) as connection:
                 request = receive(connection)
                 supplied = request.get("token", "")
-                if not isinstance(supplied, str) or not hmac.compare_digest(supplied.encode(), self.server.token):
+                from server.auth import authenticate
+                token_ok = isinstance(supplied, str) and hmac.compare_digest(supplied.encode(), self.server.token)
+                try:
+                    with self.server.service.lock:
+                        login_ok = not token_ok and authenticate(self.server.service.data, request.get("username", ""), request.get("password", ""))
+                except Exception:
+                    login_ok = False
+                if not token_ok and not login_ok:
                     send(connection, {"ok": False, "error": "Authentication failed"})
                     return
                 try:

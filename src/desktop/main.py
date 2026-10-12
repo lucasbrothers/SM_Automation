@@ -150,24 +150,17 @@ class ConnectDialog(QDialog):
         form = QFormLayout()
         self.host = QLineEdit(); self.host.setPlaceholderText("sm-main.example.internal")
         self.port = QSpinBox(); self.port.setRange(1024, 65535); self.port.setValue(7443)
-        self.ca = QLineEdit(); self.ca.setPlaceholderText("Trusted server certificate / CA file")
-        ca_row = QHBoxLayout(); ca_row.addWidget(self.ca)
-        ca_row.addWidget(button("Browse", self.choose_ca))
-        self.token = QLineEdit(); self.token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.token.setPlaceholderText("Server API token (kept in memory only)")
-        form.addRow("Linux server", self.host); form.addRow("TLS port", self.port)
-        form.addRow("CA certificate", ca_row); form.addRow("Access token", self.token)
+        self.login_id = QLineEdit(); self.login_id.setPlaceholderText("SERVER login ID")
+        self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow("Server IP", self.host); form.addRow("Port", self.port)
+        form.addRow("ID", self.login_id); form.addRow("Password", self.password)
         layout.addLayout(form)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept); buttons.rejected.connect(self.reject); layout.addWidget(buttons)
 
-    def choose_ca(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Choose trusted certificate", "", "Certificates (*.crt *.pem);;All files (*)")
-        if path:
-            self.ca.setText(path)
-
     def settings(self):
-        return ConnectionSettings(self.host.text().strip(), self.port.value(), self.ca.text().strip(), self.token.text().strip())
+        return ConnectionSettings(self.host.text().strip(), self.port.value(), "", "",
+                                  self.login_id.text().strip(), self.password.text())
 
 
 class InventoryDialog(QDialog):
@@ -257,6 +250,7 @@ class Console(QMainWindow):
         nav.addWidget(button("Connect server", self.connect_server))
         nav.addWidget(button("Disconnect", self.disconnect_server))
         nav.addWidget(button("CLIENT login settings", self.edit_client_credentials))
+        nav.addWidget(button("SERVER GUI account", self.edit_gui_account))
         nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
         root.addWidget(sidebar)
         workspace = QWidget(); workspace.setObjectName("workspace")
@@ -304,6 +298,24 @@ class Console(QMainWindow):
             layout.setContentsMargins(*[round(value * scale) for value in layout.property("original_margins")])
         for widget in self.findChildren(QTableWidget):
             widget.verticalHeader().setDefaultSectionSize(round(39 * scale))
+
+    def edit_gui_account(self):
+        if not self.require_client():
+            return
+        dialog = QDialog(self); dialog.setWindowTitle("SM Automation SERVER login account"); dialog.resize(510, 240)
+        layout = QVBoxLayout(dialog); form = QFormLayout()
+        username = QLineEdit(); password = QLineEdit(); password.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow("ID", username); form.addRow("Password", password); layout.addLayout(form)
+        note = label("Create an application login or update its password. This account controls this SERVER; it is separate from CLIENT SSH accounts.")
+        note.setWordWrap(True); layout.addWidget(note)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            client = self.client; login = username.text().strip(); secret = password.text(); password.clear()
+            self.work(lambda: client.call("gui.account.save", username=login, password=secret),
+                      lambda _: self.status_line.setText("SERVER GUI login account saved: " + login))
+        else:
+            password.clear()
 
     def edit_client_credentials(self):
         if not self.require_client():

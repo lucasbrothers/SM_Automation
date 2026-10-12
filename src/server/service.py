@@ -514,6 +514,10 @@ class ManagementService:
                     pass
 
     def dispatch(self, method, params):
+        if method == "gui.account.save":
+            from server.auth import save_account
+            with self.lock:
+                return save_account(self.data, params.get("username"), params.get("password"))
         if method == "client.credentials.get":
             return self.credentials_get(params.get("hostname"))
         if method == "client.credentials.save":
