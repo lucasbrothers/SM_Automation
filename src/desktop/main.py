@@ -540,33 +540,9 @@ class Console(QMainWindow):
         self.pages.addWidget(page)
 
     def gui_file_dialog(self):
-        if not self.require_client():return
-        dialog=QDialog(self);dialog.setWindowTitle("GUI (Windows) ↔ SERVER (Linux) files");dialog.resize(600,300)
-        layout=QVBoxLayout(dialog);remote=QLineEdit();remote.setPlaceholderText("SERVER absolute file path, e.g. /srv/inbox/file.txt")
-        layout.addWidget(remote);status=QLabel("Up to 8 MiB. Upload creates a new file; parent directory must exist.");status.setWordWrap(True)
-        layout.addWidget(status);client=self.client
-        def upload():
-            local,_=QFileDialog.getOpenFileName(dialog,"Choose Windows file")
-            if not local:return
-            try:
-                with open(local,"rb") as stream:data=stream.read(8*1024*1024+1)
-                if len(data)>8*1024*1024:raise ValueError("Upload limit is 8 MiB")
-            except (OSError,ValueError) as exc:status.setText(str(exc));return
-            path=remote.text().strip()
-            self.work(lambda:client.call("file.upload",path=path,content=base64.b64encode(data).decode()),
-                      lambda result:self.status_line.setText("GUI → SERVER uploaded: "+result["path"]))
-            status.setText("Upload submitted. Completion/error appears in the main status area.")
-        def download():
-            path=remote.text().strip();local,_=QFileDialog.getSaveFileName(dialog,"Save to Windows",Path(path).name)
-            if not local:return
-            def saved(result):
-                try:Path(local).write_bytes(base64.b64decode(result["content"],validate=True))
-                except (OSError,ValueError):QMessageBox.warning(self,"Download failed","Cannot save destination.");return
-                self.status_line.setText("SERVER → GUI downloaded: "+local)
-            self.work(lambda:client.call("file.download",path=path),saved)
-            status.setText("Download submitted. Completion/error appears in the main status area.")
-        layout.addWidget(button("Upload GUI → SERVER",upload));layout.addWidget(button("Download SERVER → GUI",download))
-        layout.addWidget(button("Close",dialog.accept));dialog.exec()
+        if not self.require_client(): return
+        from desktop.file_browser import FileBrowser
+        FileBrowser(self.client, self).exec()
 
     def display_command_results(self, rows, job):
         states = {"completed": "Success", "failed": "Failed", "cancelled": "Cancelled"}

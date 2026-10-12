@@ -52,27 +52,46 @@ def transfer(client, params):
         return {**params, "bytes": len(content), "status": "completed"}
 
 
+CHUNK = 1024 * 1024
+
+
 def gui_transfer(method, params):
     import base64
-    path=params.get("path")
-    if not isinstance(path,str) or not path.startswith("/") or "\x00" in path:
+    import fcntl
+    path = params.get("path")
+    if not isinstance(path, str) or not path.startswith("/") or "\x00" in path:
         raise ValueError("Enter an absolute Linux SERVER path")
-    path=Path(path)
-    if method=="file.download":
-        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-        with os.fdopen(fd,"rb") as stream:
-            info=os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_size>LIMIT:raise ValueError("Select a regular file up to 8 MiB")
-            content=stream.read(LIMIT+1)
-        if len(content)>LIMIT:raise ValueError("Download limit is 8 MiB")
-        return {"content":base64.b64encode(content).decode(),"bytes":len(content)}
-    encoded=params.get("content")
-    if not isinstance(encoded,str) or len(encoded)>((LIMIT+2)//3)*4:raise ValueError("Upload limit is 8 MiB")
-    content=base64.b64decode(encoded,validate=True)
-    if len(content)>LIMIT:raise ValueError("Upload limit is 8 MiB")
-    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
-    try:
-        with os.fdopen(fd,"wb") as stream:stream.write(content);stream.flush();os.fsync(stream.fileno())
-    except Exception:
-        path.unlink(missing_ok=True);raise
-    return {"path":str(path),"bytes":len(content)}
+    path = Path(path)
+    if method == "file.list":
+        entries = []
+        for entry in path.iterdir():
+            info = entry.lstat()
+            entries.append({"name": entry.name, "directory": stat.S_ISDIR(info.st_mode),
+                            "regular": stat.S_ISREG(info.st_mode), "size": info.st_size})
+        return {"path": str(path.resolve()), "entries": sorted(entries, key=lambda e: (not e["directory"], e["name"].lower()))}
+    offset = params.get("offset", 0)
+    if type(offset) is not int or offset < 0:
+        raise ValueError("Invalid transfer offset")
+    if method == "file.download":
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode): raise ValueError("Select a regular file")
+            stream.seek(offset)
+            content = stream.read(CHUNK)
+        return {"content": base64.b64encode(content).decode(), "bytes": len(content), "size": info.st_size}
+    if method != "file.upload": raise ValueError("Unknown file operation")
+    encoded = params.get("content")
+    if not isinstance(encoded, str) or len(encoded) > ((CHUNK + 2)//3)*4: raise ValueError("Invalid transfer chunk")
+    content = base64.b64decode(encoded, validate=True)
+    if len(content) > CHUNK: raise ValueError("Invalid transfer chunk")
+    flags = os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    if offset == 0: flags |= os.O_CREAT | os.O_EXCL
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "wb") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size != offset: raise ValueError("Destination changed during upload")
+        stream.seek(offset); stream.write(content); stream.flush()
+        if params.get("final"): os.fsync(stream.fileno())
+    return {"path": str(path), "bytes": len(content)}
