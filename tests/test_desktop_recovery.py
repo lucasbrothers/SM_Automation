@@ -370,3 +370,16 @@ def test_account_auth_failure_is_visible_on_accounts_page():
     assert "CLIENT login settings" in window.account_result_status.text()
     assert window.account_table.rowCount()==0
     window.close()
+
+
+def test_default_zoom_is_90_and_typed_value_applies_on_commit():
+    app=QApplication.instance() or QApplication([])
+    window=Console()
+    assert window.zoom_control.value()==90
+    assert not window.zoom_control.keyboardTracking()
+    window.zoom_control.lineEdit().setText("75%")
+    assert window.zoom_control.value()==90
+    window.zoom_control.interpretText()
+    assert window.zoom_control.value()==75
+    assert window.account_table.verticalHeader().defaultSectionSize() >= window.account_table.fontMetrics().height()+18
+    window.close()

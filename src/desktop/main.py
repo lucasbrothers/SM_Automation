@@ -46,7 +46,7 @@ QPushButton[primary="true"]:disabled { color: #8796aa; background: #e3e9f2; }
 QLineEdit, QSpinBox, QPlainTextEdit, QComboBox, QDateTimeEdit { border: 1px solid #d9e2ee; border-radius: 6px; background: white; padding: 8px; }
 QComboBox::drop-down { border: none; width: 26px; }
 QComboBox QAbstractItemView { background: white; selection-background-color: #e6efff; selection-color: #203955; }
-QSpinBox, QDateTimeEdit, QComboBox, QLineEdit { padding: 3px 8px; min-height: 22px; }
+QSpinBox, QDateTimeEdit, QComboBox, QLineEdit { padding: 5px 8px; min-height: 28px; }
 QTableWidget { background: white; border: none; gridline-color: #edf1f6; selection-background-color: #e6efff; selection-color: #203955; }
 QHeaderView::section { background: #f7f9fc; color: #6a7c93; border: none; border-bottom: 1px solid #e1e8f0; padding: 9px; font-size: 9pt; }
 QTableWidget::item { padding: 7px; border-bottom: 1px solid #eff3f7; }
@@ -259,7 +259,7 @@ class Console(QMainWindow):
         self.workspace_scroll.setWidget(workspace); root.addWidget(self.workspace_scroll, 1)
         content = QVBoxLayout(workspace); content.setContentsMargins(28, 24, 28, 18); content.setSpacing(18)
         top = QHBoxLayout(); top.addWidget(label("OPERATIONS  /  INFRASTRUCTURE", "subtitle")); top.addStretch()
-        self.connection_badge = label("OFFLINE", "badge"); top.addWidget(self.connection_badge); self.zoom_control = QSpinBox(); self.zoom_control.setRange(60, 140); self.zoom_control.setValue(100); self.zoom_control.setSuffix("%")
+        self.connection_badge = label("OFFLINE", "badge"); top.addWidget(self.connection_badge); self.zoom_control = QSpinBox(); self.zoom_control.setRange(60, 140); self.zoom_control.setValue(90); self.zoom_control.setSuffix("%"); self.zoom_control.setKeyboardTracking(False); self.zoom_control.setToolTip("Type a percentage, then press Enter to apply")
         self.zoom_control.valueChanged.connect(self.set_zoom)
         top.addWidget(label("Zoom")); top.addWidget(self.zoom_control)
         top.addWidget(button("Save query results", lambda: self.export_widgets(self.pages.currentWidget()))); content.addLayout(top)
@@ -282,6 +282,7 @@ class Console(QMainWindow):
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
+        self.set_zoom(90)
 
     def set_zoom(self, percent):
         scale = percent / 100
@@ -298,7 +299,12 @@ class Console(QMainWindow):
                 layout.setSpacing(round(spacing * scale))
             layout.setContentsMargins(*[round(value * scale) for value in layout.property("original_margins")])
         for widget in self.findChildren(QTableWidget):
-            widget.verticalHeader().setDefaultSectionSize(round(39 * scale))
+            row_height = max(round(44 * scale), widget.fontMetrics().height() + round(14 * scale) + 8)
+            widget.verticalHeader().setDefaultSectionSize(row_height)
+            if widget in (self.target_table, self.account_targets):
+                for row in range(widget.rowCount()):
+                    if widget is self.target_table:
+                        widget.setRowHeight(row, max(round(60 * scale), 2 * widget.fontMetrics().height() + 12))
 
     def edit_gui_account(self):
         if not self.require_client():
