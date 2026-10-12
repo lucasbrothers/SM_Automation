@@ -16,7 +16,8 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=300
 NoNewPrivileges=true
-PrivateTmp=true
+# Transfers must use the same /tmp visible to server operators.
+PrivateTmp=false
 
 [Install]
 WantedBy=multi-user.target

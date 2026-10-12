@@ -163,7 +163,7 @@ class FileBrowser(QDialog):
                                 progress(f'Download {name}: {offset:,} / {result["size"]:,} bytes')
                                 if offset >= result['size']: break
                                 if not data: raise RuntimeError('Source changed during download')
-                    messages.append(name + ': Success')
+                    messages.append(name + ': Success — ' + (posixpath.join(remote_dir, name) if payload['side'] == 'local' else str(Path(local_dir)/name)))
                 except Exception as exc: messages.append(name + ': Failed — ' + str(exc) + ' (partial file may remain)')
             return '\n'.join(messages) or 'Select regular files to transfer.'
         def done(message):

@@ -200,3 +200,8 @@ Overview의 Download clients Excel로 hostname/ip/os/profile 열의 .xlsx를 저
 
 09의 별도 파일 창을 Windows/Linux 양쪽 목록·경로 입력·상위 폴더·폴더 더블 클릭 탐색으로 변경했다. 일반 파일 다중 선택, 양쪽 목록 사이 및 Windows 탐색기에서 서버 목록으로 드래그앤드롭, 업로드/다운로드 버튼을 지원한다. SERVER 파일은 TLS API로 1 MiB씩 전송하며 전체 파일 용량 제한을 제거했다. 기존 파일은 보존하고 전송량·파일별 성공/실패를 표시한다. 실패한 전송의 부분 파일은 남을 수 있으며 상태에 명시한다. 폴더 재귀 전송/중단 재개는 지원하지 않는다. CLIENT–SERVER 기존 전송 한도는 별도 기능으로 유지한다.
 37개 기존 검증 및 실제 Windows–승인된 WSL 9 MiB 바이너리 TLS 왕복·목록·기존 파일 덮어쓰기 거부·양쪽 GUI 목록 로드 통과. 자동화 일시정지는 유지한다.
+
+
+## 2026-10-12 SERVER /tmp 가시성 수정
+
+서비스 PrivateTmp 격리로 GUI 업로드 /tmp와 터미널 /tmp가 달랐다. 설치 서비스 PrivateTmp=false 및 로컬 WSL override를 적용했다. 기존 일반 파일 2개를 /var/lib/sm-automation/tmp-recovery-20261012에 보존하고 공용 /tmp로 기존 파일을 덮어쓰지 않고 복사했다. GUI 성공 상태에 최종 저장 경로를 표시한다. 실제 TLS 업로드 후 WSL 일반 /tmp에서 동일 내용 조회 및 다운로드 일치 검증 통과.
