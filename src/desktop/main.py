@@ -53,6 +53,12 @@ QTableWidget::item { padding: 7px; border-bottom: 1px solid #eff3f7; }
 QProgressBar { border: none; border-radius: 4px; background: #e9eff8; height: 8px; text-align: center; }
 QProgressBar::chunk { background: #2a74df; border-radius: 4px; }
 QCheckBox { spacing: 8px; }
+QTabWidget::pane { background: white; border: 1px solid #d9e2ee; border-radius: 6px; }
+QTabBar::tab { background: #edf2f8; color: #23344c; border: 1px solid #d9e2ee; padding: 9px 14px; }
+QTabBar::tab:selected { background: white; color: #122139; border-bottom: 3px solid #2869df; font-weight: 600; }
+QTabBar::tab:hover { background: #e6efff; color: #122139; }
+#accountPage { background: white; color: #23344c; }
+#accountPage QLabel, #accountPage QCheckBox { background: transparent; color: #23344c; }
 QSplitter::handle { background: transparent; width: 12px; }
 """
 
@@ -492,7 +498,7 @@ class Console(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page)
         frame, body = card(); body.addWidget(label("Linux accounts", "section"))
         self.account_tabs = QTabWidget()
-        targets = QWidget(); target_layout = QVBoxLayout(targets)
+        targets = QWidget(); targets.setObjectName("accountPage"); target_layout = QVBoxLayout(targets)
         target_layout.addWidget(label("Choose target servers. Selection is shared with Connection map."))
         target_layout.addWidget(button("Select all", lambda: self.check_all(True)))
         target_layout.addWidget(button("Clear selection", lambda: self.check_all(False)))
@@ -500,9 +506,9 @@ class Console(QMainWindow):
         self.account_targets.itemChanged.connect(self.account_target_changed)
         target_layout.addWidget(self.account_targets)
         self.account_tabs.addTab(targets, "1. Target servers")
-        operation = QWidget(); operation_layout = QVBoxLayout(operation)
+        operation = QWidget(); operation.setObjectName("accountPage"); operation_layout = QVBoxLayout(operation)
         self.account_tabs.addTab(operation, "2. Account details")
-        review = QWidget(); review_layout = QVBoxLayout(review)
+        review = QWidget(); review.setObjectName("accountPage"); review_layout = QVBoxLayout(review)
         self.account_review = QLabel(); self.account_review.setWordWrap(True)
         review_layout.addWidget(self.account_review)
         review_layout.addWidget(button("Run account operation", self.run_accounts, True))
