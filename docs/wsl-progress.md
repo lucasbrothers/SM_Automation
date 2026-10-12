@@ -703,3 +703,10 @@ Accounts 단계 탭은 흰 배경·진한 글씨로 고정해 Windows 테마에 
 
 GUI 연결 화면은 Server IP / Port / ID / Password로 변경했고 인증서·토큰 입력 항목을 제거했다. TLS 암호화와 서버 검증은 유지한다. 로컬 WSL CA는 로컬 OS를 통해 자동 신뢰하며 다른 SERVER는 운영체제의 신뢰 저장소를 사용한다. GUI 전용 계정은 Linux DATA/gui-accounts.json.enc에 salt+scrypt 해시로 암호화 저장한다. 기본 admin 계정은 사용자 지시에 따라 로컬 WSL에 등록했으며 비밀번호 원문은 코드·문서·Git에 저장하지 않았다. SERVER GUI account 화면에서 계정 생성/비밀번호 변경이 가능하다. 실습 실행 파일은 로그인 화면부터 시작한다.
 화면/인증 검증 30개 및 실제 WSL ID/비밀번호 인증·틀린 비밀번호 거부·인증서 선택 없이 검증 TLS 연결 확인 통과. 기존 통합 도구의 토큰 인증은 호환 유지한다.
+
+
+## 2026-10-12 역할별 설치 패키지 준비
+
+release/server-install.zip, gui-install.zip, client-prerequisites.zip 및 SHA256SUMS.txt를 생성했다. 의존성 설치가 필요한 소스 패키지이며 EXE/MSI·오프라인 완전 설치본은 아니다. CLIENT는 SSH/SFTP를 사용하는 에이전트 없는 대상이다. docs/production-test.md에 SERVER 설치·프로비저닝·앱 계정 등록·systemd 실행, Windows GUI 설치·공개 CA 최초 신뢰 등록·ID/비밀번호 로그인, CLIENT 준비 및 첫 테스트 순서를 기록했다. 기본 비밀번호·토큰·키·실제 CSV는 패키지에 포함하지 않았다.
+압축 무결성·공개 파일 목록·압축 해제 GUI 시작, Linux 설치 도구 문법과 PowerShell 구문을 확인했다. Git에서 Linux 설치 도구의 LF 줄바꿈을 고정한다. 실제 운영환경 설치는 수행하지 않았으며 승인된 테스트 범위는 로컬 WSL로 유지한다.
+WSL 조회 명령 창은 CREATE_NO_WINDOW로 숨기고 TLS 문맥을 연결별로 재사용하도록 수정했다. 명령 CSV에서는 중복 Text result만 제외하며 GUI 상세 출력은 유지한다. 사용자가 만든 results.csv는 Git에 추가하지 않는다.
