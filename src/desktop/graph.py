@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QBrush, QPen, QFont, QPainterPath, QPainter
+from PySide6.QtCore import Qt, QRectF, QPointF
+from PySide6.QtGui import QColor, QBrush, QPen, QFont, QPainterPath, QPainter, QPolygonF
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsDropShadowEffect
 
 
@@ -37,7 +37,7 @@ class ConnectionMap(QGraphicsView):
         description.setBrush(QColor("#65788f")); description.setPos(x + 16, y + 36)
         return (x, y, width)
 
-    def edge(self, start, end, color="#bdcfe3"):
+    def edge(self, start, end, color="#bdcfe3", ports=""):
         x, y, width = start; ex, ey, _ = end
         path = QPainterPath()
         path.moveTo(x + width, y + 33)
@@ -45,6 +45,14 @@ class ConnectionMap(QGraphicsView):
         path.cubicTo(midpoint, y + 33, midpoint, ey + 33, ex, ey + 33)
         item = self.scene().addPath(path, QPen(QColor(color), 2))
         item.setZValue(-1)
+        if ports:
+            for point, sign in ((QPointF(ex, ey + 33), -1), (QPointF(x + width, y + 33), 1)):
+                arrow = QPolygonF([point, QPointF(point.x() + sign * 9, point.y() - 5), QPointF(point.x() + sign * 9, point.y() + 5)])
+                self.scene().addPolygon(arrow, QPen(QColor("#2869df")), QBrush(QColor("#2869df")))
+            caption = self.scene().addSimpleText(ports.split("\n")[0], QFont("Segoe UI", 8))
+            caption.setBrush(QColor("#23344c")); caption.setPos(midpoint - caption.boundingRect().width()/2, (y + ey)/2 + 12)
+            caption.setToolTip(ports + "\nBidirectional TCP session; initiator is not known from ESTABLISHED alone.")
+            item.setToolTip(ports)
 
     def set_results(self, results, query=""):
         self.scene().clear()
@@ -99,10 +107,12 @@ class ConnectionMap(QGraphicsView):
                                  "#12a58b" if complete else "#b45309", 230)
                 self.edge(host, node)
             for index, (peer, connections) in enumerate(shown):
-                ports = ", ".join(sorted({item["remote"]["port"] for item in connections}))
+                pairs = sorted({str(item["local"]["port"]) + " ↔ " + str(item["remote"]["port"]) for item in connections})
+                ports = ", ".join(pairs)
                 node = self.card(660, y + index * 82, peer,
                                  f"{len(connections)} TCP  /  ports {ports}", "#12a58b", 230)
-                self.edge(host, node)
+                captions = "\n".join(pairs)
+                self.edge(host, node, ports=captions)
             y += block_height + 45
         center = self.card(20, y / 2 - 55, "ESTABLISHED", f"{len(rows)} servers in view", "#8059d5", 205)
         for anchor in anchors:

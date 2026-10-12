@@ -437,7 +437,7 @@ class Console(QMainWindow):
         self.peer_search.textChanged.connect(self.update_map); tools.addWidget(self.peer_search)
         tools.addWidget(button("Fit", lambda: self.graph.fit_map())); right.addLayout(tools)
         self.graph = ConnectionMap(); self.graph.set_results([]); right.addWidget(self.graph, 1)
-        right.addWidget(label("Blue = selected host   /   Green = connected peer   /   Scroll to zoom, drag to pan", "subtitle"))
+        right.addWidget(label("Blue = selected host / Green = peer / ↔ = TCP session / Local port ↔ peer port / Scroll to zoom, drag to pan", "subtitle"))
         self.connection_table = table(["Source", "Local endpoint", "Connected peer", "Port"])
         self.connection_table.setMaximumHeight(170); right.addWidget(self.connection_table)
         layout.addWidget(right_frame, 1); self.pages.addWidget(page)
