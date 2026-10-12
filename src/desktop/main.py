@@ -250,6 +250,7 @@ class Console(QMainWindow):
         nav.addWidget(button("Connect server", self.connect_server))
         nav.addWidget(button("Disconnect", self.disconnect_server))
         nav.addWidget(button("CLIENT login settings", self.edit_client_credentials))
+        nav.addWidget(button("Deploy SERVER public key", self.deploy_server_key))
         nav.addWidget(button("SERVER GUI account", self.edit_gui_account))
         nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
         root.addWidget(sidebar)
@@ -352,7 +353,7 @@ class Console(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
         frame, body = card(); body.addWidget(label("Your server fleet", "section"))
         actions = QHBoxLayout()
-        actions.addWidget(button("Manage inventory", self.edit_inventory)); actions.addWidget(button("Import CSV", self.import_csv))
+        actions.addWidget(button("Manage inventory", self.edit_inventory)); actions.addWidget(button("Import CSV / Excel", self.import_csv)); actions.addWidget(button("Download clients Excel", self.export_inventory_excel))
         actions.addWidget(button("Refresh", self.reload)); actions.addStretch()
         actions.addWidget(button("Resource snapshot", lambda: (self.navigate(7), self.start_job("monitoring"))))
         actions.addWidget(button("Security audit", lambda: self.start_job("security_audit")))
@@ -980,14 +981,30 @@ class Console(QMainWindow):
                 self.work(lambda: client.call("inventory.save", servers=rows), lambda _: self.reload())
         self.work(lambda: client.call("ssh.profiles"), loaded)
 
+    def export_inventory_excel(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Download CLIENT inventory", "clients.xlsx", "Excel (*.xlsx)")
+        if path:
+            from desktop.inventory_excel import save
+            try:
+                save(path if path.lower().endswith(".xlsx") else path + ".xlsx", self.servers)
+            except OSError:
+                QMessageBox.warning(self, "Export failed", "Could not save the workbook.")
+
+    def deploy_server_key(self):
+        if not self.checked_hosts() or not self.require_client():
+            return
+        if QMessageBox.question(self, "Deploy SERVER public key", "Install the SERVER public key in the selected CLIENT login accounts? Existing accounts and SSH host trust must already be configured.") == QMessageBox.Yes:
+            self.start_job("deploy_key")
+
     def import_csv(self):
         if not self.require_client():
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Import hostname,ip,os CSV (replaces inventory)", "", "Inventory (*.csv *.txt)")
+        path, _ = QFileDialog.getOpenFileName(self, "Import hostname,ip,os CSV (replaces inventory)", "", "Inventory (*.xlsx *.csv *.txt)")
         if path:
             try:
-                content = Path(path).read_text(encoding="utf-8-sig")
-            except (OSError, UnicodeError) as exc:
+                from desktop.inventory_excel import read_csv
+                content = read_csv(path) if path.lower().endswith(".xlsx") else Path(path).read_text(encoding="utf-8-sig")
+            except Exception as exc:
                 QMessageBox.warning(self, "Import failed", str(exc)); return
             client = self.client
             self.work(lambda: client.call("inventory.import", csv=content), lambda _: self.reload())

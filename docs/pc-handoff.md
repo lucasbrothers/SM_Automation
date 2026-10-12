@@ -181,3 +181,10 @@ GUI 연결 화면은 Server IP / Port / ID / Password로 변경했고 인증서�
 release/server-install.zip, gui-install.zip, client-prerequisites.zip 및 SHA256SUMS.txt를 생성했다. 의존성 설치가 필요한 소스 패키지이며 EXE/MSI·오프라인 완전 설치본은 아니다. CLIENT는 SSH/SFTP를 사용하는 에이전트 없는 대상이다. docs/production-test.md에 SERVER 설치·프로비저닝·앱 계정 등록·systemd 실행, Windows GUI 설치·공개 CA 최초 신뢰 등록·ID/비밀번호 로그인, CLIENT 준비 및 첫 테스트 순서를 기록했다. 기본 비밀번호·토큰·키·실제 CSV는 패키지에 포함하지 않았다.
 압축 무결성·공개 파일 목록·압축 해제 GUI 시작, Linux 설치 도구 문법과 PowerShell 구문을 확인했다. Git에서 Linux 설치 도구의 LF 줄바꿈을 고정한다. 실제 운영환경 설치는 수행하지 않았으며 승인된 테스트 범위는 로컬 WSL로 유지한다.
 WSL 조회 명령 창은 CREATE_NO_WINDOW로 숨기고 TLS 문맥을 연결별로 재사용하도록 수정했다. 명령 CSV에서는 중복 Text result만 제외하며 GUI 상세 출력은 유지한다. 사용자가 만든 results.csv는 Git에 추가하지 않는다.
+
+
+## 2026-10-12 CLIENT 엑셀 목록 및 SERVER 공개키 배포
+
+Overview의 Download clients Excel로 hostname/ip/os/profile 열의 .xlsx를 저장하고 Import CSV / Excel로 가져온다. 서버 측 목록 검증을 그대로 거치며 기존 목록 교체 방식이다. Manage inventory의 개별 추가/수정도 유지했다.
+선택 CLIENT에 Deploy SERVER public key 메뉴를 추가했다. 기존 로그인 계정의 .ssh/authorized_keys를 SFTP로 보존·중복 검사·원자적 교체하고 키 접속을 확인한다. 초기 접속 비밀번호는 CLIENT login settings에서 지정해야 하며 known_hosts는 사전 신뢰 등록이 필요하다. 키가 없으면 Linux 비밀 디렉터리에 보호된 Ed25519 키를 생성한다. 기존 키 제한 옵션은 보존한다. 검증 후 비밀번호 인증 해제는 사용자가 선택한다.
+엑셀 왕복·GUI·SSH 검증 37개와 승인된 로컬 root의 기존 키 인식/키 로그인 검증 통과. 현재 사용자가 지정한 D25950 CLIENT 접속은 인증 실패로 확인됐으며 사용자 설정을 임의 변경하지 않았다. 최초 비밀번호 접속으로 새 키를 추가하는 운영환경 및 AIX/Windows SFTP 적용은 미검증이다. 자동화는 사용자 지시에 따라 일시정지 유지한다.

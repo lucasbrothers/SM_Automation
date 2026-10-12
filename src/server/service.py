@@ -220,7 +220,7 @@ class ManagementService:
     def submit(self, kind, names, options=None):
         if self.history_errors:
             raise RuntimeError("Job history recovery required on Linux; new operations are disabled")
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer", "deploy_key"}:
             raise ValueError("Unknown job type")
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
@@ -291,7 +291,7 @@ class ManagementService:
             return self.summary(job)
 
     def _target(self, job, row):
-        if job["kind"] in {"security_permissions", "security_apply", "command", "transfer"}:
+        if job["kind"] in {"security_permissions", "security_apply", "command", "transfer", "deploy_key"}:
             with self.lock:
                 target_lock = self.account_locks[row["ip"]]
             with target_lock:
@@ -319,6 +319,10 @@ class ManagementService:
                 raise ValueError("Invalid SSH profile privilege mode")
             host_config = replace(self.config, privilege=mode)
             key_file = profile.get("key_file", self.config.ssh_key_file)
+            if not key_file:
+                generated = self.config.key_file.parent / "client-login.key"
+                if job["kind"] == "deploy_key" or generated.exists():
+                    key_file = generated
             with self.lock:
                 current_target, saved_credentials, _ = self.client_credentials(server.hostname)
                 if current_target["ip"] != row["ip"]:
@@ -331,7 +335,10 @@ class ManagementService:
                                port=saved_credentials.get("port", int(profile.get("port", self.config.ssh_port))), timeout=self.config.ssh_timeout)
             family = os_family(server.os)
             kind = job["kind"]
-            if kind == "transfer":
+            if kind == "deploy_key":
+                from server.key_deploy import deploy
+                result = deploy(client, Path(key_file).expanduser())
+            elif kind == "transfer":
                 from server.files import transfer
                 result = transfer(client, job["options"])
             elif kind == "command":

@@ -29,3 +29,6 @@ DATA와 BACKUP은 WSL `/opt/SM_Automation` 아래에 암호화 저장된다. 키
 - Connection map에서 CLIENT 한 대를 선택한 뒤 왼쪽 CLIENT login settings를 연다. SSH 계정·포트 및 비밀번호 인증을 설정해 저장한다. 기존 비밀번호가 있으면 빈 칸으로 저장해 유지할 수 있다. 비밀번호 인증을 해제하면 저장 비밀번호를 지우고 기존 SSH 키/프로필을 사용한다. 실제 실행 권한은 해당 CLIENT 계정과 기존 프로필을 따른다.
 
 - 실습 실행 시 SERVER IP·Port·ID·Password를 입력한다. 로컬 WSL 주소와 기본 admin ID는 자동으로 채운다. 비밀번호는 대화에서 지정한 값을 직접 입력한다. 인증서 파일 선택은 필요 없다. 왼쪽 SERVER GUI account에서 GUI 전용 계정을 추가하거나 비밀번호를 변경할 수 있다. CLIENT SSH 계정과는 별개다.
+
+- Overview의 Download clients Excel / Import CSV / Excel로 .xlsx 목록을 저장·가져온다. 열은 hostname, ip, os, profile이다. 가져오기는 기존 목록을 교체한다. Manage inventory에서 개별 입력도 가능하다.
+- 최초 키 배포는 CLIENT login settings에 기존 계정의 유효한 비밀번호를 설정한 뒤 CLIENT를 선택하고 Deploy SERVER public key를 실행한다. 결과는 Activity에서 확인한다. 성공 후 비밀번호 인증을 해제하면 키 인증을 사용한다. 공개키만 CLIENT로 전달하며 개인키는 SERVER에 남는다.
