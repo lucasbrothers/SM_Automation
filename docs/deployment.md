@@ -1,3 +1,7 @@
+# 최신 운영환경 테스트 설치 안내
+
+2026-10-12 이후 CLIENT / SERVER / GUI 설치는 [production-test.md](production-test.md)를 우선합니다. 아래에는 과거 토큰 연결 절차가 포함되어 있습니다.
+
 # Linux 서버와 Windows GUI 배포
 
 2026-10-09 기준 배포 안내. 로컬 Ubuntu WSL의 root 서비스와 Windows GUI 연결은

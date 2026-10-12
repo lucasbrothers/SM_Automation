@@ -28,3 +28,5 @@ wheelhouse/
 src/sw/*
 !src/sw/python-wheels/
 !src/sw/python-wheels/**
+
+/release/
