@@ -466,7 +466,16 @@ class Console(QMainWindow):
         layout.addWidget(button("Choose servers in Connection map", lambda: self.navigate(1)))
         self.command_input = QPlainTextEdit(); self.command_input.setPlaceholderText("Command for the selected servers' native shell")
         layout.addWidget(self.command_input); layout.addWidget(button("Run command", self.run_command, True))
-        layout.addWidget(label("Results are in Activity. Execution uses the configured SSH user."))
+        layout.addWidget(label("Target results appear below. Select a row for details."))
+        self.command_results_panel = QWidget(); results_layout = QVBoxLayout(self.command_results_panel)
+        self.command_results_table = table(["CLIENT", "Status", "Exit code", "Stdout", "Stderr / error"])
+        self.command_results_table.setMinimumHeight(140)
+        self.command_results_table.itemSelectionChanged.connect(self.show_command_detail)
+        results_layout.addWidget(self.command_results_table)
+        self.command_details = QPlainTextEdit(); self.command_details.setReadOnly(True); self.command_details.setMinimumHeight(110)
+        results_layout.addWidget(self.command_details)
+        results_layout.addWidget(button("Download detailed results CSV", lambda: self.export_widgets(self.command_results_panel)))
+        layout.addWidget(self.command_results_panel)
         layout.addWidget(label("CLIENT (managed target) ↔ SERVER (Linux main server)", "section"))
         self.linux_file_path = QLineEdit(); self.linux_file_path.setPlaceholderText("SERVER absolute path: /tmp/server-file.txt")
         self.client_file_path = QLineEdit(); self.client_file_path.setPlaceholderText("CLIENT absolute path: /tmp/client-file.txt")
@@ -476,6 +485,27 @@ class Console(QMainWindow):
         note = label("Select exactly one CLIENT. Up to 8 MiB per file. Destination must be new; parent directory must exist. GUI console does not store transferred files.")
         note.setWordWrap(True); layout.addWidget(note)
         self.pages.addWidget(page)
+
+    def display_command_results(self, rows, job):
+        states = {"completed": "Success", "failed": "Failed", "cancelled": "Cancelled"}
+        fill_table(self.command_results_table, [
+            [row["hostname"], states.get(row["status"], row["status"]),
+             row.get("result", {}).get("exit_code", ""),
+             row.get("result", {}).get("stdout", ""),
+             row.get("error", row.get("message", row.get("result", {}).get("stderr", "")))] for row in rows])
+        self.command_details.setPlainText("Job: " + job["id"] + "\nCommand: " + job.get("options", {}).get("command", "")
+                                          + "\nStatus: " + job["status"])
+        self.navigate(8)
+        self.status_line.setText("Command results: " + str(len(rows)) + " targets / " + job["status"])
+
+    def show_command_detail(self):
+        row = self.command_results_table.currentRow()
+        if row < 0:
+            return
+        self.command_details.setPlainText("\n\n".join(
+            self.command_results_table.horizontalHeaderItem(c).text() + ":\n" +
+            (self.command_results_table.item(row, c).text() if self.command_results_table.item(row, c) else "")
+            for c in range(self.command_results_table.columnCount())))
 
     def run_command(self):
         command = self.command_input.toPlainText(); hosts = self.checked_hosts()
@@ -825,6 +855,7 @@ class Console(QMainWindow):
         self.set_inventory([]); self.update_map(); self.set_jobs([])
         self.metric_values[2].setText("—"); self.progress.setValue(0)
         self.account_table.setRowCount(0)
+        self.command_results_table.setRowCount(0); self.command_details.clear()
         self.patch_table.setRowCount(0)
         self.patch_output.clear()
         self.patch_plan_id = None
@@ -936,6 +967,9 @@ class Console(QMainWindow):
         def started(job):
             self.submission_pending = False
             self.active_job = job["id"]; self.loaded_job = None
+            if kind == "command":
+                fill_table(self.command_results_table, [[host, "Queued", "", "", ""] for host in hosts])
+                self.command_details.setPlainText("Command submitted. Waiting for target results.")
             self.status_line.setText(f"{kind}: submitted to Linux for {len(hosts)} servers."); self.poll()
         self.work(lambda: client.call("job.start", kind=kind, hosts=hosts, options=options or {}), started, on_error=failed)
 
@@ -999,6 +1033,9 @@ class Console(QMainWindow):
                 if active["kind"] == "connections":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), self.display_connections, quiet=True, on_error=result_failed)
+                elif active["kind"] == "command":
+                    client = self.client
+                    self.work(lambda: client.results(active["id"]), lambda rows: self.display_command_results(rows, active), quiet=True, on_error=result_failed)
                 elif active["kind"] == "accounts":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), self.display_accounts, quiet=True, on_error=result_failed)
@@ -1038,6 +1075,8 @@ class Console(QMainWindow):
         client = self.client
         def show(rows):
             job = next((item for item in self.jobs if item["id"] == job_id), self.backup_history.get(job_id, {}))
+            if job.get("kind") == "command":
+                self.display_command_results(rows, job); return
             if job.get("kind") == "connections":
                 self.display_connections(rows)
                 if job.get("status") != "completed":

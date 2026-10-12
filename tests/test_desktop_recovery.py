@@ -333,3 +333,29 @@ def test_zoom_changes_spacing_without_accumulating():
     assert window.workspace_scroll.widgetResizable()
     assert window.pages.count() == 9
     window.close()
+
+
+def test_command_results_show_each_target_and_download_details(monkeypatch, tmp_path):
+    import csv
+    from PySide6.QtWidgets import QFileDialog
+    app = QApplication.instance() or QApplication([])
+    window = Console()
+    rows = [{"hostname": "first", "status": "completed", "result": {"exit_code": 0, "stdout": "ok\n", "stderr": ""}},
+            {"hostname": "second", "status": "failed", "result": {"exit_code": 7, "stdout": "partial", "stderr": "error"}},
+            {"hostname": "third", "status": "failed", "error": "SSH unavailable"}]
+    window.display_command_results(rows, {"id": "test", "status": "partial", "options": {"command": "hostname"}})
+    assert window.pages.currentIndex() == 8
+    assert window.command_results_table.item(0, 1).text() == "Success"
+    assert window.command_results_table.item(1, 1).text() == "Failed"
+    window.command_results_table.selectRow(1)
+    assert "error" in window.command_details.toPlainText()
+    path = tmp_path / "command.csv"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(path), ""))
+    window.export_widgets(window.command_results_panel)
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        exported = list(csv.reader(stream))
+    assert ["", "first", "Success", "0", "ok\n", ""] in exported
+    assert ["", "third", "Failed", "", "", "SSH unavailable"] in exported
+    window.disconnect_server()
+    assert window.command_results_table.rowCount() == 0 and not window.command_details.toPlainText()
+    window.close()

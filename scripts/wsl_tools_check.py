@@ -27,7 +27,17 @@ def main():
             return job, client.results(job["id"])
         job, rows = run("command", {"command": "printf command-ok; printf diagnostic >&2; exit 7"})
         assert job["status"] == "failed" and rows[0]["result"] == {"stdout": "command-ok", "stderr": "diagnostic", "exit_code": 7}
-        print("PASS: selected CLIENT command preserves stdout, stderr and nonzero exit status")
+        from PySide6.QtWidgets import QApplication
+        from desktop.main import Console
+        app = QApplication.instance() or QApplication([])
+        window = Console(); window.display_command_results(rows, job)
+        assert window.pages.currentIndex() == 8
+        assert window.command_results_table.item(0, 1).text() == "Failed"
+        assert window.command_results_table.item(0, 3).text() == "command-ok"
+        window.command_results_table.selectRow(0)
+        assert "diagnostic" in window.command_details.toPlainText()
+        window.close()
+        print("PASS: selected CLIENT command stdout/stderr/exit status visible in Commands GUI")
         prefix = "/opt/SM_Automation/sm-transfer-" + uuid.uuid4().hex
         source, remote, returned = prefix + "-server", prefix + "-client", prefix + "-returned"
         try:
