@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import posixpath
+import uuid
 from pathlib import Path
 from PySide6.QtCore import Qt, QMimeData, QThread, Signal
 from PySide6.QtGui import QDrag
@@ -94,6 +95,7 @@ class FileBrowser(QDialog):
         buttons = QHBoxLayout()
         for side, text in [('local', 'Upload →'), ('remote', '← Download')]:
             button = QPushButton(text); button.clicked.connect(lambda checked=False, s=side: self.selected(s)); buttons.addWidget(button)
+        cancel = QPushButton('Cancel transfer'); cancel.clicked.connect(self.cancel); buttons.addWidget(cancel)
         layout.addLayout(buttons); self.status = QLabel('Drag files between panes. No file-size limit. Existing files are preserved.'); self.status.setWordWrap(True); layout.addWidget(self.status)
         self.refresh('local'); self.refresh('remote')
 
@@ -137,34 +139,57 @@ class FileBrowser(QDialog):
     def selected(self, side):
         self.transfer({'side': side, 'files': [i.data(0, Qt.ItemDataRole.UserRole) for i in self.lists[side].selectedItems() if i.data(0, Qt.ItemDataRole.UserRole)['regular']]})
 
+    def cancel(self):
+        if self.task and self.task.isRunning():
+            self.task.requestInterruption(); self.status.setText('Cancelling after the current chunk…')
+
     def transfer(self, payload):
         local_dir = self.paths['local'].text(); remote_dir = self.paths['remote'].text()
         def copy(progress):
             messages = []
             for entry in payload['files']:
+                if self.task.isInterruptionRequested(): break
                 source = entry['path']; name = Path(source).name if payload['side'] == 'local' else posixpath.basename(source)
+                pending = None; local_pending = None
                 try:
                     offset = 0
                     if payload['side'] == 'local':
                         total = os.path.getsize(source)
+                        pending = posixpath.join(remote_dir, '.sm-upload-' + uuid.uuid4().hex)
                         with open(source, 'rb') as stream:
                             while True:
+                                if self.task.isInterruptionRequested(): raise RuntimeError('Transfer cancelled')
                                 data = stream.read(1024*1024)
                                 if not data and offset < total: raise RuntimeError('Source changed during upload')
-                                self.client.call('file.upload', path=posixpath.join(remote_dir, name), offset=offset, content=base64.b64encode(data).decode(), final=offset+len(data)>=total)
+                                self.client.call('file.upload', path=pending, offset=offset, content=base64.b64encode(data).decode(), final=offset+len(data)>=total)
                                 offset += len(data); progress(f'Upload {name}: {offset:,} / {total:,} bytes')
                                 if offset >= total: break
+                        self.client.call('file.commit', path=pending, target=posixpath.join(remote_dir, name), size=total)
                     else:
                         destination = Path(local_dir)/name
-                        with destination.open('xb') as stream:
+                        if destination.exists(): raise FileExistsError('Destination already exists')
+                        local_pending = Path(local_dir)/('.sm-download-' + uuid.uuid4().hex)
+                        with local_pending.open('xb') as stream:
                             while True:
+                                if self.task.isInterruptionRequested(): raise RuntimeError('Transfer cancelled')
                                 result = self.client.call('file.download', path=source, offset=offset)
                                 data = base64.b64decode(result['content'], validate=True); stream.write(data); offset += len(data)
                                 progress(f'Download {name}: {offset:,} / {result["size"]:,} bytes')
                                 if offset >= result['size']: break
                                 if not data: raise RuntimeError('Source changed during download')
+                            stream.flush(); os.fsync(stream.fileno())
+                        os.link(local_pending, destination)
+                        local_pending.unlink(); local_pending = None
                     messages.append(name + ': Success — ' + (posixpath.join(remote_dir, name) if payload['side'] == 'local' else str(Path(local_dir)/name)))
-                except Exception as exc: messages.append(name + ': Failed — ' + str(exc) + ' (partial file may remain)')
+                except Exception as exc:
+                    cleanup = ''
+                    if pending is not None:
+                        try: self.client.call('file.abort', path=pending)
+                        except Exception: cleanup = ' — pending upload retained: ' + pending
+                    if local_pending is not None:
+                        try: local_pending.unlink(missing_ok=True)
+                        except OSError: cleanup += ' — pending download retained: ' + str(local_pending)
+                    messages.append(name + ': Failed — ' + str(exc) + cleanup)
             return '\n'.join(messages) or 'Select regular files to transfer.'
         def done(message):
             self.status.setText(message); self.refresh('local')

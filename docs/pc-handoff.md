@@ -205,3 +205,10 @@ Overview의 Download clients Excel로 hostname/ip/os/profile 열의 .xlsx를 저
 ## 2026-10-12 SERVER /tmp 가시성 수정
 
 서비스 PrivateTmp 격리로 GUI 업로드 /tmp와 터미널 /tmp가 달랐다. 설치 서비스 PrivateTmp=false 및 로컬 WSL override를 적용했다. 기존 일반 파일 2개를 /var/lib/sm-automation/tmp-recovery-20261012에 보존하고 공용 /tmp로 기존 파일을 덮어쓰지 않고 복사했다. GUI 성공 상태에 최종 저장 경로를 표시한다. 실제 TLS 업로드 후 WSL 일반 /tmp에서 동일 내용 조회 및 다운로드 일치 검증 통과.
+
+
+## 2026-10-13 남은 로컬 검증 완료 및 전송 취소
+
+현재 저장된 CLIENT 접속으로 Accounts 29개 조회와 09 명령 root 실행/실패 결과 GUI 표시·CLIENT SERVER 왕복 확인. 임시 계정의 실제 비밀번호 SSH, sudo, 첫 공개키 배포/중복 방지/키 로그인 및 계정 조회 통과. su fallback은 private mount namespace에서 검증했으며 실제 /etc/shadow 원문 해시 불변과 임시 계정·권한 정리를 확인했다.
+SERVER ZIP 신규 오프라인 설치·프로비저닝·앱 로그인 TLS 시작 및 Windows GUI ZIP 새 runtime 설치·90% 시작 통과. GUI SERVER 64 MiB 왕복·취소·실패·덮어쓰기 방지 통과. 업로드/다운로드를 숨김 임시 파일로 전송해 완료 후 원자적으로 게시하며 취소 버튼과 임시 파일 정리를 추가했다. 전체 Windows 검증 362개 통과, 23개 플랫폼 skip; Linux 전송 게시/취소 검증 2개 통과.
+실제 RHEL/AIX/Windows CLIENT 및 외부 운영 SERVER 검증은 제공된 환경이 없어 남아 있다. 폴더 전송·재개·앱 권한 분리는 후속 후보다. 사용자 자동화 일시정지는 유지하며 이번 직접 요청 범위로 작업했다. 설치 상세는 docs/production-test.md를 따른다.

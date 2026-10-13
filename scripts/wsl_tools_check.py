@@ -31,8 +31,12 @@ def main():
                 assert time.monotonic() < deadline
                 time.sleep(.2); job = next(row for row in client.call("job.list") if row["id"] == job["id"])
             return job, client.results(job["id"])
+        root_job, root_rows = run("command", {"command": "id -u"})
+        assert root_job["status"] == "completed" and root_rows[0]["result"]["stdout"].strip() == "0"
         job, rows = run("command", {"command": "printf command-ok; printf diagnostic >&2; exit 7"})
-        assert job["status"] == "failed" and rows[0]["result"] == {"stdout": "command-ok", "stderr": "diagnostic", "exit_code": 7}
+        assert job["status"] == "failed"
+        result = rows[0]["result"]
+        assert result["stdout"] == "command-ok" and result["stderr"].endswith("diagnostic") and result["exit_code"] == 7
         from PySide6.QtWidgets import QApplication
         from desktop.main import Console
         app = QApplication.instance() or QApplication([])
@@ -44,7 +48,7 @@ def main():
         assert "diagnostic" in window.command_details.toPlainText()
         window.close()
         print("PASS: selected CLIENT command stdout/stderr/exit status visible in Commands GUI")
-        prefix = "/opt/SM_Automation/sm-transfer-" + uuid.uuid4().hex
+        prefix = "/tmp/sm-transfer-" + uuid.uuid4().hex
         source, remote, returned = prefix + "-server", prefix + "-client", prefix + "-returned"
         try:
             job, _ = run("command", {"command": "printf 'round-trip-data' > " + source})

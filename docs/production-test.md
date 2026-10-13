@@ -7,7 +7,7 @@
 - CLIENT: 관리 대상 서버. 앱 에이전트 설치는 필요 없다. SSH/SFTP 서비스와 관리 계정을 준비한다. client-prerequisites.zip에는 준비 안내만 포함한다.
 - SERVER: Linux 메인 서버. server-install.zip을 원하는 디렉터리에 풀고 deploy/install-server.sh를 실행한다. Python 3.11 이상과 venv/pip, SSH 클라이언트가 필요하다.
 - GUI: Windows PC. gui-install.zip을 풀고 Python 3.14를 준비한다. deploy/install-gui.ps1 실행 후 deploy/start-gui.cmd로 실행한다.
-- 통신: GUI→SERVER TCP 7443 / SERVER→CLIENT 지정 SSH 포트(기본 22). 파일 전송은 CLIENT↔SERVER이며 GUI에 전송 파일을 저장하지 않는다.
+- 통신: GUI→SERVER TCP 7443 / SERVER→CLIENT 지정 SSH 포트(기본 22). 파일 전송은 CLIENT↔SERVER 작업과 별도 GUI(Windows)↔SERVER 파일 탐색 창으로 구분한다.
 
 ## SERVER 설치·설정·실행
 
@@ -65,3 +65,16 @@ AIX는 SSH/SFTP 및 OS 수집 명령을 준비한다. Windows CLIENT는 OpenSSH 
 5. 계정 생성·SSH 정책 적용·패치 적용은 계획과 사전 백업을 확인한 후 해당 운영 테스트 대상에 실행한다.
 
 TLS 오류는 CA 신뢰와 주소 일치, 로그인 오류는 앱 계정, SSH 오류는 CLIENT 계정/known_hosts/포트, 파일 오류는 양쪽 경로·권한을 확인한다. 기존 실행 중인 GUI는 닫고 최신 패키지로 다시 실행한다.
+
+
+## 2026-10-13 설치·통합 검증 결과
+
+- 현재 저장된 로컬 CLIENT 설정으로 Accounts 29개 조회, 09 root 명령, 명령 실패/상세 GUI 표시 및 CLIENT↔SERVER 왕복 통과.
+- 별도 임시 계정으로 비밀번호 SSH, 최초 공개키 배포/중복 방지/키 로그인, sudo 비밀번호 root 실행 통과. su는 WSL 전용 mount namespace의 별도 shadow로 검증해 실제 root 비밀번호를 변경하지 않았다. 임시 계정·sudo 권한·개인키는 정리한다.
+- SERVER ZIP을 임시 위치에 새 venv로 설치하고 프로비저닝·앱 계정 등록·검증 TLS 로그인 통과. WSL 인터넷이 차단돼 Windows에서 받은 Linux wheels로 오프라인 설치했다.
+- GUI ZIP을 별도 위치에 풀고 install-gui.ps1로 새 runtime 설치 및 90% 시작 확인. CLIENT는 에이전트 설치 없이 SSH/SFTP 준비 방식이다.
+- GUI↔SERVER 64 MiB 바이너리 왕복, 실제 /tmp 가시성, 기존 파일 보존, 실패·취소 임시 파일 정리 통과. 파일은 숨김 임시 파일로 전송 후 완성된 이름으로 게시한다. 취소는 현재 전송 조각 처리 후 적용한다. 통신 장애로 정리 요청도 실패하면 잔여 경로를 표시한다.
+- 실제 RHEL/AIX/Windows CLIENT와 외부 운영 SERVER가 제공되지 않아 이 환경의 검증은 미완료다. 현재 승인은 로컬 WSL에 한정한다.
+- 폴더 재귀 전송, 중단 파일 재개, 앱 계정별 권한 분리는 후속 개발 후보이며 이번 운영 준비 검증 완료와 구분한다.
+
+재검증 도구: scripts/wsl_acceptance.py(WSL root), scripts/wsl_install_check.py(WSL), scripts/wsl_gui_file_check.py(Windows), scripts/wsl_tools_check.py(Windows). 검증 도구는 설치 패키지에 포함하지 않으며 실제 CLIENT 목록이나 접속 비밀번호를 변경하지 않는다.

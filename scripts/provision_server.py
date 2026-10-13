@@ -71,7 +71,7 @@ def main():
     write_exclusive(root / "master.key", Fernet.generate_key())
     write_exclusive(root / "api.token", secrets.token_urlsafe(48).encode("ascii"))
     print(f"Provisioned server files in {root}")
-    print("Give Windows operators ca.crt and the API token through your approved channel.")
+    print("Give Windows operators only the public ca.crt; create an app login with create_gui_account.py.")
     print("Keep master.key, server.key and ca.key on Linux; back up master.key separately.")
     print("Never regenerate master.key for existing DATA or BACKUP files.")
 

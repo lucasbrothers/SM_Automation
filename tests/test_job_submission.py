@@ -9,6 +9,7 @@ from server.service import ManagementService
 def service():
     instance = ManagementService.__new__(ManagementService)
     instance.history_errors = []
+    instance.command_passwords = {}
     instance.jobs = {}; instance.closed = False; instance.lock = threading.RLock()
     instance.pool = Mock(); instance.data = Mock()
     instance.inventory = lambda: [{"hostname": "lab", "ip": "127.0.0.1", "os": "Ubuntu", "profile": "default"}]
@@ -37,3 +38,10 @@ def test_ssh_apply_requires_existing_completed_plan():
     with pytest.raises(ValueError, match="completed SSH plan"):
         instance.submit("security_apply", ["lab"], {"plan_id": "a" * 32})
     instance.pool.submit.assert_not_called()
+
+
+def test_command_secret_removed_when_persistence_fails():
+    instance = service(); instance.data.write_json.side_effect = OSError("storage failed")
+    with pytest.raises(OSError):
+        instance.submit("command", ["lab"], {"command": "id -u", "root_password": "synthetic-test-secret"})
+    assert instance.command_passwords == {} and instance.jobs == {}

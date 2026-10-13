@@ -69,6 +69,28 @@ def gui_transfer(method, params):
             entries.append({"name": entry.name, "directory": stat.S_ISDIR(info.st_mode),
                             "regular": stat.S_ISREG(info.st_mode), "size": info.st_size})
         return {"path": str(path.resolve()), "entries": sorted(entries, key=lambda e: (not e["directory"], e["name"].lower()))}
+    if method in {"file.commit", "file.abort"}:
+        if not re.fullmatch(r"\.sm-upload-[a-f0-9]{32}", path.name):
+            raise ValueError("Invalid pending upload path")
+        if method == "file.abort":
+            path.unlink(missing_ok=True)
+            return {"status": "aborted"}
+        target = params.get("target")
+        if not isinstance(target, str) or "\x00" in target or not target.startswith("/"):
+            raise ValueError("Invalid target path")
+        target = Path(target)
+        if target.parent.resolve() != path.parent.resolve():
+            raise ValueError("Upload must finish in its original directory")
+        if not stat.S_ISREG(path.lstat().st_mode):
+            raise ValueError("Pending upload must be a regular file")
+        if type(params.get("size")) is not int or path.stat().st_size != params["size"]:
+            raise ValueError("Upload is incomplete")
+        os.link(path, target, follow_symlinks=False)  # Atomic publish, never replace existing files.
+        path.unlink()
+        fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(fd)
+        finally: os.close(fd)
+        return {"path": str(target), "status": "completed"}
     offset = params.get("offset", 0)
     if type(offset) is not int or offset < 0:
         raise ValueError("Invalid transfer offset")
