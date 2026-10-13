@@ -517,6 +517,12 @@ class Console(QMainWindow):
         self.command_targets = QLabel(); self.command_targets.setWordWrap(True); layout.addWidget(self.command_targets)
         layout.addWidget(button("Choose servers in Connection map", lambda: self.navigate(1)))
         self.command_input = QPlainTextEdit(); self.command_input.setPlaceholderText("Command executed as root (sudo first, then su fallback)")
+        saved = QHBoxLayout(); self.saved_commands = QComboBox()
+        self.saved_commands.setMinimumWidth(200); saved.addWidget(self.saved_commands)
+        saved.addWidget(button("목록 새로고침", self.refresh_saved_commands))
+        saved.addWidget(button("불러오기", self.load_saved_command))
+        saved.addWidget(button("현재 명령 저장", self.save_command))
+        saved.addWidget(button("삭제", self.delete_saved_command)); layout.addLayout(saved)
         layout.addWidget(self.command_input); layout.addWidget(button("Run command", self.run_command, True))
         layout.addWidget(label("Target results appear below. Select a row for details."))
         self.command_results_panel = QWidget(); results_layout = QVBoxLayout(self.command_results_panel)
@@ -538,6 +544,47 @@ class Console(QMainWindow):
         note.setWordWrap(True); layout.addWidget(note)
         layout.addWidget(button("GUI ↔ SERVER file transfer window", self.gui_file_dialog))
         self.pages.addWidget(page)
+
+    def refresh_saved_commands(self, select_name=None):
+        if not self.require_client(): return
+        client = self.client
+        def loaded(rows):
+            current = select_name or self.saved_commands.currentText()
+            self.saved_commands.clear()
+            for row in rows: self.saved_commands.addItem(row["name"], row["command"])
+            index = self.saved_commands.findText(current)
+            if index >= 0: self.saved_commands.setCurrentIndex(index)
+        self.work(lambda: client.call("command.saved.list"), loaded)
+
+    def load_saved_command(self):
+        command = self.saved_commands.currentData()
+        if command is None:
+            self.status_line.setText("저장된 명령어를 선택해주세요."); return
+        self.command_input.setPlainText(command)
+        self.status_line.setText("명령어를 불러왔습니다. 대상을 선택하고 Run command로 실행하세요.")
+
+    def save_command(self):
+        if not self.require_client(): return
+        command = self.command_input.toPlainText()
+        if not command.strip():
+            self.status_line.setText("저장할 명령어를 입력해주세요."); return
+        name, accepted = QInputDialog.getText(self, "명령어 저장", "이름 (같은 이름으로 저장하면 내용이 갱신됩니다)", text=self.saved_commands.currentText())
+        if not accepted or not name.strip(): return
+        client = self.client
+        def saved(result):
+            self.status_line.setText("명령어 저장 완료: " + result["name"])
+            self.refresh_saved_commands(result["name"])
+        self.work(lambda: client.call("command.saved.save", name=name, command=command), saved)
+
+    def delete_saved_command(self):
+        if not self.require_client(): return
+        name = self.saved_commands.currentText()
+        if not name: return
+        client = self.client
+        def deleted(result):
+            self.status_line.setText("명령어 삭제 완료: " + result["name"])
+            self.refresh_saved_commands()
+        self.work(lambda: client.call("command.saved.delete", name=name), deleted)
 
     def gui_file_dialog(self):
         if not self.require_client(): return
@@ -827,6 +874,8 @@ class Console(QMainWindow):
         for metric in self.metric_cards:
             metric.setVisible(index < 4)
         self.pages.setCurrentIndex(index)
+        if index == 8 and self.client and not self.demo:
+            self.refresh_saved_commands()
         titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources", "Commands and Linux files"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
@@ -914,6 +963,7 @@ class Console(QMainWindow):
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
 
     def clear_session_views(self):
+        self.saved_commands.clear()
         self.job_history = {}; self.job_history_offset = 100
         self.backup_history = {}; self.backup_history_offset = 0
         self.resource_auto.setChecked(False); self.resource_loaded_job = None

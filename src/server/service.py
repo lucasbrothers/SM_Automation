@@ -535,6 +535,10 @@ class ManagementService:
                 self.command_passwords.pop(job["id"], None)
 
     def dispatch(self, method, params):
+        if method in {"command.saved.list", "command.saved.save", "command.saved.delete"}:
+            from server.commands import library
+            with self.lock:
+                return library(self.data, method, params)
         if method.startswith("file."):
             from server.files import gui_transfer
             return gui_transfer(method, params)

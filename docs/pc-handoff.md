@@ -212,3 +212,8 @@ Overview의 Download clients Excel로 hostname/ip/os/profile 열의 .xlsx를 저
 현재 저장된 CLIENT 접속으로 Accounts 29개 조회와 09 명령 root 실행/실패 결과 GUI 표시·CLIENT SERVER 왕복 확인. 임시 계정의 실제 비밀번호 SSH, sudo, 첫 공개키 배포/중복 방지/키 로그인 및 계정 조회 통과. su fallback은 private mount namespace에서 검증했으며 실제 /etc/shadow 원문 해시 불변과 임시 계정·권한 정리를 확인했다.
 SERVER ZIP 신규 오프라인 설치·프로비저닝·앱 로그인 TLS 시작 및 Windows GUI ZIP 새 runtime 설치·90% 시작 통과. GUI SERVER 64 MiB 왕복·취소·실패·덮어쓰기 방지 통과. 업로드/다운로드를 숨김 임시 파일로 전송해 완료 후 원자적으로 게시하며 취소 버튼과 임시 파일 정리를 추가했다. 전체 Windows 검증 362개 통과, 23개 플랫폼 skip; Linux 전송 게시/취소 검증 2개 통과.
 실제 RHEL/AIX/Windows CLIENT 및 외부 운영 SERVER 검증은 제공된 환경이 없어 남아 있다. 폴더 전송·재개·앱 권한 분리는 후속 후보다. 사용자 자동화 일시정지는 유지하며 이번 직접 요청 범위로 작업했다. 설치 상세는 docs/production-test.md를 따른다.
+
+
+## 2026-10-13 자주 쓰는 명령어 저장
+
+09에서 이름별 현재 명령 저장·목록 새로고침·불러오기·삭제를 지원한다. 같은 이름 저장은 내용 갱신이며 불러오기는 실행하지 않고 기존 대상 선택/검토/root 전환 실행 흐름을 사용한다. Linux DATA/saved-commands.json.enc에 암호화 저장하며 같은 SERVER 접속 사용자에게 공유된다. 이름 80자·명령 16384자·최대 200개, 다중 행 명령 지원. 실행 비밀번호와 대상은 템플릿에 자동 포함하지 않는다. 관련 검증 36개와 실제 WSL 저장→서비스 재시작→GUI 불러오기→선택 CLIENT root 실행→검증 항목 삭제 통과.
