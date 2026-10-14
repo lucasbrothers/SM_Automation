@@ -115,3 +115,36 @@ def test_ci_sort_is_global_before_pagination_and_export_uses_same_order(registry
     page=registry.listing(hosts,{'sort_key':'ip','descending':True,'page_size':1})
     assert page['rows'][0]['ip']=='10.0.0.120'
     with pytest.raises(ValueError):registry.listing(hosts,{'sort_key':'not-an-attribute'})
+
+@pytest.mark.parametrize('active,control,expected',[('1','on','켜짐'),('0','off','꺼짐'),('0','notsupported','꺼짐'),('','on','확인 불가')])
+def test_linux_smt_kernel_active_overrides_capability_and_cpu_quota(active,control,expected):
+    row=parse_linux({'smt_active':active,'smt_control':control,'logical_cpus':'8','cpu_limit':'100000 100000'})
+    assert row['smt_enabled']==expected
+    assert row['allocated_cpus']==1  # Quota is not SMT mode.
+
+
+def test_linux_smt_vm_missing_information_is_not_disabled():
+    row=parse_linux({'virtualization':'kvm','lscpu':'0,0\n1,0','cpuinfo':'flags : ht'})
+    assert row['smt_enabled']=='확인 불가' and '물리 HOST' in row['smt_details']
+    row=parse_linux({'lscpu':'0,0\n0,0\n1,0\n1,0'})
+    assert row['smt_enabled']=='켜짐'
+
+
+@pytest.mark.parametrize('output,state',[
+    ('This system supports up to 8 SMT threads per processor.\nSMT is currently enabled.','켜짐'),
+    ('SMT is currently disabled.','꺼짐'),('smtctl: SMT is now enabled.','켜짐'),('Permission denied','확인 불가')])
+def test_aix_smt_read_only_query(output,state):
+    from ci.collector import parse_aix
+    assert parse_aix({'smt':output})['smt_enabled']==state
+
+
+@pytest.mark.parametrize('topology,state',[
+    ([{'cores':8,'enabled_cores':8,'logical':16}],'켜짐'),
+    ([{'cores':8,'enabled_cores':4,'logical':4}],'꺼짐'),
+    ([{'cores':8,'logical':8}],'꺼짐'),
+    ([{'cores':None,'logical':8}],'확인 불가'),
+    ([{'cores':8,'logical':4}],'확인 불가'),(None,'확인 불가'),
+    ([{'cores':8,'logical':8},{'cores':8,'logical':16}],'켜짐')])
+def test_windows_smt_missing_disabled_core_and_mixed_sockets(topology,state):
+    from ci.collector import windows_smt
+    assert windows_smt(topology)['smt_enabled']==state

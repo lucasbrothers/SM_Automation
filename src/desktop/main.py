@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from desktop.client import ConnectionSettings, ServerClient
 from desktop.graph import ConnectionMap
+from desktop.theme import LIGHT_CONTROLS, light_palette
 from desktop.tables import enable_sorting, populate, row_identity, SortTreeItem
 
 STYLE = """
@@ -63,6 +64,8 @@ QTabBar::tab:hover { background: #e6efff; color: #122139; }
 #accountPage QLabel, #accountPage QCheckBox { background: transparent; color: #23344c; }
 QSplitter::handle { background: transparent; width: 12px; }
 """
+BASE_STYLE = STYLE
+STYLE += LIGHT_CONTROLS
 
 
 def label(text, name=None):
@@ -240,6 +243,7 @@ class InventoryDialog(QDialog):
 class Console(QMainWindow):
     def __init__(self, demo=False):
         super().__init__()
+        self.setPalette(light_palette())
         self.setWindowTitle("SM Automation | Control Console")
         area = QApplication.primaryScreen().availableGeometry()
         self.resize(min(1460, area.width()-30), min(920, area.height()-40)); self.setMinimumSize(800, 540)
@@ -350,7 +354,7 @@ class Console(QMainWindow):
     def set_zoom(self, percent):
         scale = percent / 100
         self.setStyleSheet(re.sub(r"(\d+(?:\.\d+)?)(px|pt)",
-                                 lambda match: str(round(float(match[1]) * scale, 2)) + match[2], STYLE))
+                                 lambda match: str(round(float(match[1]) * scale, 2)) + match[2], BASE_STYLE) + LIGHT_CONTROLS)
         for widget in self.findChildren(QPushButton):
             widget.setMinimumHeight(widget.fontMetrics().lineSpacing() + round(12*scale) + 6)
         for widget in self.findChildren(QLineEdit) + self.findChildren(QSpinBox) + self.findChildren(QComboBox):
@@ -1637,7 +1641,7 @@ def main():
             font_file = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / filename
             if font_file.exists():
                 QFontDatabase.addApplicationFont(str(font_file))
-    app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
+    app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setPalette(light_palette()); app.setStyleSheet(STYLE)
     window = Console(demo=args.demo or bool(args.mockup)); window.show()
     if args.demo or args.mockup:
         window.navigate(["overview", "connections", "backups", "activity", "accounts", "patches", "schedules", "resources"].index(args.page) if args.page not in {"security", "backup-details", "inventory"} else 3)

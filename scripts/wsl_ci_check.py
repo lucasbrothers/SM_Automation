@@ -42,6 +42,7 @@ def main():
             for row in rows:
                 observed=row['observed']
                 assert observed['actual_hostname'] and observed['os_name'] and observed['cpu_model'], observed
+                assert observed['smt_enabled'] in {'켜짐','꺼짐','확인 불가'} and observed['smt_details']
                 assert observed['allocated_cpus']>0 and observed['allocated_memory_gib']>0 and observed['uptime_seconds']>0
                 assert row['manual']['service_name']=='CI test' and row['last_success']
                 assert 'result_ref' in service.jobs[job['id']]['results'][0]

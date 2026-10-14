@@ -16,6 +16,8 @@ LINUX_PROBES = {
     "manufacturer": "cat /sys/class/dmi/id/sys_vendor", "hardware_model": "cat /sys/class/dmi/id/product_name",
     "serial_number": "cat /sys/class/dmi/id/product_serial", "hardware_uuid": "cat /sys/class/dmi/id/product_uuid",
     "virtualization": "systemd-detect-virt", "cpuinfo": "cat /proc/cpuinfo", "logical_cpus": "getconf _NPROCESSORS_ONLN",
+    "smt_active": "cat /sys/devices/system/cpu/smt/active",
+    "smt_control": "cat /sys/devices/system/cpu/smt/control",
     "affinity_cpus": "nproc", "lscpu": "LC_ALL=C lscpu -p=CORE,SOCKET", "meminfo": "cat /proc/meminfo",
     "uptime": "cat /proc/uptime", "boot_time": "awk '$1==\"btime\" {print $2}' /proc/stat",
     "cgroup": "cat /proc/self/cgroup",
@@ -65,6 +67,21 @@ def parse_linux(raw):
     row["allocated_cpus"] = round(min(limits), 3) if limits else None
     cores = {line for line in raw.get("lscpu", "").splitlines() if line and not line.startswith("#")}
     row["physical_cores"] = len(cores) or None
+    active = raw.get("smt_active", "").strip()
+    control = raw.get("smt_control", "").strip()
+    if active in {"0", "1"}:
+        row["smt_enabled"] = "켜짐" if active == "1" else "꺼짐"
+        row["smt_details"] = "Linux kernel smt/active="+active+"; control="+(control or "미확인")
+    else:
+        topology = [line.strip() for line in raw.get("lscpu", "").splitlines() if re.fullmatch(r"\d+,\d+", line.strip())]
+        if len(topology) > len(set(topology)):
+            row["smt_enabled"] = "켜짐"
+            row["smt_details"] = "OS가 같은 socket/core에 여러 논리 CPU를 보고함"
+        else:
+            row["smt_enabled"] = "확인 불가"
+            row["smt_details"] = "kernel SMT 상태 미제공. 논리 CPU/core 수만으로 꺼짐을 단정하지 않음"
+    if raw.get("virtualization") not in {None, "", "none"}:
+        row["smt_details"] += "; 가상 환경에 노출된 상태이며 물리 HOST SMT 상태는 별도 확인"
     mem = re.search(r"^MemTotal:\s*(\d+)", raw.get("meminfo", ""), re.M)
     memory = int(mem[1])*1024 if mem else None
     memory_limits = [number(line) for line in raw.get("memory_limit", "").splitlines()]
@@ -105,7 +122,11 @@ def parse_aix(raw):
         minutes = re.search(r"(\d+)\s+mins?", tail)
         if days or clock or hours or minutes:
             uptime = (int(days[1])*86400 if days else 0)+(int(clock[1])*3600+int(clock[2])*60 if clock else 0)+(int(hours[1])*3600 if hours else 0)+(int(minutes[1])*60 if minutes else 0)
+    smt = raw.get("smt", "")
+    match = re.search(r"SMT is (?:currently|now) (enabled|disabled)", smt, re.I)
+    state = ("켜짐" if match[1].lower() == "enabled" else "꺼짐") if match else "확인 불가"
     return {
+        "smt_enabled": state, "smt_details": (smt.strip()[:4000] or "smtctl 조회 결과 없음 / 권한 또는 플랫폼 제한") + "; LPAR에 보고된 상태 기준",
         "actual_hostname": raw.get("actual_hostname"), "primary_ip": raw.get("primary_ip") or (ips[0] if ips else ""),
         "addresses": " ".join(ips), "os_name": "AIX", "os_version": raw.get("os_version"),
         "architecture": raw.get("architecture"), "hardware_model": raw.get("hardware_model"),
@@ -117,6 +138,23 @@ def parse_aix(raw):
     }
 
 
+def windows_smt(topology):
+    """CIM reports guest-visible topology, not a physical HOST's firmware mode."""
+    enabled = False; unknown = False
+    if not isinstance(topology, list) or not topology:
+        unknown = True; topology = []
+    for cpu in topology:
+        if not isinstance(cpu, dict): unknown = True; continue
+        cores = number(cpu.get("enabled_cores")) or number(cpu.get("cores"))
+        logical = number(cpu.get("logical"))
+        if not cores or not logical or logical < cores:
+            unknown = True
+        elif logical > cores:
+            enabled = True
+    state = "켜짐" if enabled else "확인 불가" if unknown else "꺼짐"
+    return {"smt_enabled": state, "smt_details": "Windows CIM 활성 core/논리 CPU 기준. VM에서는 노출된 상태이며 물리 HOST SMT 상태는 별도 확인"}
+
+
 WINDOWS_SCRIPT = r'''
 $ErrorActionPreference='Stop'
 $c=Get-CimInstance Win32_ComputerSystem; $o=Get-CimInstance Win32_OperatingSystem
@@ -125,8 +163,9 @@ $cpu=@(Get-CimInstance Win32_Processor); $net=@(Get-CimInstance Win32_NetworkAda
 $default=@($net | Where-Object {$_.DefaultIPGateway})
 $ips=@($net | ForEach-Object {$_.IPAddress} | Where-Object {$_ -match '^\d+\.'})
 $primary=@($default | ForEach-Object {$_.IPAddress} | Where-Object {$_ -match '^\d+\.'})
+$topology=@($cpu | ForEach-Object {@{cores=$_.NumberOfCores; enabled_cores=$_.NumberOfEnabledCore; logical=$_.NumberOfLogicalProcessors}})
 $gpu=@(Get-CimInstance Win32_VideoController | ForEach-Object {$_.Name})
-@{actual_hostname=$c.Name; primary_ip=($primary | Select-Object -First 1); addresses=($ips -join ' ');
+@{cpu_topology=$topology; actual_hostname=$c.Name; primary_ip=($primary | Select-Object -First 1); addresses=($ips -join ' ');
 os_name=$o.Caption; os_version=($o.Version+' build '+$o.BuildNumber); kernel=$o.Version; architecture=$o.OSArchitecture;
 manufacturer=$c.Manufacturer; hardware_model=$c.Model; serial_number=$b.SerialNumber; hardware_uuid=$p.UUID;
 cpu_model=(($cpu | ForEach-Object {$_.Name} | Select-Object -Unique) -join '; ');
@@ -146,6 +185,7 @@ def collect(client, family, login_password=""):
         row = json.loads(result.stdout.decode("utf-8-sig").strip())
         if not isinstance(row, dict) or not row.get("actual_hostname"):
             raise ValueError("Invalid Windows discovery response")
+        row.update(windows_smt(row.get("cpu_topology")))
         return {k: row.get(k) for k in AUTO_FIELDS}
     marker = "SMCI" + uuid.uuid4().hex
     if family == "aix":
@@ -153,7 +193,7 @@ def collect(client, family, login_password=""):
             "actual_hostname": "hostname", "addresses": "ifconfig -a | awk '$1==\"inet\" {print $2}'",
             "primary_ip": "dev=$(netstat -rn -f inet | awk '$1==\"default\" {print $NF;exit}'); [ -n \"$dev\" ] && ifconfig \"$dev\" | awk '$1==\"inet\" {print $2;exit}'",
             "os_version": "oslevel -s", "hardware_model": "uname -M", "architecture": "uname -p",
-            "prtconf": "LC_ALL=C prtconf", "lpar": "LC_ALL=C lparstat -i", "gpu": "LC_ALL=C lsdev -Cc display",
+            "prtconf": "LC_ALL=C prtconf", "lpar": "LC_ALL=C lparstat -i", "smt": "LC_ALL=C smtctl", "gpu": "LC_ALL=C lsdev -Cc display",
             "uptime": "LC_ALL=C uptime", "boot_time": "LC_ALL=C who -b",
         }
     else:

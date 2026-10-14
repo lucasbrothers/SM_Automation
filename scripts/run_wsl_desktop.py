@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont, QFontDatabase
 from desktop.client import ConnectionSettings, ServerClient
 from desktop.main import Console, STYLE, ConnectDialog
+from desktop.theme import light_palette
 
 
 def main():
@@ -20,7 +21,7 @@ def main():
         app = QApplication(sys.argv)
         for name in ("segoeui.ttf", "segoeuib.ttf", "malgun.ttf"):
             QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + name)
-        app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
+        app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setPalette(light_palette()); app.setStyleSheet(STYLE)
         window = Console()
         dialog = ConnectDialog(window); dialog.host.setText(address); dialog.login_id.setText("admin")
         if dialog.exec() != dialog.DialogCode.Accepted:

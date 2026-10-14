@@ -771,3 +771,8 @@ Windows 전체 435 passed/27 skipped; WSL CI 단위 13 passed. scripts/wsl_ci_ch
 
 CI 46열·가로 스크롤·전체 조회 범위 SERVER 정렬 후 페이지 처리·동일 순서 CSV/XLSX 저장을 추가했다. 공통 조회/대상 표와 백업 비교/파일 목록의 열 정렬 및 숫자/IP 자연 정렬을 적용했다. 정렬된 행의 작업/예약/장비/차이 연결은 원래 ID 기준이며 재조회 정렬 중단으로 행 섞임을 막는다.
 자동 맞춤 기본 활성·창 크기별 배율·메뉴 스크롤·글꼴 기반 최소 높이·수동 배율 전환을 추가했다. 비활성 큰 입력 폼은 현재 화면 크기 계산에서 제외해 1000×650에서 CI 가로 스크롤과 메뉴가 화면 안에 보이는 것을 검토했다. Windows 전체 443 passed/27 skipped, WSL CI 14 passed. 자동화 일시정지와 사용자 results.csv 미추적 유지.
+
+## 2026-10-14 SMT·밝은 스크롤바
+
+CI SMT/HT 활성 여부와 판정 근거(48열), Linux smt/active 및 OS 토폴로지·Windows 활성 core/논리 CPU·AIX 읽기 전용 smtctl 판정, 미확인/VM 물리 HOST 제한을 추가했다. 목록/정렬/CSV/XLSX 공통 스키마에 연결했다.
+밝은 스크롤바의 모든 하위 영역과 손잡이·최소 두께16px·밝은 팔레트·체크 아이콘을 공통화해 어두운 OS 테마에서도 검정 조작부가 표시되지 않게 했다. 신규 화면도 공통 밝은 스타일을 사용한다. Windows 전체460 passed/27 skipped, WSL CI30 passed, 실제 WSL SSH/TLS 수집 통과. 후속 아이콘/스타일 변경 관련41개 및 어두운 팔레트 픽셀 검증8개 통과. results.csv와 자동화 일시정지는 유지한다.

@@ -110,3 +110,29 @@ def test_sorted_target_lists_keep_checkboxes_and_ip_identity():
     for row in range(window.target_table.rowCount()):
         assert window.target_table.isRowHidden(row)==(row_identity(window.target_table,row)!='z-host')
     window.close()
+
+def test_scrollbars_stay_light_with_dark_os_palette():
+    from PySide6.QtGui import QPalette,QColor
+    application=app();original=application.palette();dark=QPalette(original)
+    for role in (QPalette.ColorRole.Window,QPalette.ColorRole.Base,QPalette.ColorRole.Button):
+        dark.setColor(role,QColor('#080808'))
+    application.setPalette(dark)
+    window=None
+    try:
+        window=Console();window.navigate(9);window.show();window.resize(1000,650)
+        application.processEvents();window.fit_window();application.processEvents()
+        bar=window.ci_dashboard.table.horizontalScrollBar()
+        bar.setValue(bar.maximum()//2);application.processEvents()
+        assert bar.height()>=14
+        image=bar.grab().toImage()
+        colors=[image.pixelColor(x,image.height()//2) for x in range(2,image.width()-2)]
+        assert all(min(c.red(),c.green(),c.blue())>60 for c in colors)
+        assert any(c.red()>200 and c.blue()>200 for c in colors)  # Track is light.
+        assert any(90<c.red()<180 and c.blue()>c.red() for c in colors)  # Handle stays distinct.
+        check=window.auto_fit.grab().toImage()
+        check_colors=[check.pixelColor(x,check.height()//2) for x in range(3,min(16,check.width()))]
+        assert any(c.blue()>150 and c.blue()>c.red()+50 for c in check_colors)
+        window.grab().save('logs/ci-light-scrollbars-preview.png')
+    finally:
+        if window:window.close()
+        application.setPalette(original)

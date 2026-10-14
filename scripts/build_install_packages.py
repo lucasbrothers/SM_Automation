@@ -5,6 +5,7 @@ import zipfile
 root=Path(__file__).resolve().parents[1]
 out=root/"release";out.mkdir(exist_ok=True)
 source=[p for p in (root/"src").rglob("*.py") if "__pycache__" not in p.parts]
+source += sorted((root/"src/desktop/assets").glob("*.svg"))
 roles={
  "server-install": source+[root/"requirements-runtime.txt",root/"config/app.json",root/"config/ssh-profiles.example.json",root/"deploy/install-server.sh",root/"deploy/sm-automation.service"]+[root/"scripts"/name for name in ("run_server.py","provision_server.py","create_gui_account.py","import_inventory.py")],
  "gui-install": [p for p in source if p.relative_to(root/"src").parts[0] in {"desktop","shared"}]+[root/"requirements-gui.txt",root/"deploy/install-gui.ps1",root/"deploy/start-gui.cmd",root/"scripts/run_desktop.py",root/"scripts/start_desktop.ps1"],

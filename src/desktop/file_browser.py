@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPu
 
 
 from desktop.tables import SortTreeItem
+from desktop.theme import LIGHT_CONTROLS, light_palette
 
 
 class Task(QThread):
@@ -63,7 +64,7 @@ class FileList(QTreeWidget):
 
 class FileBrowser(QDialog):
     def __init__(self, client, parent=None):
-        super().__init__(parent); self.client = client; self.task = None
+        super().__init__(parent); self.setPalette(light_palette()); self.client = client; self.task = None
         self.setStyleSheet("""
             QDialog, QWidget { background: #f3f6fb; color: #20354d; }
             QTreeWidget { background: #ffffff; color: #20354d;
@@ -78,9 +79,7 @@ class FileBrowser(QDialog):
             QPushButton { background: #ffffff; color: #20354d; border: 1px solid #cbd5e1; }
             QPushButton:hover { background: #e6effc; }
             QSplitter::handle { background: #d6dfec; }
-            QScrollBar { background: #edf2f8; }
-            QScrollBar::handle { background: #a9b9ce; border-radius: 4px; min-width: 12px; min-height: 12px; }
-        """)
+        """ + LIGHT_CONTROLS)
         self.setWindowTitle('GUI (Windows) ↔ SERVER (Linux) — File browser'); self.resize(1100, 680)
         layout = QVBoxLayout(self); splitter = QSplitter(); layout.addWidget(splitter)
         from desktop.transfers import Transfers
