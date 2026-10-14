@@ -103,3 +103,15 @@ def test_parent_cgroup_limits_apply_instead_of_unlimited_leaf():
     row=parse_linux({'logical_cpus':'16','affinity_cpus':'8','cpu_limit':'max 100000\n200000 100000\nmax 100000',
         'memory_limit':'max\n1073741824\n2147483648','meminfo':'MemTotal: 8388608 kB'})
     assert row['allocated_cpus']==2 and row['allocated_memory_gib']==1
+
+def test_ci_sort_is_global_before_pagination_and_export_uses_same_order(registry):
+    hosts=[{'hostname':'host'+str(i),'ip':'10.0.0.'+str(i+1),'os':'Linux'} for i in range(120)]
+    for i,host in enumerate(hosts):
+        registry.observe(host,{'allocated_cpus':120-i})
+    page=registry.listing(hosts,{'sort_key':'allocated_cpus','page_size':10})
+    assert page['rows'][0]['hostname']=='host119' and page['rows'][9]['observed']['allocated_cpus']==10
+    page=registry.listing(hosts,{'sort_key':'allocated_cpus','page_size':10,'offset':100})
+    assert page['rows'][0]['observed']['allocated_cpus']==101
+    page=registry.listing(hosts,{'sort_key':'ip','descending':True,'page_size':1})
+    assert page['rows'][0]['ip']=='10.0.0.120'
+    with pytest.raises(ValueError):registry.listing(hosts,{'sort_key':'not-an-attribute'})

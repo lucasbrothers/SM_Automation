@@ -16,6 +16,12 @@ COLUMNS = [("hostname", "Hostname"), ("ip", "관리 IP"), ("primary_ip", "대표
     ("allocated_cpus", "할당 vCPU"), ("allocated_memory_gib", "할당 RAM GiB"), ("gpu", "GPU"),
     ("uptime_seconds", "Uptime 초"), ("collection_status", "수집 상태"), ("last_success", "최근 성공")]
 
+# Keep familiar overview columns first, then expose every discovered/manual attribute.
+COLUMNS += [(key, label) for key,label in {**AUTO_FIELDS, **FIELDS,
+    "last_attempt":"최근 수집 시도", "error":"수집 오류", "updated_at":"자산 변경 시각",
+    "observed_ip":"최근 수집 관리 IP", "stale":"주소 변경 여부", "os":"등록 OS", "profile":"SSH 프로필"}.items()
+    if key not in {key for key,_ in COLUMNS}]
+
 
 def flattened(row):
     return {**row.get("observed", {}), **row.get("manual", {}), **{k:v for k,v in row.items() if k not in {"observed", "manual"}}}
@@ -40,6 +46,7 @@ class CIDashboard(QWidget):
         self.offset = 0
         self.total = 0
         self.generation = 0
+        self.sort_key = None; self.descending = False
         layout = QVBoxLayout(self)
         info = QLabel("CI 자산 관리 · 자동 수집은 선택한 CLIENT에 SSH로 접속합니다. 직접 입력한 정보는 재수집해도 유지됩니다.")
         info.setWordWrap(True); layout.addWidget(info)
@@ -60,11 +67,19 @@ class CIDashboard(QWidget):
         self.add_button(actions, "조회 전체 CSV / Excel 저장", self.export)
         actions.addStretch(); layout.addLayout(actions)
         self.table = QTableWidget(0, len(COLUMNS)); self.table.setHorizontalHeaderLabels([label for _,label in COLUMNS])
+        self.table.setWordWrap(False)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table.horizontalHeader().setSectionsClickable(True)
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self.table.horizontalHeader().setSortIndicatorShown(True)
+        self.table.horizontalHeader().sectionClicked.connect(self.sort_column)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setDefaultSectionSize(145)
+        self.table.horizontalHeader().setMinimumSectionSize(110)
         self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.itemDoubleClicked.connect(lambda _: self.details())
         layout.addWidget(self.table, 1)
@@ -86,6 +101,8 @@ class CIDashboard(QWidget):
         if self.scope.currentIndex():
             book = self.console.active_book()
             params["hosts"] = book["hosts"] if book else []
+        if self.sort_key:
+            params.update(sort_key=self.sort_key, descending=self.descending)
         return params
 
     def refresh(self, reset=False):
@@ -109,8 +126,12 @@ class CIDashboard(QWidget):
                 elif row.get("collection_status") == "failed": flat["collection_status"] = "실패 · 상세 확인"
                 elif row.get("observed", {}).get("warnings"): flat["collection_status"] = "완료 · 참고 있음"
                 for j,(key,_) in enumerate(COLUMNS):
-                    item = QTableWidgetItem(value_text(flat.get(key)))
-                    item.setToolTip(item.text()); self.table.setItem(i,j,item)
+                    text = value_text(flat.get(key))
+                    item = QTableWidgetItem(text.replace("\r", "").replace("\n", " / "))
+                    item.setToolTip(text)
+                    if j == 0: item.setData(Qt.ItemDataRole.UserRole, row["hostname"])
+                    self.table.setItem(i,j,item)
+            self.table.resizeColumnsToContents()
             counts = data["counts"]
             self.metrics.setText(f"조회 {self.total}대  |  운영 {counts['운영']}  ·  유휴 {counts['유휴']}  ·  폐기 {counts['폐기']}  ·  미지정 {counts['미지정']}")
             self.page_label.setText(f"{self.offset+1 if self.total else 0}–{min(self.offset+100,self.total)} / {self.total}")
@@ -118,11 +139,19 @@ class CIDashboard(QWidget):
         params = self.filters(); offset = self.offset
         self.console.work(lambda: client.call("ci.list", **params, offset=offset, page_size=100), loaded)
 
+    def sort_column(self, column):
+        key = COLUMNS[column][0]
+        self.descending = not self.descending if self.sort_key == key else False
+        self.sort_key = key
+        self.table.horizontalHeader().setSortIndicator(column, Qt.SortOrder.DescendingOrder if self.descending else Qt.SortOrder.AscendingOrder)
+        self.refresh(True)
+
     def page(self, amount):
         self.offset = max(0, self.offset+amount); self.refresh()
 
     def selected(self):
-        return [self.rows[index.row()] for index in self.table.selectionModel().selectedRows()]
+        indexed = {row["hostname"]:row for row in self.rows}
+        return [indexed[self.table.item(index.row(),0).data(Qt.ItemDataRole.UserRole)] for index in self.table.selectionModel().selectedRows()]
 
     def collect(self):
         chosen = self.selected()

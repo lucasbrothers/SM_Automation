@@ -2,7 +2,8 @@
 from datetime import datetime, date
 import hashlib
 
-from shared.ci_schema import FIELDS
+from shared.ci_schema import FIELDS, AUTO_FIELDS
+from shared.sorting import sort_key
 
 
 def stamp():
@@ -83,6 +84,20 @@ class CIRegistry:
                 continue
             rows.append(row)
             counts[manual.get("operational_status") or "미지정"] += 1
+        field = params.get("sort_key")
+        if field:
+            if field not in {"hostname", "ip", "os", "profile", "last_attempt", "last_success", "collection_status", "error", "updated_at", "observed_ip", "stale", *FIELDS, *AUTO_FIELDS}:
+                raise ValueError("Invalid CI sort attribute")
+            def value(row):
+                if field == "collection_status":
+                    if row.get("stale"): return "주소 변경 · 재수집 필요"
+                    if row.get("collection_status") == "failed": return "실패 · 상세 확인"
+                    if row.get("observed", {}).get("warnings"): return "완료 · 참고 있음"
+                return {**row.get("observed", {}), **row.get("manual", {}), **{k:v for k,v in row.items() if k not in {"observed", "manual"}}}.get(field)
+            present = [row for row in rows if value(row) is not None and value(row) != ""]
+            missing = [row for row in rows if value(row) is None or value(row) == ""]
+            present.sort(key=lambda row: (sort_key(value(row)), row["hostname"].casefold()), reverse=bool(params.get("descending", False)))
+            rows = present + missing
         offset = max(0, int(params.get("offset", 0)))
         size = min(200, max(1, int(params.get("page_size", 100))))
         return {"rows": rows[offset:offset+size], "total": len(rows), "counts": counts, "offset": offset}

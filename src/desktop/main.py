@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from desktop.client import ConnectionSettings, ServerClient
 from desktop.graph import ConnectionMap
+from desktop.tables import enable_sorting, populate, row_identity, SortTreeItem
 
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 10pt; color: #23344c; }
@@ -84,35 +85,55 @@ def card():
     return frame, layout
 
 
-def table(headers):
+def table(headers, sortable=True):
     widget = QTableWidget(0, len(headers)); widget.setHorizontalHeaderLabels(headers)
     widget.verticalHeader().hide(); widget.setShowGrid(False)
     widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
     widget.verticalHeader().setDefaultSectionSize(39)
+    if sortable: enable_sorting(widget)
     return widget
 
 
 def fill_table(widget, rows):
-    widget.setRowCount(len(rows))
-    for r, row in enumerate(rows):
-        for c, value in enumerate(row):
-            item = QTableWidgetItem(str(value)); item.setToolTip(str(value))
-            widget.setItem(r, c, item)
+    populate(widget, rows)
 
 
 def fill_identity_table(widget, records, rows):
-    selected = widget.item(widget.currentRow(), 0)
-    identity = selected.data(Qt.ItemDataRole.UserRole) if selected else None
-    fill_table(widget, rows)
-    widget.clearSelection()
-    widget.setCurrentCell(-1, -1)
-    for index, record in enumerate(records):
-        widget.item(index, 0).setData(Qt.ItemDataRole.UserRole, record["id"])
-        if record["id"] == identity:
-            widget.setCurrentCell(index, 0)
-            widget.selectRow(index)
+    identity = row_identity(widget)
+    populate(widget, rows, [record["id"] for record in records])
+    widget.clearSelection(); widget.setCurrentCell(-1,-1)
+    for index in range(widget.rowCount()):
+        if row_identity(widget,index) == identity:
+            widget.setCurrentCell(index,0); widget.selectRow(index)
+
+
+
+class PageStack(QWidget):
+    """Only the active page participates in layout size constraints."""
+    def __init__(self):
+        super().__init__(); self._pages = []; self._index = -1
+        layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
+
+    def addWidget(self, page):
+        page.setParent(self); page.hide(); self._pages.append(page)
+        if self._index < 0: self.setCurrentIndex(0)
+        return len(self._pages)-1
+
+    def count(self): return len(self._pages)
+    def currentIndex(self): return self._index
+    def currentWidget(self): return self._pages[self._index] if self._index >= 0 else None
+    def widget(self, index): return self._pages[index]
+
+    def setCurrentIndex(self, index):
+        if index == self._index: return
+        old = self.currentWidget()
+        if old is not None:
+            self.layout().removeWidget(old); old.hide()
+        self._index = index
+        page = self.currentWidget(); self.layout().addWidget(page); page.show()
+        self.updateGeometry()
 
 
 class WorkerSignals(QObject):
@@ -170,7 +191,7 @@ class InventoryDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(label("Saved encrypted on the Linux main server.", "subtitle"))
         layout.addWidget(label("Double-click hostname, IP or OS to edit. Choose an SSH profile configured on Linux.", "subtitle"))
-        self.grid = table(["Hostname", "IP address", "Operating system", "SSH profile"])
+        self.grid = table(["Hostname", "IP address", "Operating system", "SSH profile"], sortable=False)
         self.grid.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
         self.grid.verticalHeader().setDefaultSectionSize(44)
         self.profiles = sorted(set(profiles or ["default"]) | {"default"})
@@ -220,7 +241,8 @@ class Console(QMainWindow):
     def __init__(self, demo=False):
         super().__init__()
         self.setWindowTitle("SM Automation | Control Console")
-        self.resize(1460, 920); self.setMinimumSize(1120, 760)
+        area = QApplication.primaryScreen().availableGeometry()
+        self.resize(min(1460, area.width()-30), min(920, area.height()-40)); self.setMinimumSize(800, 540)
         self.client = None; self.demo = demo; self.servers = []; self.equipment_books=[]; self.jobs = []; self.connection_results = []
         self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
         self.backup_history = {}
@@ -239,7 +261,7 @@ class Console(QMainWindow):
     def build_ui(self):
         base = QWidget(); self.setCentralWidget(base)
         root = QHBoxLayout(base); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
-        sidebar = QFrame(); sidebar.setObjectName("sidebar"); sidebar.setFixedWidth(210)
+        sidebar = QFrame(); sidebar.setObjectName("sidebar"); self.sidebar = sidebar
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
@@ -254,15 +276,22 @@ class Console(QMainWindow):
         nav.addWidget(button("Deploy SERVER public key", self.deploy_server_key))
         nav.addWidget(button("SERVER GUI account", self.edit_gui_account))
         nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
-        root.addWidget(sidebar)
+        self.sidebar_scroll = QScrollArea(); self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.sidebar_scroll.setStyleSheet("QScrollArea {background:#122139;border:0;}")
+        self.sidebar_scroll.setFixedWidth(210); self.sidebar_scroll.setWidget(sidebar)
+        root.addWidget(self.sidebar_scroll)
         workspace = QWidget(); workspace.setObjectName("workspace")
         self.workspace_scroll = QScrollArea(); self.workspace_scroll.setWidgetResizable(True)
         self.workspace_scroll.setWidget(workspace); root.addWidget(self.workspace_scroll, 1)
         content = QVBoxLayout(workspace); content.setContentsMargins(28, 24, 28, 18); content.setSpacing(18)
         top = QHBoxLayout(); top.addWidget(label("OPERATIONS  /  INFRASTRUCTURE", "subtitle")); top.addStretch()
         self.connection_badge = label("OFFLINE", "badge"); top.addWidget(self.connection_badge); self.zoom_control = QSpinBox(); self.zoom_control.setRange(60, 140); self.zoom_control.setValue(90); self.zoom_control.setSuffix("%"); self.zoom_control.setKeyboardTracking(False); self.zoom_control.setToolTip("Type a percentage, then press Enter to apply")
-        self.zoom_control.valueChanged.connect(self.set_zoom)
+        self.zoom_control.valueChanged.connect(self.manual_zoom)
         top.addWidget(label("Zoom")); top.addWidget(self.zoom_control)
+        self.auto_fit = QCheckBox("자동 맞춤"); self.auto_fit.setChecked(True)
+        self.auto_fit.setToolTip("창과 화면 크기에 맞춰 배율을 자동 조절합니다. 숫자 입력은 수동 배율로 전환합니다.")
+        self.auto_fit.toggled.connect(lambda enabled: self.fit_window() if enabled else None); top.addWidget(self.auto_fit)
         top.addWidget(button("Save query results", lambda: self.export_widgets(self.pages.currentWidget()))); content.addLayout(top)
         scope=QHBoxLayout();scope.addWidget(label("실행 대상"));self.book_selector=QComboBox();self.book_selector.addItem("개별 장비 선택",None);self.book_selector.setMinimumWidth(280)
         self.book_selector.currentIndexChanged.connect(self.apply_book_selection);scope.addWidget(self.book_selector)
@@ -281,19 +310,51 @@ class Console(QMainWindow):
             self.metric_cards.append(frame)
             self.metric_values.append(number)
         content.addLayout(metrics)
-        self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
+        self.pages = PageStack(); content.addWidget(self.pages, 1)
         self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules(); self.build_resources(); self.build_tools()
         from desktop.ci import CIDashboard
         self.ci_dashboard = CIDashboard(self); self.pages.addWidget(self.ci_dashboard)
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
+        self.fit_timer = QTimer(self); self.fit_timer.setSingleShot(True); self.fit_timer.timeout.connect(self.fit_window)
         self.set_zoom(90)
+
+    def manual_zoom(self, percent):
+        self.auto_fit.setChecked(False)
+        self.set_zoom(percent)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "fit_timer"):
+            self.fit_timer.start(80)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "fit_timer"):
+            self.fit_timer.start(80)
+
+    def fit_window(self):
+        if not self.auto_fit.isChecked(): return
+        percent = max(60, min(90, round(90 * min(self.width()/1460, self.height()/920))))
+        self.set_zoom(percent)
+        self.sidebar.layout().activate()
+        needed = self.sidebar.layout().minimumSize().height()
+        available = max(1,self.sidebar_scroll.viewport().height())
+        if needed > available:
+            percent = max(60, min(percent, int(percent*available/needed)))
+            self.set_zoom(percent)
+        self.zoom_control.blockSignals(True); self.zoom_control.setValue(percent); self.zoom_control.blockSignals(False)
+        self.sidebar_scroll.ensureWidgetVisible(self.nav_buttons[self.pages.currentIndex()])
 
     def set_zoom(self, percent):
         scale = percent / 100
         self.setStyleSheet(re.sub(r"(\d+(?:\.\d+)?)(px|pt)",
                                  lambda match: str(round(float(match[1]) * scale, 2)) + match[2], STYLE))
+        for widget in self.findChildren(QPushButton):
+            widget.setMinimumHeight(widget.fontMetrics().lineSpacing() + round(12*scale) + 6)
+        for widget in self.findChildren(QLineEdit) + self.findChildren(QSpinBox) + self.findChildren(QComboBox):
+            widget.setMinimumHeight(widget.fontMetrics().lineSpacing() + round(10*scale) + 6)
         # Qt layout margins are independent of stylesheet dimensions.
         for layout in self.findChildren(QVBoxLayout) + self.findChildren(QHBoxLayout) + self.findChildren(QFormLayout):
             if layout.property("original_spacing") is None:
@@ -305,7 +366,7 @@ class Console(QMainWindow):
                 layout.setSpacing(round(spacing * scale))
             layout.setContentsMargins(*[round(value * scale) for value in layout.property("original_margins")])
         for widget in self.findChildren(QTableWidget):
-            row_height = max(round(44 * scale), widget.fontMetrics().height() + round(14 * scale) + 8)
+            row_height = max(round(44 * scale), widget.fontMetrics().lineSpacing() + round(14 * scale) + 8)
             widget.verticalHeader().setDefaultSectionSize(row_height)
             if widget in (self.target_table, self.account_targets):
                 for row in range(widget.rowCount()):
@@ -452,6 +513,7 @@ class Console(QMainWindow):
         self.target_table = table(["", "Server"])
         self.target_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.target_table.setColumnWidth(0, 30); self.target_table.horizontalHeader().hide()
+        self.target_table.horizontalHeader().sortIndicatorChanged.connect(lambda *_: self.filter_servers(self.server_search.text()))
         self.target_table.itemChanged.connect(self.selection_changed); left.addWidget(self.target_table)
         left.addWidget(button("Collect connections", lambda: self.start_job("connections"), True))
         note = label("Linux executes netstat over SSH.\nOnly ESTABLISHED TCP peers\nare displayed.", "subtitle"); left.addWidget(note)
@@ -485,7 +547,7 @@ class Console(QMainWindow):
         history.addWidget(button("선택 백업 ↔ 현재 설정 비교",self.compare_backup))
         history.addStretch(); body.addLayout(history)
         self.backup_table = table(["Created", "Status", "Progress", "Job ID"]); body.addWidget(self.backup_table)
-        self.backup_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.backup_jobs[row]["id"]))
+        self.backup_table.cellDoubleClicked.connect(lambda row, _: self.show_job(row_identity(self.backup_table,row)))
         body.addWidget(label("Double-click a backup to view Linux paths and per-artifact results. Partial captures are never reported as complete.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -493,14 +555,14 @@ class Console(QMainWindow):
         row=self.backup_table.currentRow()
         if row<0 or row>=len(getattr(self,"backup_jobs",[])):
             self.status_line.setText("기준 백업을 목록에서 선택하고 대상 장비/장비록을 지정하세요.");return
-        self.start_job("backup_compare",options={"baseline_job_id":self.backup_jobs[row]["id"]})
+        self.start_job("backup_compare",options={"baseline_job_id":row_identity(self.backup_table,row)})
 
     def build_activity(self):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
         frame, body = card(); body.addWidget(label("Server-side job history", "section"))
         body.addWidget(button("Load older operations", self.load_job_history))
         self.jobs_table = table(["Created", "Operation", "Status", "Progress", "Job ID"])
-        self.jobs_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.jobs[row]["id"]))
+        self.jobs_table.cellDoubleClicked.connect(lambda row, _: self.show_job(row_identity(self.jobs_table,row)))
         body.addWidget(self.jobs_table)
         body.addWidget(button("Cancel pending targets of selected job", self.cancel_selected_job))
         body.addWidget(label("Closing this console does not stop Linux jobs. Reconnect to see results.", "subtitle"))
@@ -723,8 +785,11 @@ class Console(QMainWindow):
         body.addWidget(self.account_splitter, 1); layout.addWidget(frame); self.pages.addWidget(page)
 
     def account_target_changed(self, item):
-        if item.column() == 0 and item.row() < self.target_table.rowCount():
-            self.target_table.item(item.row(), 0).setCheckState(item.checkState())
+        if item.column() == 0:
+            host = row_identity(self.account_targets,item.row())
+            for row in range(self.target_table.rowCount()):
+                if row_identity(self.target_table,row) == host:
+                    self.target_table.item(row,0).setCheckState(item.checkState()); break
 
     def target_description(self):
         hosts=self.checked_hosts();book=self.active_book()
@@ -951,7 +1016,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         row=self.schedule_table.currentRow()
         if row<0 or row>=len(self.schedules):
             self.status_line.setText("변경할 예약을 목록에서 선택하세요.");return
-        item=self.schedules[row];self.edit_schedule_id=item["id"];self.edit_schedule_hosts=list(item["hosts"]);self.edit_schedule_book_id=item.get("equipment_book_id")
+        item=next(item for item in self.schedules if item["id"]==row_identity(self.schedule_table,row));self.edit_schedule_id=item["id"];self.edit_schedule_hosts=list(item["hosts"]);self.edit_schedule_book_id=item.get("equipment_book_id")
         self.schedule_kind.setCurrentIndex(self.schedule_kind.findData(item["kind"]))
         self.schedule_mode.setCurrentIndex(1 if item.get("cron") else 0)
         if item.get("cron"):
@@ -999,20 +1064,22 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         row = self.schedule_table.currentRow()
         if row < 0 or row >= len(self.schedules) or not self.require_client():
             return
-        schedule_id = self.schedules[row]["id"]; client = self.client
+        schedule_id = row_identity(self.schedule_table,row); client = self.client
         self.work(lambda: client.call("schedule.change", id=schedule_id, enabled=enabled, delete=delete), lambda _: self.load_schedules())
 
     def cancel_selected_job(self):
         row = self.jobs_table.currentRow()
         if row < 0 or row >= len(self.jobs) or not self.require_client():
             return
-        job_id = self.jobs[row]["id"]; client = self.client
+        job_id = row_identity(self.jobs_table,row); client = self.client
         self.work(lambda: client.call("job.cancel", id=job_id), lambda _: self.poll())
 
     def navigate(self, index):
         for metric in self.metric_cards:
             metric.setVisible(index < 4)
         self.pages.setCurrentIndex(index)
+        self.pages.updateGeometry()
+        if hasattr(self, "fit_timer"): self.fit_timer.start(80)
         if index == 8 and self.client and not self.demo:
             self.refresh_saved_commands()
         titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources", "Commands and Linux files", "CI 자산 관리 대시보드"]
@@ -1148,18 +1215,19 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         def identity(server):
             return tuple(server.get(field, "default" if field == "profile" else "") for field in ("hostname", "ip", "os", "profile"))
         initial = not self.servers
-        selected = {identity(server) for row, server in enumerate(self.servers)
-                    if self.target_table.item(row, 0).checkState() == Qt.CheckState.Checked}
+        checked = set(self.checked_hosts())
+        selected = {identity(server) for server in self.servers if server["hostname"] in checked}
         self.servers = servers; self.metric_values[0].setText(str(len(servers)))
         fill_table(self.inventory_table, [[r["hostname"], r["ip"], r["os"], "Linux main server / SSH"] for r in servers])
-        self.target_table.blockSignals(True); self.target_table.setRowCount(len(servers))
+        self.target_table.blockSignals(True); sorting = self.target_table.isSortingEnabled(); self.target_table.setSortingEnabled(False); self.target_table.setRowCount(len(servers))
         for row, server in enumerate(servers):
             check = QTableWidgetItem(); check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            check.setData(Qt.ItemDataRole.UserRole,server["hostname"])
             check.setCheckState(Qt.CheckState.Checked if initial or identity(server) in selected else Qt.CheckState.Unchecked)
             self.target_table.setItem(row, 0, check)
             item = QTableWidgetItem(server["hostname"] + "\n" + server["ip"])
             item.setToolTip(server["os"]); self.target_table.setItem(row, 1, item); self.target_table.setRowHeight(row, 60)
-        self.target_table.blockSignals(False)
+        self.target_table.setSortingEnabled(sorting); self.target_table.blockSignals(False)
         self.select_all.blockSignals(True); self.select_all.setChecked(True); self.select_all.blockSignals(False)
         self.apply_book_selection(); self.filter_servers(self.server_search.text())
 
@@ -1187,16 +1255,17 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
 
     def apply_book_selection(self,*_):
         book=self.active_book();self.target_table.blockSignals(True)
-        for row,server in enumerate(self.servers):
+        for row in range(self.target_table.rowCount()):
+            host=row_identity(self.target_table,row)
             check=self.target_table.item(row,0)
             check.setFlags(Qt.ItemFlag.ItemIsEnabled if book else Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
-            if book:check.setCheckState(Qt.CheckState.Checked if server["hostname"] in book["hosts"] else Qt.CheckState.Unchecked)
+            if book:check.setCheckState(Qt.CheckState.Checked if host in book["hosts"] else Qt.CheckState.Unchecked)
         self.target_table.blockSignals(False);self.select_all.setEnabled(not book);self.selection_changed()
 
     def checked_hosts(self):
         book=self.active_book()
         if book:return list(book["hosts"])
-        return [server["hostname"] for row, server in enumerate(self.servers)
+        return [row_identity(self.target_table,row) for row in range(self.target_table.rowCount())
                 if self.target_table.item(row, 0).checkState() == Qt.CheckState.Checked]
 
     def selection_changed(self, *_):
@@ -1205,12 +1274,13 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
             self.command_targets.setText("Selected targets: " + self.target_description())
         if hasattr(self, "account_targets"):
             self.account_targets.blockSignals(True)
-            fill_table(self.account_targets, [["", r["hostname"], r["ip"], r["os"]] for r in self.servers])
+            sorting = self.account_targets.isSortingEnabled(); self.account_targets.setSortingEnabled(False)
+            populate(self.account_targets, [["", r["hostname"], r["ip"], r["os"]] for r in self.servers], [r["hostname"] for r in self.servers])
             for row, server in enumerate(self.servers):
                 check = self.account_targets.item(row, 0)
                 check.setFlags(Qt.ItemFlag.ItemIsEnabled if self.active_book() else Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
                 check.setCheckState(Qt.CheckState.Checked if server["hostname"] in hosts else Qt.CheckState.Unchecked)
-            self.account_targets.blockSignals(False)
+            self.account_targets.setSortingEnabled(sorting); self.account_targets.blockSignals(False)
             self.update_account_review()
         self.select_all.blockSignals(True); self.select_all.setChecked(bool(self.servers) and len(hosts) == len(self.servers)); self.select_all.blockSignals(False)
 
@@ -1222,7 +1292,9 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.target_table.blockSignals(False); self.selection_changed()
 
     def filter_servers(self, query):
-        for row, server in enumerate(self.servers):
+        indexed = {r["hostname"]:r for r in self.servers}
+        for row in range(self.target_table.rowCount()):
+            server = indexed[row_identity(self.target_table,row)]
             self.target_table.setRowHidden(row, query.casefold() not in (server["hostname"] + server["ip"]).casefold())
 
     def edit_inventory(self):
@@ -1463,16 +1535,17 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                 note = label(job["message"], "subtitle"); note.setWordWrap(True); layout.addWidget(note)
         layout.addWidget(label("Double-click an artifact to preview text or list archive files. Decryption runs on Linux.", "subtitle"))
         tree = QTreeWidget(); tree.setHeaderLabels(["Server / artifact", "Status", "Size", "Linux storage path"])
+        tree.setSortingEnabled(True); tree.header().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         tree.setStyleSheet("QTreeWidget { background: white; color: #20354d; alternate-background-color: #f4f7fb; } QTreeWidget::item:selected { background: #dbeafe; color: #172d48; }")
         tree.setAlternatingRowColors(True)
         tree.setColumnWidth(0, 260); tree.setColumnWidth(1, 100); tree.setColumnWidth(2, 90)
         for row in rows:
             result = row.get("result", {})
-            parent = QTreeWidgetItem([row["hostname"], row["status"], "", result.get("directory", row.get("error", ""))])
+            parent = SortTreeItem([row["hostname"], row["status"], "", result.get("directory", row.get("error", ""))])
             tree.addTopLevelItem(parent)
             for artifact in result.get("artifacts", []):
                 path = artifact.get("path", "")
-                item = QTreeWidgetItem([artifact["name"], artifact["status"],
+                item = SortTreeItem([artifact["name"], artifact["status"],
                                         f"{artifact.get('size', 0):,} B", path or artifact.get("error", "")])
                 item.setData(0, Qt.ItemDataRole.UserRole, path); parent.addChild(item)
                 details = []
@@ -1485,12 +1558,12 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                 if artifact.get("errors_truncated"):
                     details.append("Error summary limited; open command details for full diagnostics")
                 for detail in details:
-                    child = QTreeWidgetItem([detail, "", "", ""])
+                    child = SortTreeItem([detail, "", "", ""])
                     child.setToolTip(0, detail)
                     item.addChild(child)
                 if path:
                     metadata = path.rsplit("/", 1)[0] + "/" + artifact["name"] + ".metadata.json.enc"
-                    child = QTreeWidgetItem(["Command details and diagnostic output", "", "", metadata])
+                    child = SortTreeItem(["Command details and diagnostic output", "", "", metadata])
                     child.setData(0, Qt.ItemDataRole.UserRole, metadata)
                     item.addChild(child)
                 if artifact["status"] != "completed":

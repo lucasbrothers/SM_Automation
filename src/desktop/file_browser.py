@@ -11,6 +11,9 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPu
     QTreeWidget, QTreeWidgetItem, QSplitter, QLabel, QFileDialog)
 
 
+from desktop.tables import SortTreeItem
+
+
 class Task(QThread):
     result = Signal(object)
     error = Signal(str)
@@ -33,6 +36,7 @@ class FileList(QTreeWidget):
         self.setDragEnabled(True); self.setAcceptDrops(True)
         self.setColumnWidth(0, 280)
         self.setAlternatingRowColors(True)
+        self.setSortingEnabled(True); self.sortItems(0, Qt.SortOrder.AscendingOrder)
 
     def startDrag(self, actions):
         files = [i.data(0, Qt.ItemDataRole.UserRole) for i in self.selectedItems()]
@@ -116,7 +120,7 @@ class FileBrowser(QDialog):
     def populate(self, side, entries):
         tree = self.lists[side]; tree.clear()
         for entry in entries:
-            item = QTreeWidgetItem([entry['name'], 'Folder' if entry['directory'] else 'File' if entry['regular'] else 'Link / special', str(entry['size']) if not entry['directory'] else ''])
+            item = SortTreeItem([entry['name'], 'Folder' if entry['directory'] else 'File' if entry['regular'] else 'Link / special', str(entry['size']) if not entry['directory'] else ''])
             item.setData(0, Qt.ItemDataRole.UserRole, entry); tree.addTopLevelItem(item)
 
     def refresh(self, side):

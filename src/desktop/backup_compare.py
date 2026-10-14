@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QCheckBox,QPlainTextEdit,QTableWidget,QTableWidgetItem,QFileDialog,QMessageBox
 from desktop.report_excel import write_report
+from desktop.tables import populate, enable_sorting, row_identity
 LABELS={'changed':'변경','added':'추가','removed':'삭제','unchanged':'동일','failed':'실패'}
 
 
@@ -27,7 +28,7 @@ class ComparisonDialog(QDialog):
         layout=QVBoxLayout(self);sheets=report(rows,job);summary=sheets[0][1][1]
         heading=QLabel(f'{summary[0]}  |  대상 {summary[3]}대  ·  변경 {summary[5]}대 / {summary[7]}파일  ·  실패 {summary[6]}대  ·  미완료 {summary[8]}대');heading.setWordWrap(True);heading.setStyleSheet('font-size:15pt;font-weight:700;color:#17365d');layout.addWidget(heading)
         note=QLabel('설정 파일 내용과 Unix 권한·소유자·링크 비교입니다. 시각/실시간 명령 출력은 제외하며, 실패 장비를 동일 상태로 판정하지 않습니다.');note.setWordWrap(True);layout.addWidget(note)
-        self.hosts=QTableWidget();self.fill(self.hosts,sheets[1][1]);self.hosts.setMaximumHeight(180);layout.addWidget(self.hosts)
+        self.hosts=QTableWidget();self.fill(self.hosts,sheets[1][1],list(range(len(rows))));self.hosts.setMaximumHeight(180);layout.addWidget(self.hosts)
         actions=QHBoxLayout();self.only_changes=QCheckBox('변경 파일만 표시');self.only_changes.setChecked(True);self.only_changes.toggled.connect(self.load_host);actions.addWidget(self.only_changes)
         save=QPushButton('장비록 비교 엑셀 다운로드');save.clicked.connect(self.export);actions.addWidget(save);actions.addStretch();layout.addLayout(actions)
         self.files=QTableWidget();self.files.itemSelectionChanged.connect(self.detail);layout.addWidget(self.files,2)
@@ -48,7 +49,8 @@ class ComparisonDialog(QDialog):
             if offset>=page["total"]:return result
 
     def load_host(self,*_):
-        index=self.hosts.currentRow()
+        index=row_identity(self.hosts)
+        if index is None:return
         if not 0<=index<len(self.rows):return
         self.request_number+=1;request=self.request_number
         row=self.rows[index];only=self.only_changes.isChecked();parent=self.parent()
@@ -59,13 +61,14 @@ class ComparisonDialog(QDialog):
             parent.work(lambda:self.fetch(row,only),loaded)
         else:loaded(row.get("result",{}).get("files",[]))
 
-    def fill(self,table,rows):
-        table.setColumnCount(len(rows[0]));table.setHorizontalHeaderLabels(rows[0]);table.setRowCount(len(rows)-1);table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        for r,row in enumerate(rows[1:]):
-            for c,value in enumerate(row):
-                item=QTableWidgetItem(str(value if value is not None else ''));table.setItem(r,c,item)
-                if '실패' in row:item.setBackground(QColor('#fce4d6'))
+    def fill(self,table,rows,identities=None):
+        if not table.property("sort_ready"):
+            enable_sorting(table);table.setProperty("sort_ready",True)
+        table.setColumnCount(len(rows[0]));table.setHorizontalHeaderLabels(rows[0])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        populate(table,rows[1:],identities)
         table.resizeColumnsToContents();table.horizontalHeader().setStretchLastSection(True)
+
 
     def populate(self,*_):
         self.items=[];values=[['CLIENT','파일 경로','상태','백업 크기','현재 크기']]
@@ -73,8 +76,9 @@ class ComparisonDialog(QDialog):
             for item in self.loaded_files.get(row['hostname'],[]):
                 if self.only_changes.isChecked() and item['status']=='unchanged':continue
                 self.items.append(item);values.append([row['hostname'],item['path'],LABELS[item['status']],item['before_size'],item['after_size']])
-        self.fill(self.files,values)
-        for index,item in enumerate(self.items):
+        self.fill(self.files,values,list(range(len(self.items))))
+        for index in range(self.files.rowCount()):
+            item=self.items[row_identity(self.files,index)]
             color={'added':'#e2f0d9','removed':'#fce4d6','changed':'#fff2cc'}.get(item['status'])
             if color:
                 for col in range(self.files.columnCount()):self.files.item(index,col).setBackground(QColor(color))
@@ -82,8 +86,8 @@ class ComparisonDialog(QDialog):
         else:self.text.setPlainText('변경 파일이 없습니다. 상단 실패 장비가 있는지도 확인하세요.')
 
     def detail(self):
-        row=self.files.currentRow()
-        if 0<=row<len(self.items):self.text.setPlainText(self.items[row]['diff'] or '변경 없음')
+        row=row_identity(self.files)
+        if row is not None and 0<=row<len(self.items):self.text.setPlainText(self.items[row]['diff'] or '변경 없음')
 
     def export(self):
         path,_=QFileDialog.getSaveFileName(self,'비교 결과 저장','backup-comparison.xlsx','Excel (*.xlsx)')
