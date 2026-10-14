@@ -243,7 +243,7 @@ class Console(QMainWindow):
         nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
         nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
         self.nav_buttons = []
-        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules", "08   Resources", "09   Commands / Files"]):
+        for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules", "08   Resources", "09   Commands / Files", "10   CI / 자산"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
         nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
@@ -283,6 +283,8 @@ class Console(QMainWindow):
         content.addLayout(metrics)
         self.pages = QStackedWidget(); content.addWidget(self.pages, 1)
         self.build_overview(); self.build_network(); self.build_backup(); self.build_activity(); self.build_accounts(); self.build_patches(); self.build_schedules(); self.build_resources(); self.build_tools()
+        from desktop.ci import CIDashboard
+        self.ci_dashboard = CIDashboard(self); self.pages.addWidget(self.ci_dashboard)
         self.progress = QProgressBar(); self.progress.setTextVisible(False); self.progress.setMaximumHeight(6); content.addWidget(self.progress)
         self.status_line = label("Connect to a Linux main server to load your inventory.", "subtitle"); content.addWidget(self.status_line)
         self.navigate(0)
@@ -1013,7 +1015,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.pages.setCurrentIndex(index)
         if index == 8 and self.client and not self.demo:
             self.refresh_saved_commands()
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources", "Commands and Linux files"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources", "Commands and Linux files", "CI 자산 관리 대시보드"]
         self.title.setText(titles[index])
         descriptions = ["One control console. All operational work on your Linux server.",
                         "Selected servers and their established TCP peers. All collection runs on Linux.",
@@ -1022,12 +1024,14 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                         "Account changes run on Linux after an encrypted backup.",
                         "Preview exact versions, then apply the reviewed plan from your Linux main server.",
                         "Encrypted Linux schedules continue independently of your Windows console.",
-                        "Linux collects load, memory and root disk observations over SSH.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console."]
+                        "Linux collects load, memory and root disk observations over SSH.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console.", "장비록·개별 장비의 하드웨어, OS, 고객 및 서비스 정보를 관리합니다."]
         self.subtitle.setText(descriptions[index])
         if self.history_errors:
             self.subtitle.setText(f"Linux history recovery required: {len(self.history_errors)} unreadable records. New operations are disabled.")
         for i, item in enumerate(self.nav_buttons):
             item.setChecked(i == index)
+        if index == 9:
+            self.ci_dashboard.refresh(True)
         if index == 1:
             QTimer.singleShot(50, self.graph.fit_map)
         if index == 6 and self.client:
@@ -1104,6 +1108,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
 
     def clear_session_views(self):
+        self.ci_dashboard.clear()
         self.equipment_books=[];self.book_selector.blockSignals(True);self.book_selector.clear();self.book_selector.addItem("개별 장비 선택",None);self.book_selector.blockSignals(False)
         self.saved_commands.clear()
         self.job_history = {}; self.job_history_offset = 100
@@ -1259,7 +1264,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
             client = self.client
             self.work(lambda: client.call("inventory.import", csv=content), lambda _: self.reload())
 
-    def start_job(self, kind, all_hosts=False, options=None):
+    def start_job(self, kind, all_hosts=False, options=None, hosts_override=None):
         if not self.require_client():
             return
         if self.history_errors:
@@ -1270,6 +1275,8 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
             return
         book=self.active_book()
         hosts = [row["hostname"] for row in self.servers] if all_hosts and not book else self.checked_hosts()
+        if hosts_override is not None:
+            hosts = hosts_override; book = None
         if not hosts:
             QMessageBox.information(self, "Select targets", "Select at least one server in Connection map."); return
         client = self.client
@@ -1343,7 +1350,9 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                 def result_failed():
                     if self.loaded_job == active["id"]:
                         self.loaded_job = None
-                if active["kind"] == "connections":
+                if active["kind"] == "ci_inventory":
+                    self.ci_dashboard.refresh()
+                elif active["kind"] == "connections":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), self.display_connections, quiet=True, on_error=result_failed)
                 elif active["kind"] == "command":

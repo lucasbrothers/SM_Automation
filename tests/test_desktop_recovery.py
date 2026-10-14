@@ -331,7 +331,7 @@ def test_zoom_changes_spacing_without_accumulating():
     assert "14.0pt" in window.styleSheet()
     window.zoom_control.setValue(100)
     assert window.workspace_scroll.widgetResizable()
-    assert window.pages.count() == 9
+    assert window.pages.count() == 10
     window.close()
 
 

@@ -225,7 +225,7 @@ class ManagementService:
         return row
 
     def _store_result(self,job,row):
-        if job["kind"] not in {"backup","backup_compare","connections","monitoring"}:return row
+        if job["kind"] not in {"backup","backup_compare","connections","monitoring","ci_inventory"}:return row
         path="results/"+job["id"]+"/"+row["hostname"]+".json.enc"
         self.data.write_json(path,row)
         small={key:value for key,value in row.items() if key!="result"}
@@ -243,7 +243,7 @@ class ManagementService:
     def submit(self, kind, names, options=None, book_id=None):
         if self.history_errors:
             raise RuntimeError("Job history recovery required on Linux; new operations are disabled")
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer", "deploy_key", "backup_compare"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer", "deploy_key", "backup_compare", "ci_inventory"}:
             raise ValueError("Unknown job type")
         book=self.equipment_book(book_id) if book_id else None
         if book:
@@ -395,7 +395,12 @@ class ManagementService:
                                port=saved_credentials.get("port", int(profile.get("port", self.config.ssh_port))), timeout=self.config.ssh_timeout)
             family = os_family(server.os)
             kind = job["kind"]
-            if kind == "deploy_key":
+            if kind == "ci_inventory":
+                from ci.collector import collect
+                result = collect(client, family, login_password=password or "")
+                with self.lock:
+                    self.ci_registry().observe(row, result)
+            elif kind == "deploy_key":
                 from server.key_deploy import deploy
                 result = deploy(client, Path(key_file).expanduser())
             elif kind == "transfer":
@@ -550,6 +555,9 @@ class ManagementService:
                         result["plan"]["reasons"].append(result["adapter"]["reason"])
             return {**row, "status": result.pop("status", "completed"), "result": result}
         except Exception as exc:
+            if job["kind"] == "ci_inventory":
+                with self.lock:
+                    self.ci_registry().observe(row, error=str(exc))
             return {**row, "status": "failed", "error": str(exc)[:1500]}
         finally:
             if client is not None:
@@ -597,7 +605,19 @@ class ManagementService:
             with self.lock:
                 self.command_passwords.pop(job["id"], None)
 
+    def ci_registry(self):
+        if not hasattr(self, "_ci_registry"):
+            from ci.registry import CIRegistry
+            self._ci_registry = CIRegistry(self.data)
+        return self._ci_registry
+
     def dispatch(self, method, params):
+        if method == "ci.list":
+            with self.lock:
+                return self.ci_registry().listing(self.inventory(), params)
+        if method == "ci.update":
+            with self.lock:
+                return self.ci_registry().update(self.inventory(), params.get("hosts"), params.get("patch"))
         if method=="backup.comparison":
             with self.lock:
                 job=self.jobs[params["job_id"]]

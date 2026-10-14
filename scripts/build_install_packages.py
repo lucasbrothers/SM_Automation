@@ -11,7 +11,7 @@ roles={
  "client-prerequisites": []}
 manifest=[]
 for role, files in roles.items():
- files += [root/"docs/production-test.md",root/"docs/offline-deployment.md"]
+ files += [root/"docs/production-test.md",root/"docs/offline-deployment.md",root/"docs/ci-dashboard.md"]
  path=out/(role+".zip")
  with zipfile.ZipFile(path,"w",zipfile.ZIP_DEFLATED) as archive:
   for file in sorted(set(files)):

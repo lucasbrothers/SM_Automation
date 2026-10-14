@@ -56,7 +56,7 @@ def role_for(store, username):
 
 def authorize(role, method, params):
     if role == "admin": return
-    read = {"session.info", "equipment.book.list", "status", "inventory.list", "ssh.profiles", "job.list", "job.get", "job.result", "command.saved.list", "file.list", "file.stat", "file.pending", "file.download", "schedule.list"}
+    read = {"session.info", "ci.list", "equipment.book.list", "status", "inventory.list", "ssh.profiles", "job.list", "job.get", "job.result", "command.saved.list", "file.list", "file.stat", "file.pending", "file.download", "schedule.list"}
     if role in {"operator", "viewer"} and method.startswith("file."):
         from pathlib import Path
         root = Path("/srv/sm-automation/shared").resolve()
@@ -69,6 +69,6 @@ def authorize(role, method, params):
     if role == "operator":
         if method in {"command.saved.save", "command.saved.delete", "file.mkdir", "file.upload", "file.commit", "file.abort", "job.cancel"}: return
         if method == "job.start":
-            if params.get("kind") in {"connections", "monitoring"}: return
+            if params.get("kind") in {"connections", "monitoring", "ci_inventory"}: return
             if params.get("kind") == "accounts" and params.get("options", {}).get("action", "list") == "list": return
     raise ValueError("Permission denied: " + method + " requires a higher role")
