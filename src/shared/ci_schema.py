@@ -14,5 +14,20 @@ AUTO_FIELDS = {
     "cpu_model": "CPU 모델", "logical_cpus": "보이는 논리 CPU", "allocated_cpus": "할당 vCPU (상한)",
     "smt_enabled": "Multithread (SMT/HT)", "smt_details": "SMT 판정 근거",
     "physical_cores": "보이는 물리 core", "memory_gib": "OS 메모리 GiB", "allocated_memory_gib": "할당 메모리 GiB",
-    "gpu": "GPU", "uptime_seconds": "Uptime 초", "boot_time": "부팅 시각", "warnings": "수집 참고",
+    "gpu": "GPU", "uptime_seconds": "Uptime (시간:분:초)", "boot_time": "부팅 시각", "warnings": "수집 참고",
 }
+
+
+def display_value(key, value):
+    """Format elapsed time without wrapping hours at midnight; keep storage numeric."""
+    if key != "uptime_seconds": return value
+    import math
+    if value is None or isinstance(value, bool): return None
+    try:
+        seconds = float(value)
+        if not math.isfinite(seconds) or seconds < 0: return None
+        hours, remainder = divmod(int(seconds), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    except (TypeError, ValueError, OverflowError):
+        return None

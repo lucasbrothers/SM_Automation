@@ -54,3 +54,29 @@ def test_ci_export_includes_every_filtered_page_and_all_attributes(tmp_path,monk
         assert '<f>' not in sheet and 'Serial number' in sheet
     assert [call.kwargs['offset'] for call in window.client.call.call_args_list]==[0,1]
     window.client=None;window.close()
+
+@pytest.mark.parametrize('seconds,expected',[(0,'00:00:00'),(59,'00:00:59'),(60,'00:01:00'),(3661.9,'01:01:01'),(90061,'25:01:01'),(360000,'100:00:00'),('7201','02:00:01'),(None,None),('',None),(-1,None),(float('nan'),None),(float('inf'),None),(True,None)])
+def test_uptime_uses_elapsed_hours_without_day_wrap(seconds,expected):
+    from shared.ci_schema import display_value
+    assert display_value('uptime_seconds',seconds)==expected
+    assert display_value('allocated_cpus',16)==16
+
+
+def test_ci_uptime_display_and_export_use_hours_minutes_seconds(tmp_path,monkeypatch):
+    import csv
+    from PySide6.QtWidgets import QFileDialog
+    from desktop.ci import COLUMNS
+    app=QApplication.instance() or QApplication([])
+    window=Console();window.client=Mock()
+    window.client.call.return_value={'rows':[{'hostname':'lab','ip':'127.0.0.1','observed':{'uptime_seconds':90061}}], 'total':1,'counts':{'운영':0,'유휴':0,'폐기':0,'미지정':1}}
+    monkeypatch.setattr(window,'work',lambda fn,done,**kw:done(fn()))
+    window.ci_dashboard.refresh()
+    column=next(i for i,(key,_) in enumerate(COLUMNS) if key=='uptime_seconds')
+    assert window.ci_dashboard.table.item(0,column).text()=='25:01:01'
+    path=tmp_path/'ci.csv'
+    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**kw:(str(path),'CSV (*.csv)'))
+    window.ci_dashboard.export()
+    with path.open(encoding='utf-8-sig',newline='') as stream:
+        rows=list(csv.DictReader(stream))
+    assert rows[0]['Uptime (시간:분:초)']=='25:01:01'
+    window.client=None;window.close()

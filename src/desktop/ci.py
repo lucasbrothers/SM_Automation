@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushB
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem, QAbstractItemView,
     QHeaderView, QDialog, QFormLayout, QCheckBox, QDialogButtonBox, QScrollArea,
     QFileDialog, QMessageBox, QPlainTextEdit)
-from shared.ci_schema import FIELDS, AUTO_FIELDS
+from shared.ci_schema import FIELDS, AUTO_FIELDS, display_value
 from desktop.report_excel import write_report
 
 COLUMNS = [("hostname", "Hostname"), ("ip", "관리 IP"), ("primary_ip", "대표 IP"),
@@ -14,7 +14,7 @@ COLUMNS = [("hostname", "Hostname"), ("ip", "관리 IP"), ("primary_ip", "대표
     ("service_grade", "서비스 등급"), ("owner", "담당자"), ("os_name", "OS"), ("os_version", "버전"),
     ("hardware_model", "모델"), ("serial_number", "Serial"), ("cpu_model", "CPU 모델"),
     ("allocated_cpus", "할당 vCPU"), ("allocated_memory_gib", "할당 RAM GiB"), ("gpu", "GPU"),
-    ("uptime_seconds", "Uptime 초"), ("collection_status", "수집 상태"), ("last_success", "최근 성공")]
+    ("uptime_seconds", AUTO_FIELDS["uptime_seconds"]), ("collection_status", "수집 상태"), ("last_success", "최근 성공")]
 
 # Keep familiar overview columns first, then expose every discovered/manual attribute.
 COLUMNS += [(key, label) for key,label in {**AUTO_FIELDS, **FIELDS,
@@ -126,7 +126,7 @@ class CIDashboard(QWidget):
                 elif row.get("collection_status") == "failed": flat["collection_status"] = "실패 · 상세 확인"
                 elif row.get("observed", {}).get("warnings"): flat["collection_status"] = "완료 · 참고 있음"
                 for j,(key,_) in enumerate(COLUMNS):
-                    text = value_text(flat.get(key))
+                    text = value_text(display_value(key, flat.get(key)))
                     item = QTableWidgetItem(text.replace("\r", "").replace("\n", " / "))
                     item.setToolTip(text)
                     if j == 0: item.setData(Qt.ItemDataRole.UserRole, row["hostname"])
@@ -207,7 +207,7 @@ class CIDashboard(QWidget):
         dialog = QDialog(self); dialog.resize(800,700); dialog.setWindowTitle("CI 상세 · "+row["hostname"])
         layout = QVBoxLayout(dialog); text = QPlainTextEdit(); text.setReadOnly(True)
         fields = {"hostname":"등록 hostname", "ip":"관리 IP", **AUTO_FIELDS, **FIELDS, "last_attempt":"최근 수집 시도", "last_success":"최근 수집 성공", "collection_status":"수집 상태", "error":"오류", "updated_at":"자산 정보 변경 시각", "observed_ip":"마지막 수집 관리 IP", "stale":"관리 IP 변경 여부"}
-        text.setPlainText("\n\n".join(label+": "+value_text(flat.get(key)) for key,label in fields.items()))
+        text.setPlainText("\n\n".join(label+": "+value_text(display_value(key, flat.get(key))) for key,label in fields.items()))
         layout.addWidget(text); self.add_button(layout,"닫기",dialog.accept); dialog.exec()
 
     def export(self):
@@ -223,7 +223,7 @@ class CIDashboard(QWidget):
                 while True:
                     data = client.call("ci.list", **params, offset=offset, page_size=200)
                     for row in data['rows']:
-                        flat = flattened(row); yield [flat.get(k,"") for k in columns]
+                        flat = flattened(row); yield [display_value(k, flat.get(k,"")) for k in columns]
                     offset += len(data['rows'])
                     if offset >= data['total'] or not data['rows']: break
             if kind.startswith("CSV") or path.lower().endswith('.csv'):

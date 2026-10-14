@@ -776,3 +776,7 @@ CI 46열·가로 스크롤·전체 조회 범위 SERVER 정렬 후 페이지 처
 
 CI SMT/HT 활성 여부와 판정 근거(48열), Linux smt/active 및 OS 토폴로지·Windows 활성 core/논리 CPU·AIX 읽기 전용 smtctl 판정, 미확인/VM 물리 HOST 제한을 추가했다. 목록/정렬/CSV/XLSX 공통 스키마에 연결했다.
 밝은 스크롤바의 모든 하위 영역과 손잡이·최소 두께16px·밝은 팔레트·체크 아이콘을 공통화해 어두운 OS 테마에서도 검정 조작부가 표시되지 않게 했다. 신규 화면도 공통 밝은 스타일을 사용한다. Windows 전체460 passed/27 skipped, WSL CI30 passed, 실제 WSL SSH/TLS 수집 통과. 후속 아이콘/스타일 변경 관련41개 및 어두운 팔레트 픽셀 검증8개 통과. results.csv와 자동화 일시정지는 유지한다.
+
+## 2026-10-14 Uptime 표시
+
+CI 목록·상세·CSV/XLSX의 uptime은 누적 HH:MM:SS(24시간 초과 유지, 예25:01:01)로 표시한다. SERVER 저장/API 초 숫자와 숫자 정렬은 유지한다. 0/누락/음수/NaN/소수초/100시간 초과·실제 GUI/CSV 관련55개 검증 통과. 자동화 일시정지와 사용자 results.csv 미추적은 유지한다.
