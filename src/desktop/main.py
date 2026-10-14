@@ -868,7 +868,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.schedules = [];self.edit_schedule_id=None;self.edit_schedule_hosts=[]
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
         body.addWidget(label("Schedules on your Linux server", "section"))
-        self.schedule_tabs=QTabWidget();list_page=QWidget();list_body=QVBoxLayout(list_page)
+        self.schedule_tabs=QTabWidget();self.schedule_tabs.setStyleSheet("QTabWidget::pane { background:white; border:1px solid #d8e1ee; } QTabWidget QWidget { background:white; color:#20354d; } QTabBar::tab { background:#e8eef8; color:#20354d; padding:8px 16px; } QTabBar::tab:selected { background:white; color:#123967; }");list_page=QWidget();list_body=QVBoxLayout(list_page)
         create_page=QWidget();create_body=QVBoxLayout(create_page)
         self.schedule_tabs.addTab(list_page,"예약 목록");self.schedule_tabs.addTab(create_page,"예약 등록")
         body.addWidget(self.schedule_tabs)
