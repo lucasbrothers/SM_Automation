@@ -41,8 +41,10 @@ def main():
             browser.transfer({'side':'remote','files':[{'path':remote,'regular':True}]});wait()
             assert digest(source)==digest(downloaded/name)
             print('PASS: 64 MiB GUI SERVER binary roundtrip and host /tmp visibility')
+            with source.open('r+b') as stream:stream.write(b'changed')
             browser.transfer({'side':'local','files':[item]});wait()
-            assert ': Failed' in browser.status.text()
+            assert 'incomplete' in browser.status.text()
+            browser.discard();wait()
             assert client.call('file.download',path=remote)['size']==source.stat().st_size
             assert not any(e['name'].startswith('.sm-upload-') for e in client.call('file.list',path='/tmp')['entries'])
             print('PASS: existing file preserved, failed upload staging removed')

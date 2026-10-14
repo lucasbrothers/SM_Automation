@@ -62,6 +62,30 @@ def gui_transfer(method, params):
     if not isinstance(path, str) or not path.startswith("/") or "\x00" in path:
         raise ValueError("Enter an absolute Linux SERVER path")
     path = Path(path)
+    if method == "file.mkdir":
+        path.mkdir(mode=0o700, exist_ok=True)
+        if path.is_symlink() or not path.is_dir(): raise ValueError("Destination must be a real directory")
+        return {"path": str(path)}
+    if method == "file.pending":
+        if not re.fullmatch(r"\.sm-upload-[a-f0-9]{32}", path.name): raise ValueError("Invalid pending path")
+        if not path.exists(): return {"exists": False, "size": 0}
+        result = gui_transfer("file.stat", {"path": str(path)})
+        result["exists"] = True
+        return result
+    if method == "file.stat":
+        import hashlib
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode): raise ValueError("Select a regular file")
+            length = params.get("length", info.st_size)
+            if type(length) is not int or not 0 <= length <= info.st_size: raise ValueError("Invalid prefix length")
+            digest = hashlib.sha256(); remaining = length
+            while remaining:
+                block = stream.read(min(CHUNK, remaining))
+                if not block: raise ValueError("Source changed")
+                digest.update(block); remaining -= len(block)
+        return {"size": info.st_size, "sha256": digest.hexdigest(), "version": str(info.st_mtime_ns) + ":" + str(info.st_ino)}
     if method == "file.list":
         entries = []
         for entry in path.iterdir():
@@ -108,7 +132,7 @@ def gui_transfer(method, params):
     content = base64.b64decode(encoded, validate=True)
     if len(content) > CHUNK: raise ValueError("Invalid transfer chunk")
     flags = os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-    if offset == 0: flags |= os.O_CREAT | os.O_EXCL
+    if offset == 0 and not params.get("continue"): flags |= os.O_CREAT | os.O_EXCL
     fd = os.open(path, flags, 0o600)
     with os.fdopen(fd, "wb") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)

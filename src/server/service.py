@@ -542,10 +542,13 @@ class ManagementService:
         if method.startswith("file."):
             from server.files import gui_transfer
             return gui_transfer(method, params)
+        if method == "gui.account.list":
+            with self.lock:
+                return [{"id": name, "role": value.get("role", "admin")} for name, value in self.data.read_json("gui-accounts.json.enc", {}).items()]
         if method == "gui.account.save":
             from server.auth import save_account
             with self.lock:
-                return save_account(self.data, params.get("username"), params.get("password"))
+                return save_account(self.data, params.get("username"), params.get("password"), params.get("role"))
         if method == "client.credentials.get":
             return self.credentials_get(params.get("hostname"))
         if method == "client.credentials.save":

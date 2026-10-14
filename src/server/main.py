@@ -42,6 +42,10 @@ class TLSServer(socketserver.ThreadingTCPServer):
             self.slots.release()
 
 
+def readable_job(job):
+    return job.get("kind") in {"connections", "monitoring"} or (job.get("kind") == "accounts" and job.get("options", {}).get("action") == "list")
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         self.request.settimeout(20)
@@ -49,7 +53,7 @@ class Handler(socketserver.BaseRequestHandler):
             with self.server.context.wrap_socket(self.request, server_side=True) as connection:
                 request = receive(connection)
                 supplied = request.get("token", "")
-                from server.auth import authenticate
+                from server.auth import authenticate, role_for, authorize
                 token_ok = isinstance(supplied, str) and hmac.compare_digest(supplied.encode(), self.server.token)
                 try:
                     with self.server.service.lock:
@@ -60,7 +64,18 @@ class Handler(socketserver.BaseRequestHandler):
                     send(connection, {"ok": False, "error": "Authentication failed"})
                     return
                 try:
-                    result = self.server.service.dispatch(request["method"], request.get("params", {}))
+                    with self.server.service.lock:
+                        role = "admin" if token_ok else role_for(self.server.service.data, request.get("username", ""))
+                        authorize(role, request["method"], request.get("params", {}))
+                        if role != "admin" and request["method"] in {"job.get", "job.result"}:
+                            job = self.server.service.jobs.get(request.get("params", {}).get("id"), {})
+                            if not readable_job(job): raise ValueError("Permission denied: this job is restricted")
+                    if request["method"] == "session.info":
+                        result = {"username": request.get("username", ""), "role": role}
+                    else:
+                        result = self.server.service.dispatch(request["method"], request.get("params", {}))
+                    if role != "admin" and request["method"] == "job.list":
+                        result = [row for row in result if readable_job(row)]
                     response = {"ok": True, "result": result}
                 except (ValueError, KeyError, TypeError, RuntimeError) as exc:
                     response = {"ok": False, "error": str(exc)}

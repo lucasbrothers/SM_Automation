@@ -313,14 +313,27 @@ class Console(QMainWindow):
         dialog = QDialog(self); dialog.setWindowTitle("SM Automation SERVER login account"); dialog.resize(510, 240)
         layout = QVBoxLayout(dialog); form = QFormLayout()
         username = QLineEdit(); password = QLineEdit(); password.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("ID", username); form.addRow("Password", password); layout.addLayout(form)
+        role = QComboBox(); role.addItem("관리자 — 전체 관리", "admin"); role.addItem("운영자 — 공유폴더 전송·조회", "operator"); role.addItem("조회자 — 공유폴더 조회·다운로드", "viewer")
+        accounts = QComboBox(); accounts.addItem("새 계정", None)
+        def select_account(index):
+            data=accounts.itemData(index)
+            if data:
+                username.setText(data["id"]);role.setCurrentIndex(role.findData(data["role"]))
+            else: username.clear()
+        accounts.currentIndexChanged.connect(select_account)
+        def list_accounts(rows):
+            for row in rows: accounts.addItem(row["id"] + " — " + row["role"],row)
+        self.work(lambda:self.client.call("gui.account.list"),list_accounts)
+        form.addRow("계정 목록",accounts)
+        form.addRow("ID", username); form.addRow("Password", password); form.addRow("Role", role); layout.addLayout(form)
+        password.setPlaceholderText("기존 계정은 빈칸이면 비밀번호 유지")
         note = label("Create an application login or update its password. This account controls this SERVER; it is separate from CLIENT SSH accounts.")
         note.setWordWrap(True); layout.addWidget(note)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             client = self.client; login = username.text().strip(); secret = password.text(); password.clear()
-            self.work(lambda: client.call("gui.account.save", username=login, password=secret),
+            self.work(lambda: client.call("gui.account.save", username=login, password=secret, role=role.currentData()),
                       lambda _: self.status_line.setText("SERVER GUI login account saved: " + login))
         else:
             password.clear()
@@ -523,7 +536,7 @@ class Console(QMainWindow):
         saved.addWidget(button("불러오기", self.load_saved_command))
         saved.addWidget(button("현재 명령 저장", self.save_command))
         saved.addWidget(button("삭제", self.delete_saved_command)); layout.addLayout(saved)
-        layout.addWidget(self.command_input); layout.addWidget(button("Run command", self.run_command, True))
+        layout.addWidget(self.command_input); self.command_run_button=button("Run command", self.run_command, True); layout.addWidget(self.command_run_button)
         layout.addWidget(label("Target results appear below. Select a row for details."))
         self.command_results_panel = QWidget(); results_layout = QVBoxLayout(self.command_results_panel)
         self.command_results_table = table(["CLIENT", "Status", "Exit code", "Stdout", "Stderr / error"])
@@ -923,8 +936,8 @@ class Console(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         settings = dialog.settings()
-        if not settings.host or not settings.ca_file or not settings.token:
-            QMessageBox.warning(self, "Connection details", "Server, CA certificate and access token are required."); return
+        if not settings.host or not settings.username or not settings.password:
+            QMessageBox.warning(self, "Connection details", "Server IP, ID and password are required."); return
         client = ServerClient(settings)
         self.connect_to(client)
 
@@ -935,7 +948,9 @@ class Console(QMainWindow):
         self.poll_busy = False
         self.clear_session_views()
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
-        self.connection_badge.setText("CONNECTED  /  TLS")
+        role=status.get("role","admin")
+        self.connection_badge.setText("CONNECTED / TLS / " + role.upper())
+        self.command_run_button.setEnabled(role == "admin")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
         self.history_errors = status.get("history_errors", [])
         self.subtitle.setToolTip("")
@@ -949,7 +964,9 @@ class Console(QMainWindow):
 
     def connect_to(self, client):
         self.status_line.setText("Connecting to Linux main server...")
-        self.work(lambda: client.call("status"), lambda status: self.attach_client(client, status))
+        def handshake():
+            status=client.call("status");status["role"]=client.call("session.info")["role"];return status
+        self.work(handshake, lambda status: self.attach_client(client, status))
 
     def disconnect_server(self):
         if self.demo:
