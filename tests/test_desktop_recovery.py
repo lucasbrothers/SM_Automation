@@ -383,3 +383,27 @@ def test_default_zoom_is_90_and_typed_value_applies_on_commit():
     assert window.zoom_control.value()==75
     assert window.account_table.verticalHeader().defaultSectionSize() >= window.account_table.fontMetrics().height()+18
     window.close()
+
+
+def test_equipment_book_scope_is_used_by_jobs():
+    app=QApplication.instance() or QApplication([]);window=Console();window.client=Mock()
+    rows=[{'hostname':name,'ip':'127.0.0.1','os':'Ubuntu','profile':'default'} for name in ['one','two','three']]
+    window.set_inventory(rows);window.equipment_books=[{'id':'book-id','name':'장비록','hosts':['one','two']}]
+    window.book_selector.addItem('장비록','book-id');window.book_selector.setCurrentIndex(1)
+    assert window.checked_hosts()==['one','two']
+    window.work=lambda fn,done,**kw:fn()
+    window.start_job('monitoring')
+    assert window.client.call.call_args.kwargs['equipment_book_id']=='book-id'
+    assert window.client.call.call_args.kwargs['hosts']==['one','two']
+    window.close()
+
+
+def test_schedule_editor_loads_existing_cron_and_targets():
+    app=QApplication.instance() or QApplication([]);window=Console()
+    item={'id':'test','next_run':'2026-10-15T09:00:00+09:00','kind':'monitoring','hosts':['one'],'cron':'0 9 * * 1-5','cron_timezone':'Asia/Seoul','interval_seconds':0,'enabled':False,'message':'paused','equipment_book_id':'book'}
+    window.display_schedules([item]);window.schedule_table.setCurrentCell(0,0);window.edit_schedule()
+    assert window.edit_schedule_id=='test' and window.edit_schedule_hosts==['one']
+    assert window.edit_schedule_book_id=='book' and window.schedule_mode.currentIndex()==1
+    assert [f.text() for f in window.cron_fields]==['0','9','*','*','1-5']
+    assert window.schedule_time.dateTime().isValid() and not window.schedule_enabled.isChecked()
+    window.close()

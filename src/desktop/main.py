@@ -221,7 +221,7 @@ class Console(QMainWindow):
         super().__init__()
         self.setWindowTitle("SM Automation | Control Console")
         self.resize(1460, 920); self.setMinimumSize(1120, 760)
-        self.client = None; self.demo = demo; self.servers = []; self.jobs = []; self.connection_results = []
+        self.client = None; self.demo = demo; self.servers = []; self.equipment_books=[]; self.jobs = []; self.connection_results = []
         self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
         self.backup_history = {}
         self.backup_history_offset = 0
@@ -231,8 +231,8 @@ class Console(QMainWindow):
         self.resource_loaded_job = None
         self.workers = set()
         self.build_ui()
-        self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(3000)
-        self.resource_timer = QTimer(self); self.resource_timer.timeout.connect(self.refresh_resources); self.resource_timer.setInterval(30000)
+        self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(15000)
+        self.resource_timer = QTimer(self); self.resource_timer.timeout.connect(self.refresh_resources); self.resource_timer.setInterval(120000)
         if demo:
             self.load_demo()
 
@@ -264,6 +264,9 @@ class Console(QMainWindow):
         self.zoom_control.valueChanged.connect(self.set_zoom)
         top.addWidget(label("Zoom")); top.addWidget(self.zoom_control)
         top.addWidget(button("Save query results", lambda: self.export_widgets(self.pages.currentWidget()))); content.addLayout(top)
+        scope=QHBoxLayout();scope.addWidget(label("실행 대상"));self.book_selector=QComboBox();self.book_selector.addItem("개별 장비 선택",None);self.book_selector.setMinimumWidth(280)
+        self.book_selector.currentIndexChanged.connect(self.apply_book_selection);scope.addWidget(self.book_selector)
+        scope.addWidget(button("장비록 관리",self.manage_books));scope.addWidget(button("장비록 새로고침",self.refresh_books));scope.addStretch();content.addLayout(scope)
         self.title = label("Infrastructure overview", "title"); content.addWidget(self.title)
         self.subtitle = label("One control console. All operational work on your Linux server.", "subtitle"); content.addWidget(self.subtitle)
         metrics = QHBoxLayout(); metrics.setSpacing(14)
@@ -389,7 +392,7 @@ class Console(QMainWindow):
         body.addWidget(label("Linux resource snapshots", "section"))
         actions = QHBoxLayout()
         actions.addWidget(button("Collect resources", lambda: self.start_job("monitoring"), True))
-        self.resource_auto = QCheckBox("Refresh every 30 seconds while this console is open")
+        self.resource_auto = QCheckBox("Refresh every 120 seconds while this console is open")
         def auto(enabled):
             if enabled:
                 self.resource_timer.start(); self.refresh_resources()
@@ -477,11 +480,18 @@ class Console(QMainWindow):
         history = QHBoxLayout()
         history.addWidget(button("Refresh backup history", lambda: self.load_backup_history(True)))
         history.addWidget(button("Load older backups", self.load_backup_history))
+        history.addWidget(button("선택 백업 ↔ 현재 설정 비교",self.compare_backup))
         history.addStretch(); body.addLayout(history)
         self.backup_table = table(["Created", "Status", "Progress", "Job ID"]); body.addWidget(self.backup_table)
         self.backup_table.cellDoubleClicked.connect(lambda row, _: self.show_job(self.backup_jobs[row]["id"]))
         body.addWidget(label("Double-click a backup to view Linux paths and per-artifact results. Partial captures are never reported as complete.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
+
+    def compare_backup(self):
+        row=self.backup_table.currentRow()
+        if row<0 or row>=len(getattr(self,"backup_jobs",[])):
+            self.status_line.setText("기준 백업을 목록에서 선택하고 대상 장비/장비록을 지정하세요.");return
+        self.start_job("backup_compare",options={"baseline_job_id":self.backup_jobs[row]["id"]})
 
     def build_activity(self):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
@@ -553,7 +563,7 @@ class Console(QMainWindow):
         layout.addWidget(self.linux_file_path); layout.addWidget(self.client_file_path)
         layout.addWidget(button("Upload: CLIENT → SERVER", lambda: self.transfer_file("upload")))
         layout.addWidget(button("Download: SERVER → CLIENT", lambda: self.transfer_file("download")))
-        note = label("Select exactly one CLIENT. Up to 8 MiB per file. Destination must be new; parent directory must exist. GUI console does not store transferred files.")
+        note = label("장비록의 여러 CLIENT도 지원합니다. CLIENT→SERVER 다중 업로드 경로에는 {hostname}을 포함하세요. Up to 8 MiB per file. Destination must be new; parent directory must exist. GUI console does not store transferred files.")
         note.setWordWrap(True); layout.addWidget(note)
         layout.addWidget(button("GUI ↔ SERVER file transfer window", self.gui_file_dialog))
         self.pages.addWidget(page)
@@ -629,15 +639,15 @@ class Console(QMainWindow):
         command = self.command_input.toPlainText(); hosts = self.checked_hosts()
         if not command.strip() or not hosts or not self.require_client():
             self.status_line.setText("Enter a command and select target servers."); return
-        if QMessageBox.question(self, "Review command", "Targets: " + ", ".join(hosts) + "\n\n" + command) == QMessageBox.Yes:
+        if QMessageBox.question(self, "Review command", "Targets: " + self.target_description() + "\n\n" + command) == QMessageBox.Yes:
             root_password, accepted = QInputDialog.getText(self, "Root transition", "Root password for su fallback (leave blank if sudo works). Kept only for this job:", QLineEdit.EchoMode.Password)
             if accepted:
                 self.start_job("command", options={"command": command, "root_password": root_password})
 
     def transfer_file(self, direction):
         hosts = self.checked_hosts()
-        if len(hosts) != 1 or not self.require_client():
-            self.status_line.setText("Select exactly one CLIENT in Connection map."); return
+        if not hosts or not self.require_client():
+            self.status_line.setText("장비 또는 장비록을 선택하세요."); return
         options = {"direction": direction, "server_path": self.linux_file_path.text().strip(),
                    "client_path": self.client_file_path.text().strip()}
         review = "CLIENT: " + hosts[0] + "\n" + direction + "\nSERVER: " + options["server_path"] + "\nCLIENT: " + options["client_path"]
@@ -714,8 +724,12 @@ class Console(QMainWindow):
         if item.column() == 0 and item.row() < self.target_table.rowCount():
             self.target_table.item(item.row(), 0).setCheckState(item.checkState())
 
+    def target_description(self):
+        hosts=self.checked_hosts();book=self.active_book()
+        return ("장비록 "+book["name"]+" · " if book else "")+str(len(hosts))+"대: "+", ".join(hosts[:10])+(" 외 "+str(len(hosts)-10)+"대" if len(hosts)>10 else "")
+
     def update_account_review(self):
-        self.account_review.setText("Targets: " + (", ".join(self.checked_hosts()) or "None selected")
+        self.account_review.setText("Targets: " + self.target_description()
                                    + "\nAction: " + self.account_action.currentText()
                                    + "\nUsername: " + self.account_fields["username"].text().strip())
 
@@ -764,10 +778,12 @@ class Console(QMainWindow):
     def build_patches(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
         body.addWidget(label("Linux patches", "section"))
-        body.addWidget(label("Use Connection map to select targets. Query uses existing package metadata."))
+        help_text=label("① Connection map에서 CLIENT 선택 → ② 업데이트 조회 → ③ 패키지명(필요시 =버전) 입력 후 계획 미리보기 → ④ 대상·버전·의존성 검토 후 적용. 조회와 계획은 설치하지 않습니다.")
+        help_text.setWordWrap(True);body.addWidget(help_text)
+        body.addWidget(button("패치 동작·지원 범위 자세히 보기",self.show_patch_help))
         actions = QHBoxLayout()
         actions.addWidget(button("Query updates", self.query_patches))
-        self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("Installed packages, separated by spaces: openssh-server net-tools")
+        self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("패키지명 또는 패키지명=버전, 공백으로 구분: openssh-server net-tools")
         actions.addWidget(self.patch_packages, 1)
         actions.addWidget(button("Preview patch plan", self.plan_patches, True)); body.addLayout(actions)
         self.patch_table = table(["Server", "Package", "Installed", "Planned version"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
@@ -778,6 +794,40 @@ class Console(QMainWindow):
         patch_note = label("Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
         patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
+
+    def show_patch_help(self):
+        dialog=QDialog(self);dialog.setWindowTitle("패치 실행 안내");dialog.resize(780,580)
+        layout=QVBoxLayout(dialog);text=QPlainTextEdit();text.setReadOnly(True)
+        text.setPlainText("""패치는 선택한 Linux CLIENT에서 수행합니다. 관리자 권한이 필요합니다.
+
+1. 업데이트 조회 (Query updates)
+현재 CLIENT에 저장된 패키지 메타데이터로 설치 버전과 후보 버전을 조회합니다.
+저장소 메타데이터 갱신·다운로드·설치·재부팅을 수행하지 않습니다.
+목록이 오래됐거나 비어 있으면 운영 절차에 따라 CLIENT의 저장소/메타데이터를 먼저 준비하세요.
+
+2. 계획 미리보기 (Preview patch plan)
+조회 표를 클릭하는 것만으로 적용 대상이 선택되지는 않습니다.
+입력 칸에 설치된 패키지명을 공백으로 구분해 입력합니다.
+예: openssh-server net-tools / 특정 버전: 패키지명=버전
+입력한 패키지와 의존성 변경을 시뮬레이션하고 정확한 버전의 계획을 저장합니다.
+신규 패키지를 직접 선택하거나 하위 버전으로 내리는 작업은 거부합니다.
+계획 단계는 패키지를 실제 설치하지 않습니다.
+
+3. 검토 후 적용 (Apply reviewed plan)
+모든 대상의 계획이 성공하고 적용을 지원할 때 버튼이 활성화됩니다.
+CLIENT·버전·의존성·경고를 확인하세요. 계획 유효 시간은 1시간입니다.
+적용 전 대상 설정을 백업하고, 계획/현재 상태가 달라지면 중단합니다.
+승인된 정확 버전으로 적용하며 자동 재부팅은 하지 않습니다.
+패키지 업그레이드 자체가 서비스를 재시작할 수 있으므로 유지보수 시간에 실행하세요.
+
+지원·제약
+Debian/Ubuntu: APT 저장소 접근 또는 운영환경의 패키지 제공이 필요합니다.
+RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을 사용합니다.
+실제 RHEL 운영환경 검증은 아직 완료되지 않았습니다. AIX/Windows 패치는 지원하지 않습니다.
+백업은 설정/진단 보존이며 패키지 버전을 자동으로 되돌리는 전체 시스템 롤백이 아닙니다.
+대상별 성공·실패·출력은 결과 표/Activity에서 확인하고 CSV로 저장할 수 있습니다.
+07 예약은 수집·자원·보안 점검·백업용이며 패치 자동 적용 예약은 지원하지 않습니다.""")
+        layout.addWidget(text);layout.addWidget(button("닫기",dialog.accept));dialog.exec()
 
     def query_patches(self):
         self.patch_plan_id = None; self.patch_apply.setEnabled(False)
@@ -815,30 +865,57 @@ class Console(QMainWindow):
             self.patch_apply.setEnabled(bool(rows) and all(row.get("result", {}).get("apply_supported", True) for row in rows))
 
     def build_schedules(self):
-        self.schedules = []
+        self.schedules = [];self.edit_schedule_id=None;self.edit_schedule_hosts=[]
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
         body.addWidget(label("Schedules on your Linux server", "section"))
+        self.schedule_tabs=QTabWidget();list_page=QWidget();list_body=QVBoxLayout(list_page)
+        create_page=QWidget();create_body=QVBoxLayout(create_page)
+        self.schedule_tabs.addTab(list_page,"예약 목록");self.schedule_tabs.addTab(create_page,"예약 등록")
+        body.addWidget(self.schedule_tabs)
         form = QFormLayout(); self.schedule_kind = QComboBox()
         for kind in ["backup", "connections", "monitoring", "security_audit"]:
             self.schedule_kind.addItem(kind.replace("_", " ").title(), kind)
         self.schedule_time = QDateTimeEdit(QDateTime.currentDateTime().addSecs(300)); self.schedule_time.setCalendarPopup(True)
         self.schedule_time.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
         self.schedule_interval = QSpinBox(); self.schedule_interval.setRange(0, 525600); self.schedule_interval.setSuffix(" min (0 = once)")
+        self.schedule_mode=QComboBox();self.schedule_mode.addItems(["한 번 / 일정 간격", "Crontab — 분·시·일·월·요일"])
+        form.addRow("예약 방식",self.schedule_mode)
+        self.cron_fields=[];self.cron_panel=QWidget();cron_layout=QHBoxLayout(self.cron_panel);cron_layout.setContentsMargins(0,0,0,0)
+        for title,example in [("분 0–59","0"),("시 0–23","9"),("일 1–31","*"),("월 1–12","*"),("요일 0–7","1-5")]:
+            column=QVBoxLayout();column.addWidget(label(title));entry=QLineEdit(example);entry.setMaximumWidth(110)
+            column.addWidget(entry);cron_layout.addLayout(column);self.cron_fields.append(entry)
+        self.cron_timezone=QLineEdit("Asia/Seoul")
+        form.addRow("Crontab",self.cron_panel);form.addRow("Cron 시간대 (IANA)",self.cron_timezone)
+        cron_help=label("* 매번 · , 여러 값 · - 범위 · / 간격 | 0 또는 7=일요일, 1=월요일. 예: 0 9 * * 1-5 = 평일 09:00. 일·요일을 모두 제한하면 둘 중 하나가 맞는 날 실행.")
+        cron_help.setWordWrap(True)
+        def schedule_mode_changed(index):
+            use_cron=index==1
+            self.cron_panel.setEnabled(use_cron);self.cron_timezone.setEnabled(use_cron)
+            self.schedule_time.setEnabled(not use_cron);self.schedule_interval.setEnabled(not use_cron)
+        self.schedule_mode.currentIndexChanged.connect(schedule_mode_changed);schedule_mode_changed(0)
         form.setVerticalSpacing(12)
         form.addRow("Operation", self.schedule_kind); form.addRow("First run (this PC local time)", self.schedule_time); form.addRow("Repeat interval", self.schedule_interval)
-        body.addLayout(form)
-        body.addWidget(label("Targets follow Connection map selection. Linux runs schedules while this GUI is closed."))
+        create_body.addLayout(form);create_body.addWidget(cron_help)
+        persistence_note=label("예약은 Linux SERVER에 암호화 저장됩니다. GUI 종료·PC 종료 후에도 SERVER 서비스가 실행 중이면 동작합니다. 대상은 Connection map 선택을 따릅니다.")
+        persistence_note.setWordWrap(True);create_body.addWidget(persistence_note)
         self.schedule_health = label("Refresh schedules to check Linux scheduling status.", "subtitle")
-        body.addWidget(self.schedule_health)
-        body.addWidget(button("Create Linux schedule", self.create_schedule, True))
-        self.schedule_table = table(["Next run", "Operation", "Targets", "Repeat (min)", "State", "Message"]); body.addWidget(self.schedule_table, 1)
+        list_body.addWidget(self.schedule_health)
+        self.schedule_replace_hosts=QCheckBox("변경 시 대상을 현재 Connection map 선택으로 교체")
+        self.schedule_replace_hosts.setEnabled(False);create_body.addWidget(self.schedule_replace_hosts)
+        self.schedule_enabled=QCheckBox("저장 후 예약 사용");self.schedule_enabled.setChecked(True);create_body.addWidget(self.schedule_enabled)
+        self.schedule_save_button=button("예약 생성",self.create_schedule,True);create_body.addWidget(self.schedule_save_button)
+        self.schedule_table = table(["다음 실행", "작업", "대상 CLIENT", "반복 / Cron (시간대)", "최근 실행", "최근 결과", "예약 상태", "메시지"]); list_body.addWidget(self.schedule_table, 1)
         actions = QHBoxLayout()
-        actions.addWidget(button("Refresh schedules", self.load_schedules))
+        actions.addWidget(button("새 예약",self.new_schedule))
+        actions.addWidget(button("선택 예약 변경",self.edit_schedule))
+        actions.addWidget(button("예약 목록 조회 / 새로고침", self.load_schedules))
         actions.addWidget(button("Pause selected", lambda: self.change_schedule(False)))
         actions.addWidget(button("Resume selected", lambda: self.change_schedule(True)))
         actions.addWidget(button("Delete selected", lambda: self.change_schedule(delete=True)))
-        body.addLayout(actions)
-        body.addWidget(label("Pause/delete stops future runs. Use Activity to cancel pending targets of a started job."))
+        actions.addWidget(button("예약 목록 CSV 저장",lambda:self.export_widgets(list_page)))
+        list_body.addLayout(actions)
+        list_body.addWidget(label("Pause/delete stops future runs. Use Activity to cancel pending targets of a started job."))
+        create_body.addStretch()
         layout.addWidget(frame); self.pages.addWidget(page)
 
     def create_schedule(self):
@@ -847,7 +924,47 @@ class Console(QMainWindow):
         client = self.client
         run_at = self.schedule_time.dateTime().toPython().astimezone().isoformat()
         hosts = self.checked_hosts(); kind = self.schedule_kind.currentData(); interval = self.schedule_interval.value() * 60
-        self.work(lambda: client.call("schedule.create", kind=kind, hosts=hosts, run_at=run_at, interval_seconds=interval), lambda _: self.load_schedules())
+        options={"run_at":run_at,"interval_seconds":interval}
+        if self.schedule_mode.currentIndex()==1:
+            options={"cron":" ".join(field.text().strip() for field in self.cron_fields),"cron_timezone":self.cron_timezone.text().strip()}
+        book=self.active_book()
+        options["equipment_book_id"]=book["id"] if book else None
+        options["enabled"]=self.schedule_enabled.isChecked()
+        method="schedule.update" if self.edit_schedule_id else "schedule.create"
+        if self.edit_schedule_id:
+            options["id"]=self.edit_schedule_id;options["enabled"]=self.schedule_enabled.isChecked()
+            if not self.schedule_replace_hosts.isChecked():
+                hosts=list(self.edit_schedule_hosts);options["equipment_book_id"]=getattr(self,"edit_schedule_book_id",None)
+        def saved(item):self.finish_schedule_save()
+        self.work(lambda:client.call(method,kind=kind,hosts=hosts,**options),saved)
+
+    def new_schedule(self):
+        self.edit_schedule_id=None;self.edit_schedule_hosts=[]
+        self.schedule_replace_hosts.setChecked(False);self.schedule_replace_hosts.setEnabled(False)
+        self.schedule_enabled.setChecked(True);self.schedule_save_button.setText("예약 생성")
+        self.schedule_time.setDateTime(QDateTime.currentDateTime().addSecs(300))
+        self.schedule_tabs.setTabText(1,"예약 등록");self.schedule_tabs.setCurrentIndex(1)
+
+    def edit_schedule(self):
+        row=self.schedule_table.currentRow()
+        if row<0 or row>=len(self.schedules):
+            self.status_line.setText("변경할 예약을 목록에서 선택하세요.");return
+        item=self.schedules[row];self.edit_schedule_id=item["id"];self.edit_schedule_hosts=list(item["hosts"]);self.edit_schedule_book_id=item.get("equipment_book_id")
+        self.schedule_kind.setCurrentIndex(self.schedule_kind.findData(item["kind"]))
+        self.schedule_mode.setCurrentIndex(1 if item.get("cron") else 0)
+        if item.get("cron"):
+            for entry,value in zip(self.cron_fields,item["cron"].split()):entry.setText(value)
+            self.cron_timezone.setText(item.get("cron_timezone") or "UTC")
+        self.schedule_interval.setValue(item["interval_seconds"]//60)
+        self.schedule_time.setDateTime(QDateTime.fromString(item["next_run"],Qt.DateFormat.ISODate).toLocalTime())
+        self.schedule_replace_hosts.setEnabled(True);self.schedule_replace_hosts.setChecked(False)
+        self.schedule_enabled.setChecked(item["enabled"]);self.schedule_save_button.setText("예약 변경 저장")
+        self.schedule_tabs.setTabText(1,"예약 변경 — "+", ".join(item["hosts"]));self.schedule_tabs.setCurrentIndex(1)
+
+    def finish_schedule_save(self):
+        self.edit_schedule_id=None;self.schedule_tabs.setTabText(1,"예약 등록")
+        self.schedule_save_button.setText("예약 생성");self.schedule_replace_hosts.setEnabled(False)
+        self.schedule_tabs.setCurrentIndex(0);self.load_schedules()
 
     def load_schedules(self):
         if not self.require_client():
@@ -867,7 +984,14 @@ class Console(QMainWindow):
 
     def display_schedules(self, schedules):
         self.schedules = schedules
-        fill_identity_table(self.schedule_table, schedules, [[s["next_run"], s["kind"], ", ".join(s["hosts"]), s["interval_seconds"] // 60, "Enabled" if s["enabled"] else "Paused / completed", s["message"]] for s in schedules])
+        states={"queued":"대기", "running":"실행 중", "completed":"성공", "failed":"실패", "partial":"일부 완료", "cancelled":"취소"}
+        values=[]
+        for item in schedules:
+            repeat=(item["cron"] + " (" + item.get("cron_timezone","UTC") + ")") if item.get("cron") else (str(item["interval_seconds"]//60)+" min" if item["interval_seconds"] else "한 번")
+            status="사용" if item["enabled"] else ("완료" if item.get("last_job_id") and not item.get("cron") and not item["interval_seconds"] else "중지")
+            values.append([item["next_run"],item["kind"],(item.get("equipment_book_name")+": " if item.get("equipment_book_name") else "")+", ".join(item["hosts"]),repeat,item.get("last_run") or "—",states.get(item.get("last_job_status"),item.get("last_job_status") or "미실행"),status,item["message"]])
+        fill_identity_table(self.schedule_table,schedules,values)
+        self.schedule_tabs.setTabText(0,"예약 목록 ("+str(len(schedules))+")")
 
     def change_schedule(self, enabled=None, delete=False):
         row = self.schedule_table.currentRow()
@@ -948,7 +1072,7 @@ class Console(QMainWindow):
         self.poll_busy = False
         self.clear_session_views()
         self.server_badge.setText(f"{settings.host}\nTLS : {settings.port}")
-        role=status.get("role","admin")
+        role=status.get("role","admin");self.user_role=role
         self.connection_badge.setText("CONNECTED / TLS / " + role.upper())
         self.command_run_button.setEnabled(role == "admin")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
@@ -980,6 +1104,7 @@ class Console(QMainWindow):
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
 
     def clear_session_views(self):
+        self.equipment_books=[];self.book_selector.blockSignals(True);self.book_selector.clear();self.book_selector.addItem("개별 장비 선택",None);self.book_selector.blockSignals(False)
         self.saved_commands.clear()
         self.job_history = {}; self.job_history_offset = 100
         self.backup_history = {}; self.backup_history_offset = 0
@@ -1009,7 +1134,9 @@ class Console(QMainWindow):
         if not self.require_client():
             return
         client = self.client
-        self.work(lambda: client.call("inventory.list"), self.set_inventory)
+        def loaded_inventory(rows):
+            self.set_inventory(rows);self.refresh_books()
+        self.work(lambda: client.call("inventory.list"), loaded_inventory)
         self.poll()
 
     def set_inventory(self, servers):
@@ -1029,28 +1156,61 @@ class Console(QMainWindow):
             item.setToolTip(server["os"]); self.target_table.setItem(row, 1, item); self.target_table.setRowHeight(row, 60)
         self.target_table.blockSignals(False)
         self.select_all.blockSignals(True); self.select_all.setChecked(True); self.select_all.blockSignals(False)
-        self.selection_changed(); self.filter_servers(self.server_search.text())
+        self.apply_book_selection(); self.filter_servers(self.server_search.text())
+
+    def active_book(self):
+        identity=self.book_selector.currentData()
+        return next((book for book in self.equipment_books if book["id"]==identity),None)
+
+    def refresh_books(self,select=None):
+        if not self.client or self.demo:return
+        client=self.client;previous=select or self.book_selector.currentData()
+        def loaded(rows):
+            self.equipment_books=rows;self.book_selector.blockSignals(True);self.book_selector.clear();self.book_selector.addItem("개별 장비 선택",None)
+            for book in rows:self.book_selector.addItem(book["name"]+" ("+str(len(book["hosts"]))+"대)",book["id"])
+            index=self.book_selector.findData(previous)
+            self.book_selector.setCurrentIndex(max(0,index));self.book_selector.blockSignals(False)
+            if previous and index<0:self.check_all(False)
+            self.apply_book_selection()
+        self.work(lambda:client.call("equipment.book.list"),loaded)
+
+    def manage_books(self):
+        if not self.require_client():return
+        from desktop.equipment_books import EquipmentBooks
+        dialog=EquipmentBooks(self.client,self.servers,self,readonly=getattr(self,"user_role","admin")!="admin")
+        dialog.exec();self.refresh_books(dialog.chosen)
+
+    def apply_book_selection(self,*_):
+        book=self.active_book();self.target_table.blockSignals(True)
+        for row,server in enumerate(self.servers):
+            check=self.target_table.item(row,0)
+            check.setFlags(Qt.ItemFlag.ItemIsEnabled if book else Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
+            if book:check.setCheckState(Qt.CheckState.Checked if server["hostname"] in book["hosts"] else Qt.CheckState.Unchecked)
+        self.target_table.blockSignals(False);self.select_all.setEnabled(not book);self.selection_changed()
 
     def checked_hosts(self):
+        book=self.active_book()
+        if book:return list(book["hosts"])
         return [server["hostname"] for row, server in enumerate(self.servers)
                 if self.target_table.item(row, 0).checkState() == Qt.CheckState.Checked]
 
     def selection_changed(self, *_):
         hosts = self.checked_hosts(); self.metric_values[1].setText(str(len(hosts)))
         if hasattr(self, "command_targets"):
-            self.command_targets.setText("Selected targets: " + (", ".join(hosts) or "None"))
+            self.command_targets.setText("Selected targets: " + self.target_description())
         if hasattr(self, "account_targets"):
             self.account_targets.blockSignals(True)
             fill_table(self.account_targets, [["", r["hostname"], r["ip"], r["os"]] for r in self.servers])
             for row, server in enumerate(self.servers):
                 check = self.account_targets.item(row, 0)
-                check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+                check.setFlags(Qt.ItemFlag.ItemIsEnabled if self.active_book() else Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
                 check.setCheckState(Qt.CheckState.Checked if server["hostname"] in hosts else Qt.CheckState.Unchecked)
             self.account_targets.blockSignals(False)
             self.update_account_review()
         self.select_all.blockSignals(True); self.select_all.setChecked(bool(self.servers) and len(hosts) == len(self.servers)); self.select_all.blockSignals(False)
 
     def check_all(self, checked):
+        if self.active_book():return
         self.target_table.blockSignals(True)
         for row in range(self.target_table.rowCount()):
             self.target_table.item(row, 0).setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
@@ -1108,7 +1268,8 @@ class Console(QMainWindow):
         if self.submission_pending:
             self.status_line.setText("Waiting for Linux to acknowledge the submitted operation.")
             return
-        hosts = [row["hostname"] for row in self.servers] if all_hosts else self.checked_hosts()
+        book=self.active_book()
+        hosts = [row["hostname"] for row in self.servers] if all_hosts and not book else self.checked_hosts()
         if not hosts:
             QMessageBox.information(self, "Select targets", "Select at least one server in Connection map."); return
         client = self.client
@@ -1122,7 +1283,7 @@ class Console(QMainWindow):
                 fill_table(self.command_results_table, [[host, "Queued", "", "", ""] for host in hosts])
                 self.command_details.setPlainText("Command submitted. Waiting for target results.")
             self.status_line.setText(f"{kind}: submitted to Linux for {len(hosts)} servers."); self.poll()
-        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts, options=options or {}), started, on_error=failed)
+        self.work(lambda: client.call("job.start", kind=kind, hosts=hosts, options=options or {},equipment_book_id=book["id"] if book else None), started, on_error=failed)
 
     def poll(self):
         if not self.client or self.poll_busy:
@@ -1163,6 +1324,7 @@ class Console(QMainWindow):
         self.job_history.update({job["id"]: job for job in jobs})
         jobs = sorted(self.job_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
         self.jobs = jobs
+        self.timer.setInterval(3000 if any(j["status"] in {"queued","running"} for j in jobs) else 15000)
         fill_identity_table(self.jobs_table, jobs, [[j["created_at"], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
         self.display_backup_history([j for j in jobs if j["kind"] == "backup"])
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
@@ -1171,7 +1333,7 @@ class Console(QMainWindow):
             def resource_failed():
                 if self.resource_loaded_job == resource["id"]:
                     self.resource_loaded_job = None
-            self.work(lambda: client.results(resource["id"]), lambda rows: self.display_resources(rows, resource.get("finished_at", resource["created_at"])), quiet=True, on_error=resource_failed)
+            self.work(lambda: client.results(resource["id"],self.checked_hosts()), lambda rows: self.display_resources(rows, resource.get("finished_at", resource["created_at"])), quiet=True, on_error=resource_failed)
         active = next((j for j in jobs if j["id"] == self.active_job), None)
         if active:
             self.progress.setValue(int(100 * active["done"] / max(1, active["total"])))
@@ -1187,6 +1349,9 @@ class Console(QMainWindow):
                 elif active["kind"] == "command":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), lambda rows: self.display_command_results(rows, active), quiet=True, on_error=result_failed)
+                elif active["kind"] == "backup_compare":
+                    client=self.client
+                    self.work(lambda:client.results(active["id"]),lambda rows:self.display_backup_comparison(rows,active),quiet=True,on_error=result_failed)
                 elif active["kind"] == "accounts":
                     client = self.client
                     self.work(lambda: client.results(active["id"]), self.display_accounts, quiet=True, on_error=result_failed)
@@ -1220,6 +1385,10 @@ class Console(QMainWindow):
                     rows.append(values)
         fill_table(self.connection_table, rows)
 
+    def display_backup_comparison(self,rows,job):
+        from desktop.backup_compare import ComparisonDialog
+        ComparisonDialog(rows,job,self).exec()
+
     def show_job(self, job_id):
         if not self.require_client():
             return
@@ -1233,6 +1402,8 @@ class Console(QMainWindow):
                 if job.get("status") != "completed":
                     self.status_line.setText(f"{job.get('status', 'unknown')}: {len(rows)}/{job.get('total', '?')} target results available. " + job.get("message", ""))
                 return
+            if job.get("kind") == "backup_compare":
+                self.display_backup_comparison(rows,job);return
             if job.get("kind") == "backup":
                 self.show_backup_results(rows, job); return
             if job.get("kind") == "monitoring":
@@ -1380,7 +1551,7 @@ def main():
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
     if sys.platform == "win32":
-        for filename in ("segoeui.ttf", "segoeuib.ttf"):
+        for filename in ("segoeui.ttf", "segoeuib.ttf", "malgun.ttf"):
             font_file = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / filename
             if font_file.exists():
                 QFontDatabase.addApplicationFont(str(font_file))

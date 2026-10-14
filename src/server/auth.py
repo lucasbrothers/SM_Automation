@@ -3,6 +3,11 @@ import hashlib
 import hmac
 import os
 import re
+import time
+import threading
+_cache = {}
+_cache_lock = threading.Lock()
+_cache_key = os.urandom(32)
 
 def password_hash(password, salt):
     return hashlib.scrypt(password.encode("utf-8"), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
@@ -29,8 +34,16 @@ def authenticate(store, username, password):
         return False
     account = store.read_json("gui-accounts.json.enc", {}).get(username)
     salt = account["salt"] if account else "00" * 16
+    stamp=hmac.new(_cache_key,(str(store.root)+"\0"+username+"\0"+str(account)+"\0"+password).encode(),hashlib.sha256).digest()
+    with _cache_lock:
+        if _cache.get(stamp,0)>time.monotonic():return True
     value = password_hash(password, salt)
-    return bool(account) and hmac.compare_digest(value, account["hash"])
+    valid=bool(account) and hmac.compare_digest(value, account["hash"])
+    if valid:
+        with _cache_lock:
+            if len(_cache)>=128:_cache.pop(next(iter(_cache)))
+            _cache[stamp]=time.monotonic()+60
+    return valid
 
 
 def role_for(store, username):
@@ -43,7 +56,7 @@ def role_for(store, username):
 
 def authorize(role, method, params):
     if role == "admin": return
-    read = {"session.info", "status", "inventory.list", "ssh.profiles", "job.list", "job.get", "job.result", "command.saved.list", "file.list", "file.stat", "file.pending", "file.download", "schedule.list"}
+    read = {"session.info", "equipment.book.list", "status", "inventory.list", "ssh.profiles", "job.list", "job.get", "job.result", "command.saved.list", "file.list", "file.stat", "file.pending", "file.download", "schedule.list"}
     if role in {"operator", "viewer"} and method.startswith("file."):
         from pathlib import Path
         root = Path("/srv/sm-automation/shared").resolve()

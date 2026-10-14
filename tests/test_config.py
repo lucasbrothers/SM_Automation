@@ -24,7 +24,7 @@ def test_defaults(config_file):
     assert config.log_directory == config_file.parent.parent / "logs"
     assert config.server_file == config_file.parent / "servers.txt"
     assert config.ssh_timeout == 30
-    assert config.max_workers == 10
+    assert config.max_workers == 5
     assert config.data_directory.name == "DATA"
     assert config.backup_directory.name == "BACKUP"
     assert config.listen_port == 7443

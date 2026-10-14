@@ -59,10 +59,12 @@ class ServerClient:
             raise RuntimeError(response.get("error", "Server rejected the request"))
         return response["result"]
 
-    def results(self, job_id):
+    def results(self, job_id, hosts=None):
         rows, offset = [], 0
         while True:
-            page = self.call("job.result", id=job_id, offset=offset)
+            params={"id":job_id,"offset":offset,"page_size":50}
+            if hosts is not None:params["hosts"]=hosts
+            page = self.call("job.result", **params)
             rows.extend(page["items"])
             offset += len(page["items"])
             if offset >= page["total"] or not page["items"]:

@@ -18,7 +18,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="sm-wsl-gui-") as directory:
         ca = Path(directory) / "ca.crt"; ca.write_bytes(read("/root/.config/sm-automation/ca.crt"))
         app = QApplication(sys.argv)
-        for name in ("segoeui.ttf", "segoeuib.ttf"):
+        for name in ("segoeui.ttf", "segoeuib.ttf", "malgun.ttf"):
             QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + name)
         app.setFont(QFont("Segoe UI", 10)); app.setStyle("Fusion"); app.setStyleSheet(STYLE)
         window = Console()

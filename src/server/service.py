@@ -9,6 +9,8 @@ import os
 import re
 import threading
 import uuid
+import time
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from dataclasses import asdict, replace
@@ -126,6 +128,9 @@ class ManagementService:
         self.profiles = load_ssh_profiles(config.ssh_profiles_file)
         self.lock = threading.RLock()
         self.command_passwords = {}
+        self.ssh_slots=threading.BoundedSemaphore(getattr(config,"max_workers",5))
+        self.heavy_slots=threading.BoundedSemaphore(1)
+        self.report_slots=threading.BoundedSemaphore(1);self.report_cache={}
         self.account_locks = defaultdict(threading.Lock)
         self.jobs = {}
         self.history_errors = []
@@ -215,14 +220,35 @@ class ManagementService:
     def summary(self, job):
         return {key: value for key, value in job.items() if key not in {"results", "targets"}}
 
+    def _result(self,row):
+        if row.get("result_ref"):return self.data.read_json(row["result_ref"])
+        return row
+
+    def _store_result(self,job,row):
+        if job["kind"] not in {"backup","backup_compare","connections","monitoring"}:return row
+        path="results/"+job["id"]+"/"+row["hostname"]+".json.enc"
+        self.data.write_json(path,row)
+        small={key:value for key,value in row.items() if key!="result"}
+        small["result_ref"]=path
+        if job["kind"]=="backup_compare":small["result"]=row.get("result",{})
+        return small
+
     def _save(self, job):
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
 
-    def submit(self, kind, names, options=None):
+    def equipment_book(self,identity):
+        from server.equipment import get
+        with self.lock:return get(self.data,identity,self.inventory())
+
+    def submit(self, kind, names, options=None, book_id=None):
         if self.history_errors:
             raise RuntimeError("Job history recovery required on Linux; new operations are disabled")
-        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer", "deploy_key"}:
+        if kind not in {"connections", "backup", "monitoring", "security_audit", "security_plan", "security_apply", "security_permissions", "accounts", "patches", "command", "transfer", "deploy_key", "backup_compare"}:
             raise ValueError("Unknown job type")
+        book=self.equipment_book(book_id) if book_id else None
+        if book:
+            if names and set(names)!=set(book["hosts"]):raise ValueError("Equipment book membership changed; refresh targets")
+            names=list(book["hosts"])
         if not isinstance(names, list) or not names:
             raise ValueError("Select at least one server")
         inventory = self.inventory()
@@ -231,13 +257,21 @@ class ManagementService:
             raise ValueError("A selected server is no longer in the inventory")
         targets = [indexed[name] for name in dict.fromkeys(names)]
         supplied = options or {}
+        spread=supplied.get("spread_seconds",60 if len(targets)>50 else 0)
+        if type(spread) is not int or not 0<=spread<=3600:raise ValueError("Spread must be 0–3600 seconds")
         options = (validate_options(supplied) if kind == "accounts" else
                    patch_options(options or {}) if kind == "patches" else {})
+        if kind == "backup_compare":
+            baseline_id=supplied.get("baseline_job_id")
+            with self.lock:
+                baseline=self.jobs.get(baseline_id,{})
+                if baseline.get("kind")!="backup" or baseline.get("status") in {"queued","running"}:raise ValueError("Select a finished backup as baseline")
+            options={"baseline_job_id":baseline_id}
         if kind == "transfer":
             from server.files import validate
             options = validate(supplied)
-            if len(targets) != 1:
-                raise ValueError("Select exactly one CLIENT for file transfer")
+            if len(targets)>1 and options["direction"]=="upload" and "{hostname}" not in options["server_path"]:
+                raise ValueError("Multiple CLIENT uploads require {hostname} in the SERVER destination path")
         if kind == "command":
             command = supplied.get("command")
             if not isinstance(command, str) or not command.strip() or len(command) > 16384 or "\x00" in command:
@@ -280,6 +314,8 @@ class ManagementService:
                    "total": len(targets), "done": 0, "failed": 0, "partial": 0,
                    "cancel_requested": False, "cancelled": 0,
                    "targets": targets, "options": options, "message": "Queued on Linux main server", "results": []}
+            job["spread_seconds"]=spread
+            if book:job.update(equipment_book_id=book["id"],equipment_book_name=book["name"])
             self.jobs[job["id"]] = job
             if kind == "command":
                 self.command_passwords[job["id"]] = supplied.get("root_password", "")
@@ -298,7 +334,23 @@ class ManagementService:
                 raise
             return self.summary(job)
 
-    def _target(self, job, row):
+    def _backup(self,*args,**kwargs):
+        with getattr(self,"heavy_slots",nullcontext()):return backup_server(*args,**kwargs)
+
+    def _target(self,job,row):
+        with getattr(self,"ssh_slots",nullcontext()):
+            with (getattr(self,"heavy_slots",nullcontext()) if job["kind"] in {"backup_compare"} else nullcontext()):
+                return self._target_inner(job,row)
+
+    def _spread_target(self,job,row,index,total,started):
+        due=started+job.get("spread_seconds",0)*index/max(1,total-1)
+        while time.monotonic()<due:
+            with self.lock:
+                if job.get("cancel_requested"):return {**row,"status":"cancelled","message":"Cancelled before connection"}
+            time.sleep(min(1,max(0,due-time.monotonic())))
+        return self._target(job,row)
+
+    def _target_inner(self, job, row):
         if job["kind"] in {"security_permissions", "security_apply", "command", "transfer", "deploy_key"}:
             with self.lock:
                 target_lock = self.account_locks[row["ip"]]
@@ -348,14 +400,24 @@ class ManagementService:
                 result = deploy(client, Path(key_file).expanduser())
             elif kind == "transfer":
                 from server.files import transfer
-                result = transfer(client, job["options"])
+                transfer_options={key:value.replace("{hostname}",server.hostname) if isinstance(value,str) else value for key,value in job["options"].items()}
+                result = transfer(client, transfer_options)
             elif kind == "command":
                 if family not in {"linux", "aix"}:
                     raise ValueError("Root commands support Linux/AIX CLIENTs")
                 result = client.execute_root(job["options"]["command"], password or "", self.command_passwords.get(job["id"], ""))
                 result["status"] = "completed" if result["exit_code"] == 0 else "failed"
+            elif kind == "backup_compare":
+                from backup.compare import current_compare
+                with self.lock:
+                    baseline=self.jobs[job["options"]["baseline_job_id"]]
+                    baseline_row=next((r for r in baseline["results"] if r["hostname"]==row["hostname"] and r.get("ip")==row["ip"] and r.get("os")==row["os"]),None)
+                    if baseline_row:baseline_row=self._result(baseline_row)
+                    artifact=next((a for a in baseline_row.get("result",{}).get("artifacts",[]) if a["name"]=="configuration_files"),None) if baseline_row else None
+                    if not artifact:raise ValueError("기준 백업에 해당 장비·주소·OS의 설정 파일이 없습니다")
+                result=current_compare(client,server,host_config,self.backups,artifact,job["id"],lambda text:self._progress(job,text))
             elif kind == "backup":
-                result = backup_server(client, server, host_config, self.backups, job["id"],
+                result = self._backup(client, server, host_config, self.backups, job["id"],
                                        lambda text: self._progress(job, text))
             elif kind == "connections":
                 result = collect_connections(client, family, self.config.ssh_timeout)
@@ -383,7 +445,7 @@ class ManagementService:
                 else:
                     if mode != "sudo" and not (mode == "direct" and client.user == "root"):
                         raise ValueError("SSH apply adapter currently requires sudo or direct root")
-                    before = backup_server(client, server, host_config, self.backups, job["id"])
+                    before = self._backup(client, server, host_config, self.backups, job["id"])
                     if before["status"] != "completed":
                         return {**row, "status": "failed", "error": "Pre-policy backup incomplete", "result": {"backup": before}}
                     with self.lock:
@@ -398,7 +460,7 @@ class ManagementService:
                     except Exception as exc:
                         return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
             elif kind == "security_permissions":
-                before = backup_server(client, server, host_config, self.backups, job["id"],
+                before = self._backup(client, server, host_config, self.backups, job["id"],
                                        lambda text: self._progress(job, text))
                 if before["status"] != "completed":
                     return {**row, "status": "failed", "error": "Pre-policy backup incomplete; permissions unchanged", "result": {"backup": before}}
@@ -420,7 +482,7 @@ class ManagementService:
                     if options["action"] == "public_key":
                         from account.keys import key_command
                         extra_commands = {"account_ssh_key_before": key_command(options["username"], "snapshot")}
-                    before = backup_server(client, server, host_config, self.backups, job["id"],
+                    before = self._backup(client, server, host_config, self.backups, job["id"],
                                            lambda text: self._progress(job, text), extra_commands=extra_commands)
                     if before["status"] != "completed":
                         return {**row, "status": "failed", "error": "Pre-change backup incomplete; account unchanged", "result": {"backup": before}}
@@ -443,7 +505,7 @@ class ManagementService:
                 else:
                     with self.lock:
                         plan = next(item["result"] for item in self.jobs[options["plan_id"]]["results"] if item["hostname"] == row["hostname"])
-                    before = backup_server(client, server, host_config, self.backups, job["id"],
+                    before = self._backup(client, server, host_config, self.backups, job["id"],
                                            lambda text: self._progress(job, text))
                     if before["status"] != "completed":
                         return {**row, "status": "failed", "error": "Pre-patch backup incomplete; packages unchanged", "result": {"backup": before}}
@@ -502,12 +564,13 @@ class ManagementService:
             with self.lock:
                 job.update(status="running", started_at=now())
                 self._save(job)
+            started=time.monotonic()
             with ThreadPoolExecutor(max_workers=min(self.config.max_workers, len(targets))) as workers:
-                futures = [workers.submit(self._target, job, row) for row in targets]
+                futures = {workers.submit(self._spread_target, job, row, index, len(targets), started) for index,row in enumerate(targets)}
                 for future in as_completed(futures):
-                    result = future.result()
+                    result = future.result();futures.remove(future)
                     with self.lock:
-                        job["results"].append(result)
+                        job["results"].append(self._store_result(job,result))
                         job["done"] += 1
                         job["failed"] += result["status"] == "failed"
                         job["partial"] += result["status"] == "partial"
@@ -535,6 +598,31 @@ class ManagementService:
                 self.command_passwords.pop(job["id"], None)
 
     def dispatch(self, method, params):
+        if method=="backup.comparison":
+            with self.lock:
+                job=self.jobs[params["job_id"]]
+                if job["kind"]!="backup_compare":raise ValueError("Not a comparison job")
+                row=next((r for r in job["results"] if r["hostname"]==params["hostname"]),None)
+                if not row or row["status"]!="completed":raise ValueError("Comparison is not available")
+                path=row["result"]["report_path"]
+            offset=params.get("offset",0);limit=params.get("limit",50)
+            if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise ValueError("Invalid comparison page")
+            with self.report_slots:
+                cached=self.report_cache.get(path)
+                if cached and cached[0]>time.monotonic():result=cached[1]
+                else:
+                    result=self.backups.read_json(path)
+                    if len(self.report_cache)>=2:self.report_cache.pop(next(iter(self.report_cache)))
+                    self.report_cache[path]=(time.monotonic()+30,result)
+            files=result["files"]
+            if params.get("changes_only",True):files=[f for f in files if f["status"]!="unchanged"]
+            return {"items":files[offset:offset+limit],"total":len(files)}
+        if method=="equipment.book.list":
+            from server.equipment import books
+            with self.lock:return books(self.data)
+        if method in {"equipment.book.save","equipment.book.delete"}:
+            from server.equipment import change
+            with self.lock:return change(self.data,method,params,self.inventory())
         if method in {"command.saved.list", "command.saved.save", "command.saved.delete"}:
             from server.commands import library
             with self.lock:
@@ -554,9 +642,15 @@ class ManagementService:
         if method == "client.credentials.save":
             return self.credentials_save(params)
         if method == "schedule.list":
-            return self.scheduler.list()
+            rows=self.scheduler.list()
+            with self.lock:
+                for row in rows:
+                    row["last_job_status"]=self.jobs.get(row.get("last_job_id"),{}).get("status","")
+            return rows
         if method == "schedule.create":
-            return self.scheduler.create(params["kind"], params["hosts"], params["run_at"], params.get("interval_seconds", 0))
+            return self.scheduler.create(params["kind"], params.get("hosts",[]), params.get("run_at"), params.get("interval_seconds", 0), params.get("cron"), params.get("cron_timezone", "Asia/Seoul"),params.get("equipment_book_id"),params.get("enabled",True))
+        if method == "schedule.update":
+            return self.scheduler.update(params["id"],params["kind"],params.get("hosts",[]),params.get("run_at"),params.get("interval_seconds",0),params.get("cron"),params.get("cron_timezone","Asia/Seoul"),params.get("enabled"),params.get("equipment_book_id"))
         if method == "schedule.change":
             return self.scheduler.change(params["id"], params.get("enabled"), params.get("delete", False))
         if method == "job.cancel":
@@ -582,7 +676,7 @@ class ManagementService:
         if method == "inventory.import":
             return self.save_inventory(inventory_csv(params["csv"]))
         if method == "job.start":
-            return self.submit(params["kind"], params["hosts"], params.get("options"))
+            return self.submit(params["kind"], params.get("hosts"), params.get("options"),params.get("equipment_book_id"))
         if method in {"backup.preview", "backup.contents"}:
             path = params["path"]
             endings = (".tar.enc",) if method == "backup.contents" else (".txt.enc", ".json.enc")
@@ -613,7 +707,15 @@ class ManagementService:
                 offset = params.get("offset", 0)
                 if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
                     raise ValueError("Job result offset must be a nonnegative integer")
-                return {"items": job["results"][offset:offset + 1], "total": len(job["results"])}
+                size=params.get("page_size",1);hosts=params.get("hosts")
+                if type(size) is not int or not 1<=size<=50:raise ValueError("Invalid result page size")
+                results=job["results"]
+                if hosts is not None:
+                    if not isinstance(hosts,list) or any(not isinstance(h,str) for h in hosts):raise ValueError("Invalid result host filter")
+                    wanted=set(hosts);results=[r for r in results if r["hostname"] in wanted]
+                # Large per-target results stay on the existing single-target page path.
+                if job["kind"] not in {"monitoring","backup_compare","backup"}:size=1
+                return {"items":[self._result(row) for row in results[offset:offset+size]],"total":len(results)}
         raise ValueError("Unknown API method")
 
     def close(self):

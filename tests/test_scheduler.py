@@ -198,3 +198,43 @@ def test_stopped_scheduler_rejects_new_or_resumed_work_but_allows_pause_and_dele
     assert not scheduler.change(item["id"], enabled=False)["enabled"]
     scheduler.change(item["id"], delete=True)
     assert scheduler.items == []
+
+
+def test_cron_dispatch_restart_and_expired_resume(scheduler):
+    item=scheduler.create('monitoring',['lab'],cron='*/5 * * * *',cron_timezone='UTC')
+    scheduler.items[0]['next_run']=(datetime.now().astimezone()-timedelta(minutes=10)).isoformat()
+    scheduler.tick();scheduler.tick()
+    assert scheduler.service.count==1 and scheduler.items[0]['enabled']
+    assert datetime.fromisoformat(scheduler.items[0]['next_run'])>datetime.now().astimezone()
+    restored=Scheduler(Service(scheduler.list()));restored.close()
+    assert restored.list()[0]['cron']=='*/5 * * * *' and not restored.recovery_required
+    restored.items[0]['enabled']=False
+    restored.items[0]['next_run']=(datetime.now().astimezone()-timedelta(minutes=10)).isoformat()
+    assert restored.change(item['id'],enabled=True)['enabled']
+    assert datetime.fromisoformat(restored.items[0]['next_run'])>datetime.now().astimezone()
+
+
+def test_update_keeps_id_and_persists_cron(scheduler):
+    item=scheduler.create('backup',['lab'],future())
+    changed=scheduler.update(item['id'],'monitoring',['lab'],cron='0 9 * * 1-5',cron_timezone='UTC',enabled=False)
+    assert changed['id']==item['id'] and not changed['enabled'] and changed['kind']=='monitoring'
+    restored=Scheduler(Service(scheduler.list()));restored.close()
+    assert restored.list()[0]['cron']=='0 9 * * 1-5'
+
+
+def test_update_rejects_running_and_rolls_back_failed_save(scheduler,monkeypatch):
+    item=scheduler.create('backup',['lab'],future());scheduler.items[0]['last_job_id']='active';scheduler.service.jobs['active']={'status':'running'}
+    with pytest.raises(ValueError,match='running'):scheduler.update(item['id'],'monitoring',['lab'],future())
+    scheduler.service.jobs['active']['status']='completed'
+    def failed(*_):raise OSError('write failed')
+    monkeypatch.setattr(scheduler.service.data,'write_json',failed)
+    with pytest.raises(OSError):scheduler.update(item['id'],'monitoring',['lab'],future())
+    assert scheduler.items[0]['kind']=='backup'
+
+
+def test_equipment_book_changes_pause_scheduled_work(scheduler):
+    book={'id':'book','name':'test','hosts':['lab']};scheduler.service.equipment_book=lambda identity:book
+    item=scheduler.create('backup',['lab'],future(),book_id='book')
+    book['hosts']=['other'];scheduler.items[0]['next_run']=(datetime.now().astimezone()-timedelta(seconds=2)).isoformat()
+    scheduler.tick()
+    assert not scheduler.items[0]['enabled'] and scheduler.service.count==0

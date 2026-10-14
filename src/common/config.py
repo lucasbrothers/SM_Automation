@@ -123,7 +123,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         server_file=_path(inventory.get("server_file", "servers.txt"),
                           "inventory.server_file", source.parent),
         ssh_timeout=_integer(ssh.get("timeout", 30), "ssh.timeout", 1, 300),
-        max_workers=_integer(ssh.get("max_workers", 10), "ssh.max_workers", 1, 100),
+        max_workers=_integer(ssh.get("max_workers", 5), "ssh.max_workers", 1, 100),
         data_directory=_path(storage.get("data_directory", "./DATA"), "storage.data_directory", root),
         backup_directory=_path(storage.get("backup_directory", "./BACKUP"), "storage.backup_directory", root),
         key_file=_path(storage.get("key_file", secrets + "/master.key"), "storage.key_file", root),

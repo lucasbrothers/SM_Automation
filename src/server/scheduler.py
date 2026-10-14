@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import threading
 import uuid
 import copy
+from server.cron import parse as parse_cron, zone as cron_zone, next_run as next_cron
 from cryptography.fernet import InvalidToken
 
 
@@ -27,6 +28,9 @@ class Scheduler:
                 interval = item.get("interval_seconds")
                 if isinstance(interval, bool) or not isinstance(interval, int) or (interval != 0 and not 60 <= interval <= 31536000):
                     raise ValueError("Invalid stored schedule interval")
+                if item.get("cron") is not None:
+                    parse_cron(item["cron"]); cron_zone(item.get("cron_timezone", "UTC"))
+                    if interval != 0: raise ValueError("Cron cannot use an interval")
                 if not isinstance(item.get("next_run"), str) or datetime.fromisoformat(item["next_run"]).tzinfo is None:
                     raise ValueError("Invalid stored schedule time")
                 if not isinstance(item.get("hosts"), list) or not item["hosts"] or any(not isinstance(host, str) for host in item["hosts"]):
@@ -70,34 +74,64 @@ class Scheduler:
         with self.lock:
             return [dict(item) for item in self.items]
 
-    def create(self, kind, hosts, run_at, interval_seconds=0):
+    def _prepare(self, kind, hosts, run_at=None, interval_seconds=0, cron=None, cron_timezone="Asia/Seoul",book_id=None):
         if self.service.history_errors:
             raise RuntimeError("History recovery required before creating schedules")
         if self.failure:
             raise RuntimeError("Linux scheduler stopped; recover storage and restart before creating schedules")
         if kind not in {"connections", "backup", "monitoring", "security_audit"}:
             raise ValueError("Schedules support collection, monitoring, audit and backup only")
-        timestamp = datetime.fromisoformat(run_at)
+        if cron is not None:
+            if interval_seconds != 0: raise ValueError("Choose cron or a fixed interval")
+            timestamp = next_cron(cron, datetime.now().astimezone(), cron_timezone)
+        else:
+            timestamp = datetime.fromisoformat(run_at)
         if timestamp.tzinfo is None or timestamp <= datetime.now().astimezone():
             raise ValueError("Choose a future time with an explicit timezone")
         if isinstance(interval_seconds, bool) or not isinstance(interval_seconds, int) or (interval_seconds != 0 and not 60 <= interval_seconds <= 31536000):
             raise ValueError("Repeat interval must be zero (once), or 60 to 31536000 seconds")
+        book=self.service.equipment_book(book_id) if book_id else None
+        if book:
+            if hosts and set(hosts)!=set(book["hosts"]):raise ValueError("Equipment book membership changed; refresh targets")
+            hosts=list(book["hosts"])
         inventory = {row["hostname"]: row for row in self.service.inventory()}
         if not isinstance(hosts, list) or not hosts or any(name not in inventory for name in hosts):
             raise ValueError("Select existing inventory targets")
+        return {"kind":kind,"hosts":list(dict.fromkeys(hosts)),
+                "targets":[inventory[name] for name in dict.fromkeys(hosts)],
+                "next_run":timestamp.isoformat(),"interval_seconds":interval_seconds,
+                "cron":" ".join(cron.split()) if cron is not None else None,
+                "cron_timezone":cron_timezone if cron is not None else None,
+                "equipment_book_id":book_id,"equipment_book_name":book["name"] if book else None}
+
+    def create(self,kind,hosts,run_at=None,interval_seconds=0,cron=None,cron_timezone="Asia/Seoul",book_id=None,enabled=True):
+        if not isinstance(enabled,bool):raise ValueError("Enabled must be a boolean")
+        fields=self._prepare(kind,hosts,run_at,interval_seconds,cron,cron_timezone,book_id)
         with self.lock:
-            if len(self.items) >= 100:
-                raise ValueError("At most 100 schedules are retained; delete old schedules first")
-            item = {"id": uuid.uuid4().hex, "kind": kind, "hosts": list(dict.fromkeys(hosts)),
-                    "targets": [inventory[name] for name in dict.fromkeys(hosts)],
-                    "next_run": timestamp.isoformat(), "interval_seconds": interval_seconds,
-                    "enabled": True, "message": "Waiting on Linux", "last_job_id": None}
+            if len(self.items)>=100: raise ValueError("At most 100 schedules are retained; delete old schedules first")
+            item={"id":uuid.uuid4().hex,**fields,"enabled":enabled,"message":"Waiting on Linux" if enabled else "Paused","last_job_id":None}
             self.items.append(item)
-            try:
-                self.save()
+            try:self.save()
             except Exception:
-                self.items.remove(item)
-                raise
+                self.items.remove(item);raise
+            return dict(item)
+
+    def update(self,schedule_id,kind,hosts,run_at=None,interval_seconds=0,cron=None,cron_timezone="Asia/Seoul",enabled=None,book_id=None):
+        fields=self._prepare(kind,hosts,run_at,interval_seconds,cron,cron_timezone,book_id)
+        if enabled is not None and not isinstance(enabled,bool):raise ValueError("Enabled must be a boolean")
+        with self.lock:
+            item=next((row for row in self.items if row["id"]==schedule_id),None)
+            if item is None:raise ValueError("Schedule no longer exists")
+            with self.service.lock:
+                running=self.service.jobs.get(item.get("last_job_id"),{}).get("status") in {"queued","running"}
+            if item.get("dispatching") or running:raise ValueError("Wait for the running scheduled job before editing")
+            before=copy.deepcopy(self.items)
+            item.update(fields)
+            if enabled is not None:item["enabled"]=enabled
+            item["message"]="Updated; waiting on Linux" if item["enabled"] else "Updated; paused"
+            try:self.save()
+            except Exception:
+                self.items=before;raise
             return dict(item)
 
     def change(self, schedule_id, enabled=None, delete=False):
@@ -116,7 +150,10 @@ class Scheduler:
                 if not isinstance(enabled, bool):
                     raise ValueError("Enabled must be a boolean")
                 if enabled and datetime.fromisoformat(item["next_run"]) <= datetime.now().astimezone():
-                    raise ValueError("Expired schedules cannot resume; create a new future schedule")
+                    if item.get("cron"):
+                        item["next_run"] = next_cron(item["cron"], datetime.now().astimezone(), item.get("cron_timezone", "UTC")).isoformat()
+                    else:
+                        raise ValueError("Expired schedules cannot resume; create a new future schedule")
                 item.update(enabled=enabled, message="Waiting on Linux" if enabled else "Paused")
             try:
                 self.save()
@@ -138,15 +175,22 @@ class Scheduler:
                     busy = sum(job["status"] in {"queued", "running"} for job in self.service.jobs.values()) >= 2
                 if previous.get("status") in {"queued", "running"} or busy:
                     item["message"] = "Waiting for active Linux jobs"; continue
+                if item.get("equipment_book_id"):
+                    try: current_book=self.service.equipment_book(item["equipment_book_id"])
+                    except ValueError: current_book=None
+                    if not current_book or set(current_book["hosts"])!=set(item["hosts"]):
+                        item.update(enabled=False,message="Equipment book changed; review and update schedule");self.save();continue
                 inventory = {row["hostname"]: row for row in self.service.inventory()}
                 if any(inventory.get(row["hostname"]) != row for row in item["targets"]):
                     item.update(enabled=False, message="Inventory changed; create a new schedule"); self.save(); continue
                 # Persist intent before dispatch: no duplicate catch-up after an uncertain restart.
                 item["dispatching"] = True; self.save()
                 try:
-                    job = self.service.submit(item["kind"], item["hosts"])
-                    item.update(last_job_id=job["id"], dispatching=False, message="Submitted to Linux")
-                    if item["interval_seconds"]:
+                    job = (self.service.submit(item["kind"],item["hosts"],book_id=item["equipment_book_id"]) if item.get("equipment_book_id") else self.service.submit(item["kind"],item["hosts"]))
+                    item.update(last_job_id=job["id"], last_run=timestamp.isoformat(), dispatching=False, message="Submitted to Linux")
+                    if item.get("cron"):
+                        item["next_run"] = next_cron(item["cron"], timestamp, item.get("cron_timezone", "UTC")).isoformat()
+                    elif item["interval_seconds"]:
                         item["next_run"] = (timestamp + timedelta(seconds=item["interval_seconds"])).isoformat()
                     else:
                         item["enabled"] = False
