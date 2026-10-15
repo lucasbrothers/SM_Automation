@@ -209,3 +209,19 @@ def test_agent_file_download_does_not_copy_file_into_every_queue(service,tmp_pat
     assert base64.b64decode(task['options']['content'])==content
     device.exchange(results=[{'id':task_id,'status':'completed','result':{'sha256':hashlib.sha256(content).hexdigest(),'bytes':len(content)}}])
     assert service.agents.execute(job,row)['status']=='completed'
+
+
+def test_long_poll_wakes_when_task_enqueued_without_holding_registry_lock(service):
+    opened(service);device=Device(service);device.exchange()
+    row=service.inventory()[0];response={};started=threading.Event()
+    def poll():
+        started.set();response.update(device.exchange(wait_for_task=True))
+    thread=threading.Thread(target=poll);thread.start();assert started.wait(1)
+    time.sleep(.1)
+    job={'id':uuid.uuid4().hex,'kind':'command','status':'running','options':{'command':'Write-Output fixture'},'cancel_requested':False}
+    with service.lock:
+        service.jobs[job['id']]=job;task_id=service.agents.prepare(job,row)
+    thread.join(2)
+    assert not thread.is_alive()
+    assert response['task']['id']==task_id and response['poll_seconds']==1
+    assert 'received task' in job['message']

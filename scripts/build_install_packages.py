@@ -14,7 +14,7 @@ roles={
 base_installer=root/"release/windows-client-base.exe"
 manifest=[]
 for role, files in roles.items():
- files += [root/"docs/production-test.md",root/"docs/offline-deployment.md",root/"docs/ci-dashboard.md",root/"docs/windows-client-agent.md",root/"docs/windows-client-validation.md"]
+ files += [root/"docs/production-test.md",root/"docs/offline-deployment.md",root/"docs/ci-dashboard.md",root/"docs/windows-client-agent.md",root/"docs/windows-client-validation.md",root/"docs/platform-support.md"]
  path=out/(role+".zip")
  with zipfile.ZipFile(path,"w",zipfile.ZIP_DEFLATED) as archive:
   for file in sorted(set(files)):

@@ -35,3 +35,14 @@ Windows 백업 재검증 소요 시간은 약 118초, 설정 비교 약 1초였�
 ## 확인 범위
 
 현재 Windows PC와 로컬 WSL 한정 실기 검증이다. PC 재부팅/에이전트 제거는 실행하지 않았다. 자동 시작 설정은 Windows 서비스/레지스트리에서 확인했다. 외부 Windows/AIX/RHEL 및 실제 1,000대 부하 시험은 별도다. Windows agent의 전용 계정 변경·패치·보안 감사·08 자원 모니터링은 아직 지원하지 않으며 성공 항목에 포함하지 않았다. 백업은 설정·진단 자료로 전체 디스크 이미지/복구 기능이 아니다.
+
+
+## 2026-10-15 Windows 계정/패치 조회 및 통합 OS 표시
+
+05는 Windows 로컬 계정 6개(SID·그룹·활성 상태 등), 06은 설치 KB 5개(설치일·설명)를 현재 PC의 기존 1.1 에이전트로 실제 조회했다. Windows 계정 생성/삭제 및 패치 계획/적용은 SERVER에서 거부됨을 실기 확인했다. Linux 기능을 유지하며 Windows 혼합 대상 변경도 작업 접수 전에 전체 거부한다. CSV는 새 속성을 포함하고 표 정렬을 유지한다. 도메인 계정 및 미설치 Windows Update/전체 앱·드라이버 조회는 범위 밖이다.
+
+Windows 명령 작업은 실제 이력에서 completed였으며 기존 CLIENT의 30~35초 고정 sleep이 대기 원인이었다. 새 CLIENT는 wait_for_task 플래그로 최대 15초 SERVER 대기를 요청하고 작업 등록 condition 알림에 즉시 깨어난다. SERVER 잠금을 대기 중 해제하고 기존 CLIENT 호환을 유지한다. 작업 이력 Details에 전달 상태를 표시한다. signed TLS 독립 바이너리 시험 및 큐 알림 동시성 검증 통과. 현재 PC의 UAC 설치가 취소되어 새 바이너리 서비스 교체는 미완료이며 실제 설치 서비스의 대기 시간 개선은 아직 검증하지 못했다. 갱신 파일 release/SM-Windows-Client-Setup.exe 준비.
+
+제품 설명을 Windows·Linux·AIX 통합 관리로 정리하고 docs/platform-support.md에 기능별 구현/제약/실장비 검증 범위를 명시했다. AIX 계정/패치 전용 메뉴 및 자원/보안 전 기능을 새로 구현했다는 의미는 아니다. 실제 검증은 승인된 현재 Windows PC와 WSL에 한정한다. 자동화 일시정지와 사용자 results.csv 미추적 유지.
+
+최종 검증: Windows 전체 526 passed / 29 skipped, 최종 상태 표시/지원 안내 관련 47 passed / 2 skipped, WSL 계정·패치·agent 관련 27 passed. 역할별 설치 ZIP 갱신 및 로컬 SERVER 재시작 적용 완료. UAC 취소로 현재 Windows 서비스 바이너리 갱신은 사용자 관리자 실행 필요.

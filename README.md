@@ -1,6 +1,6 @@
 # SM_Automation
 
-Linux 메인 서버와 Windows 네이티브 GUI로 구성한 중앙 OS 관리 시스템입니다.
+Windows·Linux·AIX CLIENT를 관리하는 통합 OS 관리 시스템입니다. 중앙 SERVER는 Linux, GUI 콘솔은 Windows에서 실행됩니다.
 **2026-10-08 아키텍처 변경 기준**이며 과거 Windows 컨트롤러/PostgreSQL 설계보다 우선합니다.
 
 ```text
@@ -11,7 +11,8 @@ Linux main server ── encrypted DATA / BACKUP
         │ SSH :22
         ├── Linux / RHEL
         ├── AIX
-        └── Windows OpenSSH / PowerShell
+        └── Windows OpenSSH / PowerShell (기존 방식)
+Windows CLIENT agent ── outbound TLS :7443 ──▶ Linux main server
 ```
 
 Windows는 대상 선택, 요청 전송, 진행 상황과 결과 표시만 합니다.
@@ -76,3 +77,5 @@ Windows 클라이언트의 TLS 인증, 연결 수집, 자원 수집, 보안 감�
 실행 방법과 남은 작업은 [WSL 진행 기록](docs/wsl-progress.md)을 참조하세요.
 
 이전 설계 대화는 [기록](docs/imported-central-os-conversation.md)으로 보존합니다.
+
+OS별 지원·제약은 [Windows·Linux·AIX 지원표](docs/platform-support.md)를 확인하세요. Windows 계정/설치 KB는 조회 전용입니다.

@@ -43,7 +43,7 @@ class TLSServer(socketserver.ThreadingTCPServer):
 
 
 def readable_job(job):
-    return job.get("kind") in {"connections", "monitoring", "ci_inventory"} or (job.get("kind") == "accounts" and job.get("options", {}).get("action") == "list")
+    return job.get("kind") in {"connections", "monitoring", "ci_inventory"} or (job.get("kind") in {"accounts", "patches"} and job.get("options", {}).get("action") == "list")
 
 
 class Handler(socketserver.BaseRequestHandler):

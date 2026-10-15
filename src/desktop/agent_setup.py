@@ -34,7 +34,7 @@ class AgentDialog(QDialog):
         self.health=QLabel();self.health.setWordWrap(True);layout.addWidget(self.health)
         self.table=QTableWidget(0,7);self.table.setHorizontalHeaderLabels(['CLIENT','상태','최근 접속','접속 출발 IP','버전','최초 등록','장비 ID']);self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);enable_sorting(self.table);layout.addWidget(self.table,1)
         footer=QLabel('120초 이상 접속이 없으면 오프라인입니다. 오프라인은 제거 확정이 아닙니다. 정상 제거 통보는 제거됨으로 표시합니다. 목록 제거 시 장비 인증을 폐기하며 CI/작업 이력은 보존합니다.');footer.setWordWrap(True);layout.addWidget(footer)
-        support=QLabel('Windows agent 지원: CI · TCP 조회 · SYSTEM PowerShell 명령 · 일반 파일 전송(8 MiB). 백업·설정 비교(agent 1.1)는 지원하며 Linux 전용 계정·패치·보안 작업은 지원하지 않습니다.');support.setWordWrap(True);layout.addWidget(support)
+        support=QLabel('Windows agent 지원: CI · TCP 조회 · SYSTEM PowerShell 명령 · 일반 파일 전송(8 MiB). 백업·설정 비교(agent 1.1)는 지원하며 Windows 로컬 계정·설치된 KB는 조회만 지원합니다. 계정·패치 변경과 Linux 전용 보안 작업은 지원하지 않습니다.');support.setWordWrap(True);layout.addWidget(support)
         self.closed=False;self.busy=False;self.generation=0;self.policy_loaded=False;self.finished.connect(lambda _:setattr(self,'closed',True))
         self.timer=QTimer(self);self.timer.timeout.connect(self.refresh);self.timer.start(30000)
         self.refresh()

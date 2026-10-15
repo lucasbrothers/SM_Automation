@@ -181,6 +181,19 @@ class AgentManager:
             if not record or record.get('revoked'):raise ValueError('Device is revoked')
             tasks=self.read_tasks(identity)
         offered=None
+        # Opt-in long polling releases the shared lock while idle. Legacy clients
+        # retain their existing short response and sleep behavior.
+        if data.get('wait_for_task') is True and not record['uninstalled'] and not results:
+            def ready():
+                current=self.device(identity)
+                return (self.service.closed or not current or current.get('revoked') or
+                        any(t['state'] in {'pending','issued'} and t.get('not_before',0)<=time.time()
+                            for t in self.read_tasks(identity)))
+            self.task_ready.wait_for(ready,timeout=15)
+            current=self.device(identity)
+            if not current or current.get('revoked'):raise ValueError('Device is revoked')
+            record=current
+            tasks=self.read_tasks(identity)
         if not record['uninstalled']:
             for task in tasks:
                 if task['state'] in {'pending','issued'}:
@@ -190,7 +203,10 @@ class AgentManager:
                     if time.time()>task['expires']:
                         task['state']='expired';changed=True;continue
                     if time.time()<task.get('not_before',0):continue
-                    task['state']='issued';changed=True;offered={k:task[k] for k in ('id','kind','options')}
+                    task['state']='issued';changed=True
+                    parent=self.service.jobs.get(task['job_id'])
+                    if parent is not None:parent['message']='Windows CLIENT received task; awaiting execution result'
+                    offered={k:task[k] for k in ('id','kind','options')}
                     if task['kind']=='transfer' and task['options']['direction']=='download':
                         from server.files import LIMIT
                         import stat
@@ -206,7 +222,7 @@ class AgentManager:
                     break
         if changed:self.save_tasks(identity,tasks)
         self.save(identity,record)
-        return {'hostname':record['hostname'],'ack':ack,'task':offered,'poll_seconds':30}
+        return {'hostname':record['hostname'],'ack':ack,'task':offered,'poll_seconds':1 if data.get('wait_for_task') is True else 30}
 
     def read_tasks(self,identity):
         if identity not in self.tasks:self.tasks[identity]=self.store.read_json('agents/tasks/'+identity+'.json.enc',[])
@@ -311,6 +327,7 @@ class AgentManager:
         due=time.time()+job.get('spread_seconds',0)*index/max(1,total-1)
         task={'id':identity_task,'job_id':job['id'],'kind':job['kind'],'options':options,'state':'pending','not_before':due,'expires':due+180}
         tasks.append(task);self.save_tasks(identity,tasks)
+        job['message']='Waiting for Windows CLIENT connection / task delivery'
         with self.task_ready:self.task_ready.notify_all()
         return identity_task
 
@@ -347,6 +364,13 @@ class AgentManager:
 
     def execute(self,job,row):
         try:
+            if job["kind"] in {"accounts","patches"}:
+                from monitoring.windows_queries import query_script, parse_query
+                script=query_script(job["kind"],job["options"])
+                response=self.execute({**job,"kind":"command","options":{"command":script}},row)
+                if response["status"]!="completed":return response
+                data=parse_query(job["kind"],response["result"])
+                return {**row,"status":"partial" if data["warnings"] else "completed","result":data}
             if job["kind"]=="backup":return self.backup(job,row)
             if job["kind"]=="backup_compare":return self.compare_backup(job,row)
             with self.lock:

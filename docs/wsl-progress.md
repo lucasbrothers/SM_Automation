@@ -817,3 +817,14 @@ Windows agent 1.1.0의 항목별 백업·설정 비교를 추가했다. 항목�
 사용자가 현재 Windows PC의 재설치/실기 검증을 명시적으로 승인했다. 실제 UAC 상승 설치로 기존 서비스를 1.1.0으로 교체했고 장비 식별을 유지했다. LocalSystem·자동 지연 시작·Running과 설치 바이너리 SHA256 일치를 확인했다. 실제 CI·SYSTEM 명령·실패 보고·TCP·양방향 파일 실제 경로/SHA256·Windows 11항목 백업 암호화/복호화·245개 파일 비교(0변경)·장비록·명령 라이브러리·40초 뒤 SERVER 예약까지 11개 통합 시나리오 모두 통과했다. 첫 실기 시험에서 발견한 CLIXML 오인은 수정 후 실제 백업 재실행으로 검증했다. 실제 Linux 12항목 백업과 비교도 운영 중인 로컬 WSL 작업 이력에 completed로 저장했다. 상세 docs/windows-client-validation.md.
 
 전체 512 passed / 29 skipped, WSL 관련 56 passed 및 컴파일한 Windows 바이너리 독립 WSL TLS 시험 통과. 현재 PC 재부팅/제거, 외부 운영 OS/1,000대 실부하는 미실행이다. 테스트 예약·장비록·명령 라이브러리는 정리했고 백업/작업 이력은 남겼다. 자동화 일시정지 및 사용자 results.csv 미추적을 유지한다.
+
+
+## 2026-10-15 Windows 계정/패치 조회 및 통합 OS 표시
+
+05는 Windows 로컬 계정 6개(SID·그룹·활성 상태 등), 06은 설치 KB 5개(설치일·설명)를 현재 PC의 기존 1.1 에이전트로 실제 조회했다. Windows 계정 생성/삭제 및 패치 계획/적용은 SERVER에서 거부됨을 실기 확인했다. Linux 기능을 유지하며 Windows 혼합 대상 변경도 작업 접수 전에 전체 거부한다. CSV는 새 속성을 포함하고 표 정렬을 유지한다. 도메인 계정 및 미설치 Windows Update/전체 앱·드라이버 조회는 범위 밖이다.
+
+Windows 명령 작업은 실제 이력에서 completed였으며 기존 CLIENT의 30~35초 고정 sleep이 대기 원인이었다. 새 CLIENT는 wait_for_task 플래그로 최대 15초 SERVER 대기를 요청하고 작업 등록 condition 알림에 즉시 깨어난다. SERVER 잠금을 대기 중 해제하고 기존 CLIENT 호환을 유지한다. 작업 이력 Details에 전달 상태를 표시한다. signed TLS 독립 바이너리 시험 및 큐 알림 동시성 검증 통과. 현재 PC의 UAC 설치가 취소되어 새 바이너리 서비스 교체는 미완료이며 실제 설치 서비스의 대기 시간 개선은 아직 검증하지 못했다. 갱신 파일 release/SM-Windows-Client-Setup.exe 준비.
+
+제품 설명을 Windows·Linux·AIX 통합 관리로 정리하고 docs/platform-support.md에 기능별 구현/제약/실장비 검증 범위를 명시했다. AIX 계정/패치 전용 메뉴 및 자원/보안 전 기능을 새로 구현했다는 의미는 아니다. 실제 검증은 승인된 현재 Windows PC와 WSL에 한정한다. 자동화 일시정지와 사용자 results.csv 미추적 유지.
+
+최종 검증: Windows 전체 526 passed / 29 skipped, 최종 상태 표시/지원 안내 관련 47 passed / 2 skipped, WSL 계정·패치·agent 관련 27 passed. 역할별 설치 ZIP 갱신 및 로컬 SERVER 재시작 적용 완료. UAC 취소로 현재 Windows 서비스 바이너리 갱신은 사용자 관리자 실행 필요.

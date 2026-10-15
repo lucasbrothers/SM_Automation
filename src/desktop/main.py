@@ -305,7 +305,7 @@ class Console(QMainWindow):
         self.book_selector.currentIndexChanged.connect(self.apply_book_selection);scope.addWidget(self.book_selector)
         scope.addWidget(button("장비록 관리",self.manage_books));scope.addWidget(button("장비록 새로고침",self.refresh_books));scope.addStretch();content.addLayout(scope)
         self.title = label("Infrastructure overview", "title"); content.addWidget(self.title)
-        self.subtitle = label("One control console. All operational work on your Linux server.", "subtitle"); content.addWidget(self.subtitle)
+        self.subtitle = label("Windows · Linux · AIX 통합 관리 콘솔 | 중앙 SERVER에서 작업과 이력을 관리합니다.", "subtitle"); content.addWidget(self.subtitle)
         metrics = QHBoxLayout(); metrics.setSpacing(14)
         self.metric_values = []
         self.metric_cards = []
@@ -468,7 +468,7 @@ class Console(QMainWindow):
         frame, body = card(); body.addWidget(label("Your server fleet", "section"))
         actions = QHBoxLayout()
         actions.addWidget(button("Manage inventory", self.edit_inventory)); actions.addWidget(button("Import CSV / Excel", self.import_csv)); actions.addWidget(button("Download clients Excel", self.export_inventory_excel))
-        actions.addWidget(button("Refresh", self.reload)); actions.addStretch()
+        actions.addWidget(button("Refresh", self.reload)); actions.addWidget(button("OS별 지원 범위", self.show_platform_support)); actions.addStretch()
         actions.addWidget(button("Resource snapshot", lambda: (self.navigate(7), self.start_job("monitoring"))))
         actions.addWidget(button("Security audit", lambda: self.start_job("security_audit")))
         actions.addWidget(button("Protect SSH config (600)", lambda: self.start_job("security_permissions")))
@@ -477,6 +477,26 @@ class Console(QMainWindow):
         self.inventory_table = table(["Hostname", "IP address", "Operating system", "Execution"]); body.addWidget(self.inventory_table)
         body.addWidget(label("Inventory changes and collection results are stored encrypted on Linux.", "subtitle"))
         layout.addWidget(frame); self.pages.addWidget(page)
+
+    def show_platform_support(self):
+        dialog=QDialog(self);dialog.setWindowTitle("Windows · Linux · AIX 지원 범위");dialog.resize(790,480)
+        body=QVBoxLayout(dialog);text=QPlainTextEdit();text.setReadOnly(True)
+        text.setPlainText("""CLIENT = 관리 대상 Windows / Linux / AIX 장비
+SERVER = 중앙 작업·예약·암호화 저장을 담당하는 Linux 서버
+GUI = Windows 관리 콘솔
+
+공통: 목록·장비록·CI·TCP 연결 지도·원격 명령·파일 전송·백업·비교
+Windows 명령: PowerShell / SYSTEM. 파일 전송은 현재 8 MiB 제한.
+Linux/AIX 명령: SSH 셸 및 설정된 실행 권한.
+
+05 계정: Windows 로컬 계정 조회 전용 / Linux 조회·변경 / AIX 전용 메뉴 미지원
+06 패치: Windows 설치 KB 조회 전용 / Linux 배포판별 조회·계획·적용 / AIX 전용 메뉴 미지원
+08 자원 및 Linux 보안 정책: Linux 전용
+
+Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·드라이버 목록이 아닙니다.
+검증 완료 범위: 현재 Windows PC와 로컬 WSL. AIX/RHEL 실장비 검증은 미실행.
+지원되지 않는 기능이 모든 OS에서 동작하는 것으로 표시하지 않습니다.""")
+        body.addWidget(text);body.addWidget(button("닫기",dialog.accept));dialog.exec()
 
     def build_resources(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
@@ -600,7 +620,7 @@ class Console(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
         frame, body = card(); body.addWidget(label("Server-side job history", "section"))
         body.addWidget(button("Load older operations", self.load_job_history))
-        self.jobs_table = table(["Created", "Operation", "Status", "Progress", "Job ID"])
+        self.jobs_table = table(["Created", "Operation", "Status", "Progress", "Job ID", "Details"])
         self.jobs_table.cellDoubleClicked.connect(lambda row, _: self.show_job(row_identity(self.jobs_table,row)))
         body.addWidget(self.jobs_table)
         body.addWidget(button("Cancel pending targets of selected job", self.cancel_selected_job))
@@ -764,7 +784,7 @@ class Console(QMainWindow):
 
     def build_accounts(self):
         page = QWidget(); layout = QVBoxLayout(page)
-        frame, body = card(); body.addWidget(label("Linux accounts", "section"))
+        frame, body = card(); body.addWidget(label("Linux / Windows accounts", "section"))
         self.account_tabs = QTabWidget()
         targets = QWidget(); targets.setObjectName("accountPage"); target_layout = QVBoxLayout(targets)
         target_layout.addWidget(label("Choose target servers. Selection is shared with Connection map."))
@@ -780,7 +800,7 @@ class Console(QMainWindow):
         review = QWidget(); review.setObjectName("accountPage"); review_layout = QVBoxLayout(review)
         self.account_review = QLabel(); self.account_review.setWordWrap(True)
         review_layout.addWidget(self.account_review)
-        review_layout.addWidget(button("Run account operation", self.run_accounts, True))
+        self.account_run_button=button("Run account operation", self.run_accounts, True); review_layout.addWidget(self.account_run_button)
         review_layout.addStretch()
         self.account_tabs.addTab(review, "3. Review and run")
         self.account_tabs.currentChanged.connect(lambda _: self.update_account_review())
@@ -814,10 +834,10 @@ class Console(QMainWindow):
                     "public_key": action == "public_key",
                 }[name]
                 field.setEnabled(required); form.setRowVisible(field, required)
-        self.account_action.currentIndexChanged.connect(update_fields); update_fields()
-        note = label("New accounts have no password set. Delete retains the home directory. Changes require an encrypted backup.")
+        self.account_action.currentIndexChanged.connect(update_fields); self.account_action.currentIndexChanged.connect(self.update_windows_query_controls); update_fields()
+        note = label("Windows: local accounts are read-only. Linux: New accounts have no password set. Delete retains the home directory. Changes require an encrypted backup.")
         note.setWordWrap(True); operation_layout.addWidget(note); operation_layout.addStretch()
-        self.account_table = table(["Server", "Username", "UID", "GID", "Comment", "Home", "Shell"])
+        self.account_table = table(["Server", "Username", "UID / SID", "GID / Groups", "Comment", "Home", "Shell", "Full name", "Enabled", "Account expires", "Password expires", "Last login"])
         results = QWidget(); results_layout = QVBoxLayout(results)
         self.account_result_status = QLabel("Choose CLIENT targets and query the account list.")
         self.account_result_status.setWordWrap(True); results_layout.addWidget(self.account_result_status)
@@ -864,6 +884,7 @@ class Console(QMainWindow):
             QMessageBox.warning(self, "Account export", "Could not save the file. Check the destination and permissions.")
 
     def run_accounts(self):
+        if self.has_windows_targets() and self.account_action.currentData() != "list":return
         options = {name: field.text().strip() for name, field in self.account_fields.items()}
         options["action"] = self.account_action.currentData()
         if options["action"] != "list":
@@ -878,31 +899,32 @@ class Console(QMainWindow):
         values = []
         for row in rows:
             for account in row.get("result", {}).get("accounts", []):
-                values.append([row["hostname"], *[account[key] for key in ("username", "uid", "gid", "comment", "home", "shell")]])
+                values.append([row["hostname"], *[account.get(key, "") for key in ("username", "uid", "gid", "comment", "home", "shell", "full_name", "enabled", "account_expires", "password_expires", "last_logon")]])
         fill_table(self.account_table, values); self.navigate(4)
+        notes = [row.get("result", {}).get("note", "") + " " + row.get("result", {}).get("warnings", "") for row in rows]
         failures = [row["hostname"] + ": " + row.get("error", row.get("message", row["status"]))
                     for row in rows if row["status"] != "completed"]
-        self.account_result_status.setText("Accounts: " + str(len(values)) + "\n" + "\n".join(failures)
+        self.account_result_status.setText("Accounts: " + str(len(values)) + "\n" + "\n".join(failures + notes)
                                           + ("\nCheck CLIENT login settings (SSH account/password/key); SERVER GUI login is separate." if failures else ""))
         self.status_line.setText(f"Account results: {len(values)} accounts; {sum(row['status'] == 'failed' for row in rows)} failed servers. Details are in Activity.")
 
     def build_patches(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
-        body.addWidget(label("Linux patches", "section"))
+        body.addWidget(label("Linux / Windows patches", "section"))
         help_text=label("① Connection map에서 CLIENT 선택 → ② 업데이트 조회 → ③ 패키지명(필요시 =버전) 입력 후 계획 미리보기 → ④ 대상·버전·의존성 검토 후 적용. 조회와 계획은 설치하지 않습니다.")
         help_text.setWordWrap(True);body.addWidget(help_text)
         body.addWidget(button("패치 동작·지원 범위 자세히 보기",self.show_patch_help))
         actions = QHBoxLayout()
-        actions.addWidget(button("Query updates", self.query_patches))
+        actions.addWidget(button("Query Linux updates / Windows installed KB", self.query_patches))
         self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("패키지명 또는 패키지명=버전, 공백으로 구분: openssh-server net-tools")
         actions.addWidget(self.patch_packages, 1)
-        actions.addWidget(button("Preview patch plan", self.plan_patches, True)); body.addLayout(actions)
-        self.patch_table = table(["Server", "Package", "Installed", "Planned version"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
+        self.patch_plan_button=button("Preview patch plan", self.plan_patches, True); actions.addWidget(self.patch_plan_button); body.addLayout(actions)
+        self.patch_table = table(["Server", "Package / KB", "Installed / Windows date", "Planned version / Windows status", "Description", "Installed by"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
         self.patch_output = QPlainTextEdit(); self.patch_output.setReadOnly(True); self.patch_output.setMinimumHeight(100); body.addWidget(self.patch_output, 1)
         self.patch_plan_id = None
         self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
         body.addWidget(self.patch_apply)
-        patch_note = label("Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
+        patch_note = label("Windows: installed KB query only (Get-HotFix/CBS), no changes. Linux Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
         patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -934,7 +956,7 @@ CLIENT·버전·의존성·경고를 확인하세요. 계획 유효 시간은 1�
 지원·제약
 Debian/Ubuntu: APT 저장소 접근 또는 운영환경의 패키지 제공이 필요합니다.
 RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을 사용합니다.
-실제 RHEL 운영환경 검증은 아직 완료되지 않았습니다. AIX/Windows 패치는 지원하지 않습니다.
+실제 RHEL 운영환경 검증은 아직 완료되지 않았습니다. AIX 패치는 지원하지 않습니다. Windows는 설치된 KB(Get-HotFix/CBS) 조회만 지원합니다.
 백업은 설정/진단 보존이며 패키지 버전을 자동으로 되돌리는 전체 시스템 롤백이 아닙니다.
 대상별 성공·실패·출력은 결과 표/Activity에서 확인하고 CSV로 저장할 수 있습니다.
 07 예약은 수집·자원·보안 점검·백업용이며 패치 자동 적용 예약은 지원하지 않습니다.""")
@@ -945,10 +967,12 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.start_job("patches", options={"action": "list"})
 
     def plan_patches(self):
+        if self.has_windows_targets():return
         self.patch_plan_id = None; self.patch_apply.setEnabled(False)
         self.start_job("patches", options={"action": "plan", "packages": self.patch_packages.text().split()})
 
     def apply_patches(self):
+        if self.has_windows_targets():return
         if not self.patch_plan_id:
             return
         plan_id = self.patch_plan_id
@@ -962,7 +986,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         for row in rows:
             result = row.get("result", {})
             for package in result.get("packages", []):
-                values.append([row["hostname"], package["name"], package["installed"], package["candidate"]])
+                values.append([row["hostname"], package["name"], package["installed"], package["candidate"], package.get("description",""), package.get("installed_by","")])
             output.append(row["hostname"] + " / " + row["status"] + "\n" + row.get("error", result.get("output", "")))
             if result.get("note"):
                 output.append(result["note"])
@@ -973,7 +997,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         fill_table(self.patch_table, values); self.patch_output.setPlainText("\n\n".join(output)); self.navigate(5)
         if job.get("options", {}).get("action") == "plan" and job["status"] == "completed":
             self.patch_plan_id = job["id"]
-            self.patch_apply.setEnabled(bool(rows) and all(row.get("result", {}).get("apply_supported", True) for row in rows))
+            self.patch_apply.setEnabled(not self.has_windows_targets() and bool(rows) and all(row.get("result", {}).get("apply_supported", True) for row in rows))
 
     def build_schedules(self):
         self.schedules = [];self.edit_schedule_id=None;self.edit_schedule_hosts=[]
@@ -1126,14 +1150,14 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         if hasattr(self, "fit_timer"): self.fit_timer.start(80)
         if index == 8 and self.client and not self.demo:
             self.refresh_saved_commands()
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Manage Linux accounts", "Plan your Linux patches", "Keep operations on schedule", "Watch your Linux resources", "Commands and Linux files", "CI 자산 관리 대시보드"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Accounts — Windows / Linux", "Patches — Windows / Linux", "Keep operations on schedule", "Watch your Linux resources", "Commands and files — Windows / Linux / AIX", "CI 자산 관리 대시보드"]
         self.title.setText(titles[index])
-        descriptions = ["One control console. All operational work on your Linux server.",
-                        "Selected servers and their established TCP peers. All collection runs on Linux.",
+        descriptions = ["Windows · Linux · AIX 통합 관리 콘솔 | 중앙 SERVER에서 작업과 이력을 관리합니다.",
+                        "Windows · Linux · AIX 장비의 TCP 연결을 중앙 SERVER에서 수집·보관합니다.",
                         "OS configuration files and account information, encrypted and retained on Linux.",
                         "Follow server-side jobs and inspect their results, even after reconnecting.",
-                        "Account changes run on Linux after an encrypted backup.",
-                        "Preview exact versions, then apply the reviewed plan from your Linux main server.",
+                        "Windows 로컬 계정 조회 · Linux 계정 조회/변경. AIX 계정 전용 조회는 현재 미지원.",
+                        "Windows 설치된 KB 조회 · Linux 업데이트 조회/계획/적용. AIX 패치 전용 조회는 현재 미지원.",
                         "Encrypted Linux schedules continue independently of your Windows console.",
                         "Linux collects load, memory and root disk observations over SSH.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console.", "장비록·개별 장비의 하드웨어, OS, 고객 및 서비스 정보를 관리합니다."]
         self.subtitle.setText(descriptions[index])
@@ -1216,7 +1240,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.submission_pending = False
         self.clear_session_views()
         self.server_badge.setText("Not connected"); self.connection_badge.setText("OFFLINE")
-        self.subtitle.setText("One control console. All operational work on your Linux server.")
+        self.subtitle.setText("Windows · Linux · AIX 통합 관리 콘솔 | 중앙 SERVER에서 작업과 이력을 관리합니다.")
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
 
     def clear_session_views(self):
@@ -1316,7 +1340,20 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         return [row_identity(self.target_table,row) for row in range(self.target_table.rowCount())
                 if self.target_table.item(row, 0).checkState() == Qt.CheckState.Checked]
 
+    def has_windows_targets(self):
+        names=set(self.checked_hosts())
+        return any(r["hostname"] in names and "win" in r.get("os","").lower() for r in self.servers)
+
+    def update_windows_query_controls(self, *_):
+        windows=self.has_windows_targets()
+        if hasattr(self,"account_run_button"):
+            self.account_run_button.setEnabled(not windows or self.account_action.currentData()=="list")
+        if hasattr(self,"patch_plan_button"):
+            self.patch_plan_button.setEnabled(not windows); self.patch_packages.setEnabled(not windows)
+            if windows:self.patch_apply.setEnabled(False)
+
     def selection_changed(self, *_):
+        self.update_windows_query_controls()
         hosts = self.checked_hosts(); self.metric_values[1].setText(str(len(hosts)))
         if hasattr(self, "command_targets"):
             self.command_targets.setText("Selected targets: " + self.target_description())
@@ -1454,7 +1491,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         jobs = sorted(self.job_history.values(), key=lambda job: (job["created_at"], job["id"]), reverse=True)
         self.jobs = jobs
         self.timer.setInterval(3000 if any(j["status"] in {"queued","running"} for j in jobs) else 15000)
-        fill_identity_table(self.jobs_table, jobs, [[j["created_at"], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12]] for j in jobs])
+        fill_identity_table(self.jobs_table, jobs, [[j["created_at"], j["kind"], j["status"], f"{j['done']}/{j['total']}", j["id"][:12], j.get("message", "")] for j in jobs])
         self.display_backup_history([j for j in jobs if j["kind"] == "backup"])
         resource = next((job for job in jobs if job["kind"] == "monitoring" and job["status"] not in {"queued", "running"}), None)
         if resource and resource["id"] != self.resource_loaded_job and self.client:
@@ -1697,7 +1734,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.target_table.item(3, 0).setCheckState(Qt.CheckState.Unchecked)
         self.server_badge.setText("sm-main.example.internal\nTLS : 7443 / Preview")
         self.connection_badge.setText("DEMO  /  SYNTHETIC DATA")
-        self.subtitle.setText("Selected servers and their established TCP peers. All collection runs on Linux.")
+        self.subtitle.setText("Windows · Linux · AIX 장비의 TCP 연결을 중앙 SERVER에서 수집·보관합니다.")
         self.display_connections(connection_rows())
         self.display_resources([
             {"hostname": "app-linux-01", "status": "completed", "result": {"load_average": [0.42, 0.31, 0.28], "memory_mb": {"used": 5930, "total": 16384}, "root_filesystem": {"capacity": "47%"}, "uptime": "up 12 days, 3 hours"}},

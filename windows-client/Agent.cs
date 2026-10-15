@@ -151,7 +151,7 @@ public static class Agent {
         if(State.ContainsKey("started_task")&&!State.ContainsKey("outbox")){State["outbox"]=new Dictionary<string,object>{{"id",State["started_task"]},{"status","failed"},{"error","Agent restarted during execution; completion is unknown and the task was not repeated"}};State.Remove("started_task");Save();}
         while(!Stop.WaitOne(0)){
             try{
-                var payload=new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname",Environment.MachineName},{"version","1.1.0"}};
+                var payload=new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname",Environment.MachineName},{"version","1.1.0"},{"wait_for_task",true}};
                 if(DateTime.UtcNow-LastCollection>TimeSpan.FromMinutes(15)){try{payload["observation"]=Collect();}catch{payload["collection_error"]="Windows CI discovery failed";}}
                 if(State.ContainsKey("outbox"))payload["results"]=new object[]{State["outbox"]};
                 var response=Exchange(payload);
@@ -164,7 +164,8 @@ public static class Agent {
                 Status("connected");failures=0;
                 var task=Map(response.ContainsKey("task")?response["task"]:null);
                 if(task.Count>0){Task(task);continue;}
-                Stop.WaitOne(30000+Jitter.Next(0,5000));
+                int delay=response.ContainsKey("poll_seconds")?Convert.ToInt32(response["poll_seconds"]):30;
+                Stop.WaitOne(Math.Max(1,Math.Min(60,delay))*1000+Jitter.Next(0,500));
             }catch(Exception e){Log("Connection/operation failed: "+e.GetType().Name);Status("retrying");failures++;Stop.WaitOne(Math.Min(300000,5000*(1<<Math.Min(failures,5)))+Jitter.Next(0,3000));}
         }
     }

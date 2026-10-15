@@ -70,5 +70,5 @@ def authorize(role, method, params):
         if method in {"command.saved.save", "command.saved.delete", "file.mkdir", "file.upload", "file.commit", "file.abort", "job.cancel"}: return
         if method == "job.start":
             if params.get("kind") in {"connections", "monitoring", "ci_inventory"}: return
-            if params.get("kind") == "accounts" and params.get("options", {}).get("action", "list") == "list": return
+            if params.get("kind") in {"accounts", "patches"} and params.get("options", {}).get("action", "list") == "list": return
     raise ValueError("Permission denied: " + method + " requires a higher role")
