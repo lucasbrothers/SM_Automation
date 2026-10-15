@@ -165,16 +165,23 @@ class ManagementService:
                 job.update(status="interrupted", message="Server restarted; inspect partial artifacts before retrying", finished_at=now())
                 self.data.write_json(f"jobs/{job['id']}.json.enc", job)
             self.jobs[job["id"]] = job
+        from server.agents import AgentManager
+        self.agents = AgentManager(self)
         self.scheduler = Scheduler(self)
 
     def inventory(self):
         with self.lock:
-            return self.data.read_json("inventory.json.enc", [])
+            rows = self.data.read_json("inventory.json.enc", [])
+            return self.agents.decorate(rows) if hasattr(self,"agents") else rows
 
     def save_inventory(self, rows):
         rows = inventory_records(rows)
         verify_inventory_profiles(rows, self.profiles)
         with self.lock:
+            if hasattr(self,"agents"):
+                names={row["hostname"] for row in rows}
+                for name,identity in self.agents.bindings.items():
+                    if name not in names and self.agents.device(identity):self.agents.revoke(identity)
             self.data.write_json("inventory.json.enc", rows)
         return {"count": len(rows)}
 
@@ -338,6 +345,8 @@ class ManagementService:
         with getattr(self,"heavy_slots",nullcontext()):return backup_server(*args,**kwargs)
 
     def _target(self,job,row):
+        if row.get("transport") == "agent":
+            return self.agents.execute(job,row)
         with getattr(self,"ssh_slots",nullcontext()):
             with (getattr(self,"heavy_slots",nullcontext()) if job["kind"] in {"backup_compare"} else nullcontext()):
                 return self._target_inner(job,row)
@@ -573,6 +582,11 @@ class ManagementService:
                 job.update(status="running", started_at=now())
                 self._save(job)
             started=time.monotonic()
+            for index,row in enumerate(targets):
+                if row.get("transport")=="agent":
+                    try:
+                        with self.lock:self.agents.prepare(job,row,index,len(targets))
+                    except (ValueError,OSError):pass  # Per-target execution records the error.
             with ThreadPoolExecutor(max_workers=min(self.config.max_workers, len(targets))) as workers:
                 futures = {workers.submit(self._spread_target, job, row, index, len(targets), started) for index,row in enumerate(targets)}
                 for future in as_completed(futures):
@@ -612,6 +626,18 @@ class ManagementService:
         return self._ci_registry
 
     def dispatch(self, method, params):
+        if method.startswith("agent."):
+            with self.lock:
+                if method=="agent.policy.get":return dict(self.agents.policy)
+                if method=="agent.policy.save":return self.agents.configure(params)
+                if method=="agent.list":return self.agents.listing()
+                if method=="agent.revoke":return self.agents.revoke(params.get("id"),bool(params.get("remove",False)))
+                if method=="agent.server_identity":
+                    from cryptography import x509
+                    from cryptography.hazmat.primitives import hashes
+                    certificate=x509.load_pem_x509_certificate(self.config.tls_cert.read_bytes())
+                    return {"sha256":certificate.fingerprint(hashes.SHA256()).hex(),"port":self.config.listen_port}
+            raise ValueError("Unknown agent administration method")
         if method == "ci.list":
             with self.lock:
                 return self.ci_registry().listing(self.inventory(), params)

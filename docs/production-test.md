@@ -4,7 +4,7 @@
 
 ## 구성과 파일
 
-- CLIENT: 관리 대상 서버. 앱 에이전트 설치는 필요 없다. SSH/SFTP 서비스와 관리 계정을 준비한다. client-prerequisites.zip에는 준비 안내만 포함한다.
+- CLIENT: 관리 대상 서버. Linux/AIX는 SSH/SFTP와 관리 계정을 준비한다. Windows는 Windows CLIENT 자동 연결 설치 EXE를 권장하며 IP/포트만 입력한다. client-prerequisites.zip에는 준비 안내만 포함한다.
 - SERVER: Linux 메인 서버. server-install.zip을 원하는 디렉터리에 풀고 deploy/install-server.sh를 실행한다. Python 3.11 이상과 venv/pip, SSH 클라이언트가 필요하다.
 - GUI: Windows PC. gui-install.zip을 풀고 Python 3.14를 준비한다. deploy/install-gui.ps1 실행 후 deploy/start-gui.cmd로 실행한다.
 - 통신: GUI→SERVER TCP 7443 / SERVER→CLIENT 지정 SSH 포트(기본 22). 파일 전송은 CLIENT↔SERVER 작업과 별도 GUI(Windows)↔SERVER 파일 탐색 창으로 구분한다.
@@ -54,7 +54,7 @@ Connect server에서 실제 SERVER IP 또는 DNS, 포트 7443, 등록한 앱 ID/
 
 Linux CLIENT는 OpenSSH 서버와 SFTP를 실행하고 관리 계정의 공개키 또는 비밀번호 SSH 인증을 준비한다. 연결 조회에는 ss/netstat, 설정 수집에는 각 OS의 명령과 파일 접근 권한이 필요하다. 자원·계정·보안·패치 변경은 현재 Linux를 지원하며 해당 관리 계정의 권한과 서버 프로필 privilege가 맞아야 한다. 모든 기능이 필요하면 승인된 권한으로 구성한다.
 
-AIX는 SSH/SFTP 및 OS 수집 명령을 준비한다. Windows CLIENT는 OpenSSH 서버/SFTP 및 PowerShell을 준비한다. 두 환경의 수집 코드는 있으나 실환경 검증은 미완료다. 계정·패치 기능은 모든 OS에서 제공되는 것이 아니다. CLIENT에는 SM Automation Python 패키지를 설치하지 않는다.
+AIX는 SSH/SFTP 및 OS 수집 명령을 준비한다. 기존 Windows SSH 모드는 OpenSSH 서버/SFTP 및 PowerShell을 준비한다. 새 Windows agent 모드는 문서 아래의 자동 연결 설치 안내를 따른다. 두 환경의 수집 코드는 있으나 실환경 검증은 미완료다. 계정·패치 기능은 모든 OS에서 제공되는 것이 아니다. CLIENT에는 SM Automation Python 패키지를 설치하지 않는다.
 
 ## 첫 테스트 순서
 
@@ -150,3 +150,7 @@ Cron 형식 참고: https://man7.org/linux/man-pages/man5/crontab.5.html
 ## CI 자산 관리
 
 GUI **10 CI / 자산**에서 장비록·선택 CLIENT의 OS/하드웨어/자원을 수집하고, 고객사·운영상태·서비스 등급·담당자·서비스명 등 자산 정보를 개별 또는 일괄 편집할 수 있습니다. 저장된 조회 전체를 CSV/Excel로 내려받습니다. 사용 순서·플랫폼별 수집 제한·권한·저장 위치는 [CI 자산 관리](ci-dashboard.md)를 확인하세요.
+
+## Windows CLIENT 자동 연결 설치
+
+Windows는 이제 별도 Python/SSH/WinRM 설치 대신 **Windows CLIENT 설치 / 상태**에서 만든 설치 EXE를 사용할 수 있습니다. 설치 시 SERVER IP와 포트만 입력하면 장비별 인증으로 SERVER에 자동 등록됩니다. 기존 Linux/AIX SSH 방식은 유지합니다. 설치·등록 허용 범위·오프라인/제거 상태·관리 목록 삭제·지원 기능과 검증 제한은 [Windows CLIENT 에이전트 안내](windows-client-agent.md)를 확인하세요.

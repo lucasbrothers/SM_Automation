@@ -52,6 +52,14 @@ class Handler(socketserver.BaseRequestHandler):
         try:
             with self.server.context.wrap_socket(self.request, server_side=True) as connection:
                 request = receive(connection)
+                if request.get("method") in {"agent.hello","agent.exchange"}:
+                    try:
+                        result=self.server.service.agents.rpc(request["method"],request.get("params",{}),self.client_address[0])
+                        response={"ok":True,"result":result}
+                    except (ValueError,TypeError,KeyError):
+                        response={"ok":False,"error":"Device request rejected; check registration policy, identity and server status"}
+                    send(connection,response)
+                    return
                 supplied = request.get("token", "")
                 from server.auth import authenticate, role_for, authorize
                 token_ok = isinstance(supplied, str) and hmac.compare_digest(supplied.encode(), self.server.token)

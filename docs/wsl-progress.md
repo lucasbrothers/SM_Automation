@@ -780,3 +780,13 @@ CI SMT/HT 활성 여부와 판정 근거(48열), Linux smt/active 및 OS 토폴�
 ## 2026-10-14 Uptime 표시
 
 CI 목록·상세·CSV/XLSX의 uptime은 누적 HH:MM:SS(24시간 초과 유지, 예25:01:01)로 표시한다. SERVER 저장/API 초 숫자와 숫자 정렬은 유지한다. 0/누락/음수/NaN/소수초/100시간 초과·실제 GUI/CSV 관련55개 검증 통과. 자동화 일시정지와 사용자 results.csv 미추적은 유지한다.
+
+## 2026-10-15 Windows CLIENT 자동 등록과 상태/제거 관리
+
+Windows CLIENT 전용 설치 EXE와 LocalSystem 서비스를 추가했다. GUI에서 SERVER 공개 인증서 지문을 포함한 설치 파일을 저장한 뒤 CLIENT는 SERVER IP/포트만 입력한다. CLIENT가 TLS 7443으로 먼저 연결하며 Python/SSH/WinRM/인바운드 규칙이 필요 없다. 장비별 RSA 서명, DPAPI 로컬 키 보호, CIDR/기간/대수 제한 신규 등록, 기존 호스트명 충돌 방지와 중단된 등록 복구를 적용했다. 개인키·비밀번호는 패키지나 문서에 포함하지 않는다.
+
+GUI Windows CLIENT 설치 / 상태에서 온라인(최근 120초)/오프라인/정상 제거 통보/접속 차단을 조회하고 CSV로 저장한다. 관리자 접속 차단 또는 목록 제거는 장비 인증을 폐기해 자동 재등록을 막으며 CI/작업 이력은 보존한다. 통신 단절만으로 제거를 단정하지 않는다. 30초 재조회와 자동 대상 추가를 지원한다.
+
+에이전트 지원 범위는 CI/SMT, TCP 조회, SYSTEM PowerShell 명령 및 일반 파일 양방향 전송(8 MiB)이다. 내구성 작업/결과 기록으로 중복 실행을 방지한다. Windows 에이전트 백업/비교 및 Linux 전용 계정/패치/보안 기능은 미지원이다. 설치/운영 안내는 docs/windows-client-agent.md.
+
+Windows 전체 487 passed / 29 skipped, WSL 에이전트 14 passed. 컴파일한 Windows 바이너리와 독립 로컬 WSL TLS 간 인증서 불일치 차단·서명 자동 등록·CI·허용 기간 종료 후 기존 장비 접속·고정 PowerShell 시험 명령 결과·제거 통보·인증 폐기를 확인했다. Windows 실제 SCM 서비스 설치/부팅/제거와 외부 운영 장비 시험, 코드 서명은 아직 수행하지 않았다. 자동화 일시정지 및 사용자 results.csv 미추적 유지.

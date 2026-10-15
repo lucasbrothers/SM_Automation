@@ -258,6 +258,8 @@ class Console(QMainWindow):
         self.workers = set()
         self.build_ui()
         self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(15000)
+        self.agent_inventory_busy=False
+        self.agent_inventory_timer=QTimer(self);self.agent_inventory_timer.timeout.connect(self.refresh_agent_inventory);self.agent_inventory_timer.start(30000)
         self.resource_timer = QTimer(self); self.resource_timer.timeout.connect(self.refresh_resources); self.resource_timer.setInterval(120000)
         if demo:
             self.load_demo()
@@ -279,6 +281,7 @@ class Console(QMainWindow):
         nav.addWidget(button("CLIENT login settings", self.edit_client_credentials))
         nav.addWidget(button("Deploy SERVER public key", self.deploy_server_key))
         nav.addWidget(button("SERVER GUI account", self.edit_gui_account))
+        self.agent_setup_button=button("Windows CLIENT 설치 / 상태",self.agent_setup);nav.addWidget(self.agent_setup_button)
         nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
         self.sidebar_scroll = QScrollArea(); self.sidebar_scroll.setWidgetResizable(True)
         self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -377,6 +380,24 @@ class Console(QMainWindow):
                     if widget is self.target_table:
                         widget.setRowHeight(row, max(round(60 * scale), 2 * widget.fontMetrics().height() + 12))
 
+    def closeEvent(self,event):
+        for name in ("timer","resource_timer","agent_inventory_timer","fit_timer"):
+            if hasattr(self,name):getattr(self,name).stop()
+        super().closeEvent(event)
+
+    def agent_setup(self):
+        if not self.require_client():return
+        from desktop.agent_setup import AgentDialog
+        AgentDialog(self).exec()
+
+    def refresh_agent_inventory(self):
+        if not self.client or self.demo or self.agent_inventory_busy:return
+        client=self.client;self.agent_inventory_busy=True
+        def loaded(rows):
+            self.agent_inventory_busy=False;self.set_inventory(rows)
+            if self.pages.currentIndex()==9:self.ci_dashboard.refresh()
+        self.work(lambda:client.call("inventory.list"),loaded,quiet=True,on_error=lambda:setattr(self,"agent_inventory_busy",False))
+
     def edit_gui_account(self):
         if not self.require_client():
             return
@@ -414,6 +435,8 @@ class Console(QMainWindow):
         hosts = self.checked_hosts()
         if len(hosts) != 1:
             QMessageBox.information(self, "CLIENT login settings", "Select exactly one CLIENT in Connection map."); return
+        if any(r["hostname"]==hosts[0] and r.get("transport")=="agent" for r in self.servers):
+            QMessageBox.information(self,"Windows agent","이 장비는 에이전트 인증을 사용하므로 SSH 계정/비밀번호 설정이 필요하지 않습니다.");return
         client = self.client; hostname = hosts[0]
         def show(current):
             dialog = QDialog(self); dialog.setWindowTitle("CLIENT login: " + hostname); dialog.resize(530, 300)
@@ -604,7 +627,7 @@ class Console(QMainWindow):
 
     def build_tools(self):
         page = QWidget(); layout = QVBoxLayout(page)
-        layout.addWidget(label("Commands on selected servers", "section"))
+        layout.addWidget(label("Commands · Linux/AIX root / Windows agent SYSTEM PowerShell", "section"))
         self.command_targets = QLabel(); self.command_targets.setWordWrap(True); layout.addWidget(self.command_targets)
         layout.addWidget(button("Choose servers in Connection map", lambda: self.navigate(1)))
         self.command_input = QPlainTextEdit(); self.command_input.setPlaceholderText("Command executed as root (sudo first, then su fallback)")
@@ -708,6 +731,8 @@ class Console(QMainWindow):
         if not command.strip() or not hosts or not self.require_client():
             self.status_line.setText("Enter a command and select target servers."); return
         if QMessageBox.question(self, "Review command", "Targets: " + self.target_description() + "\n\n" + command) == QMessageBox.Yes:
+            if all(r.get("transport")=="agent" for r in self.servers if r["hostname"] in hosts):
+                self.start_job("command",options={"command":command});return
             root_password, accepted = QInputDialog.getText(self, "Root transition", "Root password for su fallback (leave blank if sudo works). Kept only for this job:", QLineEdit.EchoMode.Password)
             if accepted:
                 self.start_job("command", options={"command": command, "root_password": root_password})
@@ -1150,6 +1175,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         role=status.get("role","admin");self.user_role=role
         self.connection_badge.setText("CONNECTED / TLS / " + role.upper())
         self.command_run_button.setEnabled(role == "admin")
+        self.agent_setup_button.setEnabled(role == "admin")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
         self.history_errors = status.get("history_errors", [])
         self.subtitle.setToolTip("")
@@ -1179,6 +1205,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.status_line.setText("Disconnected. Jobs already submitted continue on Linux.")
 
     def clear_session_views(self):
+        self.agent_inventory_busy=False
         self.ci_dashboard.clear()
         self.equipment_books=[];self.book_selector.blockSignals(True);self.book_selector.clear();self.book_selector.addItem("개별 장비 선택",None);self.book_selector.blockSignals(False)
         self.saved_commands.clear()
@@ -1222,7 +1249,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         checked = set(self.checked_hosts())
         selected = {identity(server) for server in self.servers if server["hostname"] in checked}
         self.servers = servers; self.metric_values[0].setText(str(len(servers)))
-        fill_table(self.inventory_table, [[r["hostname"], r["ip"], r["os"], "Linux main server / SSH"] for r in servers])
+        fill_table(self.inventory_table, [[r["hostname"], r["ip"], r["os"], ("Windows agent / "+r.get("agent_status","unknown")) if r.get("transport")=="agent" else "Linux main server / SSH"] for r in servers])
         self.target_table.blockSignals(True); sorting = self.target_table.isSortingEnabled(); self.target_table.setSortingEnabled(False); self.target_table.setRowCount(len(servers))
         for row, server in enumerate(servers):
             check = QTableWidgetItem(); check.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)

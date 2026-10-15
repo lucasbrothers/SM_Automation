@@ -56,7 +56,7 @@ def role_for(store, username):
 
 def authorize(role, method, params):
     if role == "admin": return
-    read = {"session.info", "ci.list", "equipment.book.list", "status", "inventory.list", "ssh.profiles", "job.list", "job.get", "job.result", "command.saved.list", "file.list", "file.stat", "file.pending", "file.download", "schedule.list"}
+    read = {"agent.list", "session.info", "ci.list", "equipment.book.list", "status", "inventory.list", "ssh.profiles", "job.list", "job.get", "job.result", "command.saved.list", "file.list", "file.stat", "file.pending", "file.download", "schedule.list"}
     if role in {"operator", "viewer"} and method.startswith("file."):
         from pathlib import Path
         root = Path("/srv/sm-automation/shared").resolve()
