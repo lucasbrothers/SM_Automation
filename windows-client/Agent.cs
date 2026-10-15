@@ -81,15 +81,15 @@ public static class Agent {
     }
     static void Log(string value){try{string path=Path.Combine(DirectoryPath,"agent.log");if(File.Exists(path)&&new FileInfo(path).Length>1024*1024)File.Delete(path);File.AppendAllText(path,DateTime.UtcNow.ToString("o")+" "+value+Environment.NewLine,Encoding.UTF8);}catch{}}
     static string Script(){using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("ci-script"))using(var reader=new StreamReader(stream,Encoding.UTF8))return reader.ReadToEnd();}
-    static Dictionary<string,object> RunPowerShell(string script,int seconds){
+    static Dictionary<string,object> RunPowerShell(string script,int seconds,int outputLimit=1024*1024){
         // Every helper is hidden; output is bounded and a job object kills descendants.
         string encoded=Convert.ToBase64String(Encoding.Unicode.GetBytes("$OutputEncoding=[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding $false;\n"+script));
         var start=new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell\\v1.0\\powershell.exe"),"-NoLogo -NoProfile -NonInteractive -EncodedCommand "+encoded);
         start.UseShellExecute=false;start.CreateNoWindow=true;start.RedirectStandardOutput=true;start.RedirectStandardError=true;start.StandardOutputEncoding=Encoding.UTF8;start.StandardErrorEncoding=Encoding.UTF8;
-        var output=new StringBuilder();var errors=new StringBuilder();bool overflow=false;
+        var output=new StringBuilder();var errors=new StringBuilder();bool overflow=false;int outputBytes=0;
         using(var process=new Process())using(var job=new ProcessTree()){
             process.StartInfo=start;
-            process.OutputDataReceived+=(s,e)=>{if(e.Data!=null)lock(output){if(output.Length+e.Data.Length<1024*1024)output.AppendLine(e.Data);else overflow=true;}};
+            process.OutputDataReceived+=(s,e)=>{if(e.Data!=null)lock(output){int size=Encoding.UTF8.GetByteCount(e.Data+Environment.NewLine);if(outputBytes+size<outputLimit){output.AppendLine(e.Data);outputBytes+=size;}else overflow=true;}};
             process.ErrorDataReceived+=(s,e)=>{if(e.Data!=null)lock(errors){if(errors.Length+e.Data.Length<65536)errors.AppendLine(e.Data);else overflow=true;}};
             process.Start();job.Attach(process);process.BeginOutputReadLine();process.BeginErrorReadLine();
             DateTime deadline=DateTime.UtcNow.AddSeconds(seconds);
@@ -129,6 +129,7 @@ public static class Agent {
         if(kind=="connections"){var value=RunPowerShell("netstat -ano; exit $LASTEXITCODE",30);if(Convert.ToInt32(value["exit_code"])!=0)throw new IOException("Connection discovery failed");return value;}
         if(kind=="command")return RunPowerShell(Text(options,"command"),90);
         if(kind=="transfer")return Transfer(options);
+        if(kind=="backup_artifact")return RunPowerShell(Text(options,"script"),60,4*1024*1024);
         throw new IOException("Unsupported agent operation");
     }
     static void Task(Dictionary<string,object> task){
@@ -140,6 +141,8 @@ public static class Agent {
         Dictionary<string,object> result;
         try {var data=Execute(task);bool ok=!data.ContainsKey("exit_code")||Convert.ToInt32(data["exit_code"])==0;result=new Dictionary<string,object>{{"id",id},{"status",ok?"completed":"failed"},{"result",data}};}
         catch(Exception e){result=new Dictionary<string,object>{{"id",id},{"status","failed"},{"error",e.Message}};}
+        int budget=Text(task,"kind")=="backup_artifact"||Text(task,"kind")=="transfer"?11*1024*1024:1536*1024;
+        if(Encoding.UTF8.GetByteCount(Json.Serialize(result))>budget)result=new Dictionary<string,object>{{"id",id},{"status","failed"},{"error","Serialized result exceeds transport limit; no complete artifact was accepted"}};
         State["outbox"]=result;State.Remove("started_task");Save();
     }
     public static void Loop(){
@@ -148,7 +151,7 @@ public static class Agent {
         if(State.ContainsKey("started_task")&&!State.ContainsKey("outbox")){State["outbox"]=new Dictionary<string,object>{{"id",State["started_task"]},{"status","failed"},{"error","Agent restarted during execution; completion is unknown and the task was not repeated"}};State.Remove("started_task");Save();}
         while(!Stop.WaitOne(0)){
             try{
-                var payload=new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname",Environment.MachineName},{"version","1.0.0"}};
+                var payload=new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname",Environment.MachineName},{"version","1.1.0"}};
                 if(DateTime.UtcNow-LastCollection>TimeSpan.FromMinutes(15)){try{payload["observation"]=Collect();}catch{payload["collection_error"]="Windows CI discovery failed";}}
                 if(State.ContainsKey("outbox"))payload["results"]=new object[]{State["outbox"]};
                 var response=Exchange(payload);
@@ -175,14 +178,16 @@ public static class Agent {
     static int ProtocolFixture(string[] args){
         DirectoryPath=Path.GetFullPath(args[1]);Load();
         string mode=args.Length>2?args[2]:"enroll";
-        var payload=new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname","windows-protocol-fixture"},{"version","protocol-fixture"}};
+        var payload=new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname","windows-protocol-fixture"},{"version","1.1.0"}};
         if(mode=="uninstall")payload["uninstall"]=true;
         else payload["observation"]=new Dictionary<string,object>{{"actual_hostname","windows-protocol-fixture"},{"primary_ip","127.0.0.1"},{"os_name","Windows fixture"},{"cpu_topology",new object[]{new Dictionary<string,object>{{"cores",2},{"logical",4}}}}};
         if(State.ContainsKey("outbox"))payload["results"]=new object[]{State["outbox"]};
         var reply=Exchange(payload);
         var task=Map(reply.ContainsKey("task")?reply["task"]:null);
         if(mode=="task"&&task.Count>0){
-            if(Text(task,"kind")!="command"||Text(Map(task["options"]),"command")!="Write-Output 'SM-agent-fixture'")throw new IOException("Only the fixed harmless protocol fixture command is allowed");
+            bool fixtureCommand=Text(task,"kind")=="command"&&Text(Map(task["options"]),"command")=="Write-Output 'SM-agent-fixture'";
+            bool fixtureBackup=Text(task,"kind")=="backup_artifact"&&Text(Map(task["options"]),"script")=="Write-Output 'SM-agent-fixture'";
+            if(!fixtureCommand&&!fixtureBackup)throw new IOException("Only the fixed harmless protocol fixture command is allowed");
             Task(task);reply=Exchange(new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname","windows-protocol-fixture"},{"results",new object[]{State["outbox"]}}});
         }
         Console.WriteLine(Json.Serialize(reply));return 0;
@@ -191,7 +196,7 @@ public static class Agent {
         try{
             if(args.Length>1&&args[0]=="--protocol-test")return ProtocolFixture(args);
             if(args.Length>0&&args[0]=="--self-test")return SelfTest();
-            if(args.Length>0&&args[0]=="--notify-uninstall"){Load();Exchange(new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname",Environment.MachineName},{"version","1.0.0"},{"uninstall",true}});return 0;}
+            if(args.Length>0&&args[0]=="--notify-uninstall"){Load();Exchange(new Dictionary<string,object>{{"device_id",State["device_id"]},{"hostname",Environment.MachineName},{"version","1.1.0"},{"uninstall",true}});return 0;}
             if(args.Length>0&&args[0]=="--console"){Loop();return 0;}
             ServiceBase.Run(new AgentService());return 0;
         }catch(Exception e){Log("Stopped: "+e.GetType().Name);return 1;}

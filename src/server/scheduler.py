@@ -9,6 +9,10 @@ from server.cron import parse as parse_cron, zone as cron_zone, next_run as next
 from cryptography.fernet import InvalidToken
 
 
+def target_identity(row):
+    return tuple(row.get(k, "default" if k=="profile" else "") for k in ("hostname","ip","os","profile","transport","agent_id"))
+
+
 class Scheduler:
     def __init__(self, service):
         self.service = service
@@ -98,7 +102,7 @@ class Scheduler:
         if not isinstance(hosts, list) or not hosts or any(name not in inventory for name in hosts):
             raise ValueError("Select existing inventory targets")
         return {"kind":kind,"hosts":list(dict.fromkeys(hosts)),
-                "targets":[inventory[name] for name in dict.fromkeys(hosts)],
+                "targets":[copy.deepcopy(inventory[name]) for name in dict.fromkeys(hosts)],
                 "next_run":timestamp.isoformat(),"interval_seconds":interval_seconds,
                 "cron":" ".join(cron.split()) if cron is not None else None,
                 "cron_timezone":cron_timezone if cron is not None else None,
@@ -181,7 +185,7 @@ class Scheduler:
                     if not current_book or set(current_book["hosts"])!=set(item["hosts"]):
                         item.update(enabled=False,message="Equipment book changed; review and update schedule");self.save();continue
                 inventory = {row["hostname"]: row for row in self.service.inventory()}
-                if any(inventory.get(row["hostname"]) != row for row in item["targets"]):
+                if any(target_identity(inventory.get(row["hostname"],{})) != target_identity(row) for row in item["targets"]):
                     item.update(enabled=False, message="Inventory changed; create a new schedule"); self.save(); continue
                 # Persist intent before dispatch: no duplicate catch-up after an uncertain restart.
                 item["dispatching"] = True; self.save()

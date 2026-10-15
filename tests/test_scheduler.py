@@ -238,3 +238,15 @@ def test_equipment_book_changes_pause_scheduled_work(scheduler):
     book['hosts']=['other'];scheduler.items[0]['next_run']=(datetime.now().astimezone()-timedelta(seconds=2)).isoformat()
     scheduler.tick()
     assert not scheduler.items[0]['enabled'] and scheduler.service.count==0
+
+
+def test_agent_heartbeat_does_not_invalidate_schedule_but_identity_change_does(scheduler):
+    row=scheduler.service.rows[0];row.update(transport='agent',agent_id='a'*32,last_seen='previous',agent_status='online')
+    item=scheduler.create('connections',['lab'],future(),60)
+    stored=scheduler.items[0];stored['next_run']=(datetime.now().astimezone()-timedelta(seconds=1)).isoformat()
+    row.update(last_seen='new heartbeat',agent_status='offline')
+    scheduler.tick()
+    assert scheduler.service.count==1 and stored['enabled']
+    row['agent_id']='b'*32;stored['next_run']=(datetime.now().astimezone()-timedelta(seconds=1)).isoformat()
+    scheduler.tick()
+    assert scheduler.service.count==1 and not stored['enabled'] and 'Inventory changed' in stored['message']

@@ -84,7 +84,7 @@ public class Setup : Form {
         string uninstaller=Path.Combine(InstallPath,"Uninstall.exe");
         if(!String.Equals(Path.GetFullPath(Assembly.GetExecutingAssembly().Location),Path.GetFullPath(uninstaller),StringComparison.OrdinalIgnoreCase))File.Copy(Assembly.GetExecutingAssembly().Location,uninstaller,true);
         using(var entry=Registry.LocalMachine.CreateSubKey(UninstallKey)){
-            entry.SetValue("DisplayName","SM Automation Windows Agent");entry.SetValue("DisplayVersion","1.0.0");entry.SetValue("Publisher","SM Automation");entry.SetValue("InstallLocation",InstallPath);
+            entry.SetValue("DisplayName","SM Automation Windows Agent");entry.SetValue("DisplayVersion","1.1.0");entry.SetValue("Publisher","SM Automation");entry.SetValue("InstallLocation",InstallPath);
             entry.SetValue("UninstallString","\""+uninstaller+"\" --uninstall");entry.SetValue("NoModify",1);entry.SetValue("NoRepair",1);
         }
         Run("sc.exe","start SMAutomationAgent",false);
@@ -121,6 +121,11 @@ public class Setup : Form {
                 form.host.Text="192.0.2.10";form.install.Enabled=false;form.uninstall.Enabled=false;
                 form.ShowInTaskbar=false;form.StartPosition=FormStartPosition.Manual;form.Location=new Point(-32000,-32000);form.Show();Application.DoEvents();form.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1],System.Drawing.Imaging.ImageFormat.Png);
             }return 0;
+        }
+        if(args.Length==3&&args[0]=="--install"){
+            int number;string address=args[1].Trim();
+            if(Uri.CheckHostName(address)==UriHostNameType.Unknown||!Int32.TryParse(args[2],out number)||number<1||number>65535)return 2;
+            try{Install(address,number);return 0;}catch(Exception error){MessageBox.Show(error.Message,"CLIENT 설치 실패");return 1;}
         }
         if(args.Length>0&&args[0]=="--uninstall"){try{MessageBox.Show(Uninstall(),"SM Automation CLIENT 제거");return 0;}catch(Exception error){MessageBox.Show(error.Message,"제거 실패");return 1;}}
         if(args.Length>0&&args[0]=="--self-test"){if(Pin().Length!=0&&Pin().Length!=64)throw new Exception("pin");return 0;}

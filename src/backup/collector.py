@@ -5,11 +5,11 @@ from datetime import datetime
 import re
 
 from backup.profiles import AIX_PATHS, LINUX_PATHS, commands, unix_archive, windows_files
-from engine.remote import capture, privileged
+from engine.remote import capture, privileged, powershell_diagnostics
 from monitoring.connections import os_family
 
 
-def backup_server(client, server, config, store, run_id: str, progress=None, extra_commands=None) -> dict:
+def backup_server(client, server, config, store, run_id: str, progress=None, extra_commands=None, runner=None, windows_file_limit_mb=32) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,252}", server.hostname):
         raise ValueError("Hostname cannot be used as a backup folder")
     family = os_family(server.os)
@@ -17,7 +17,7 @@ def backup_server(client, server, config, store, run_id: str, progress=None, ext
     manifest = {"hostname": server.hostname, "ip": server.ip, "os": server.os,
                 "started_at": datetime.now().astimezone().isoformat(), "artifacts": [], "status": "running"}
     steps = commands(family)
-    archive = windows_files() if family == "windows" else unix_archive(AIX_PATHS if family == "aix" else LINUX_PATHS)
+    archive = windows_files(windows_file_limit_mb) if family == "windows" else unix_archive(AIX_PATHS if family == "aix" else LINUX_PATHS)
     steps = {"configuration_files": archive, **steps}
     steps.update(extra_commands or {})
     for index, (name, command) in enumerate(steps.items(), 1):
@@ -25,9 +25,9 @@ def backup_server(client, server, config, store, run_id: str, progress=None, ext
             progress(f"{server.hostname}: {name} ({index}/{len(steps)})")
         record = {"name": name, "status": "failed"}
         try:
-            if family != "windows":
+            if family != "windows" and runner is None:
                 command = privileged(command, config.privilege)
-            result = capture(client, command, timeout=config.backup_timeout,
+            result = runner(command) if runner else capture(client, command, timeout=config.backup_timeout,
                              max_bytes=config.max_capture_mb * 1024 * 1024)
             extension = "tar" if name == "configuration_files" and family != "windows" else "txt"
             if name == "configuration_files" and family == "windows":
@@ -35,8 +35,12 @@ def backup_server(client, server, config, store, run_id: str, progress=None, ext
             filename = f"{prefix}/{name}.{extension}.enc"
             store.write_bytes(filename, result.stdout)
             warning_prefixes = ("Missing optional path: ", "Missing optional tool: ")
-            warnings = [line for line in result.stderr.splitlines() if line.startswith(warning_prefixes)]
-            unexpected = [line for line in result.stderr.splitlines() if line.strip() and not line.startswith(warning_prefixes)]
+            def warning(line):
+                return line.startswith(warning_prefixes) or bool(re.fullmatch(r"Could not chdir to home directory .+: No such file or directory",line))
+            diagnostic=powershell_diagnostics(result.stderr) if family=="windows" else result.stderr
+            warnings = [line for line in diagnostic.splitlines() if warning(line)]
+            if diagnostic!=result.stderr:warnings.append("PowerShell progress-only messages excluded from error status; original preserved in encrypted metadata")
+            unexpected = [line for line in diagnostic.splitlines() if line.strip() and not warning(line)]
             record.update(path=filename, size=len(result.stdout), exit_code=result.exit_code,
                           warnings=warnings,
                           errors=[line[:1000] for line in unexpected[:50]],

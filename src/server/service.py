@@ -312,6 +312,9 @@ class ManagementService:
             if not isinstance(secret, str) or len(secret) > 4096 or any(c in secret for c in "\r\n\x00"):
                 raise ValueError("Invalid root password")
             options = {"command": command}
+        if kind in {"backup","backup_compare"}:
+            secret=supplied.get("root_password","")
+            if not isinstance(secret,str) or len(secret)>4096 or any(c in secret for c in "\r\n\x00"):raise ValueError("Invalid root password")
         if kind == "security_apply":
             plan_id = supplied.get("plan_id", "")
             if not isinstance(plan_id, str) or not re.fullmatch(r"[a-f0-9]{32}", plan_id):
@@ -349,7 +352,7 @@ class ManagementService:
             job["spread_seconds"]=spread
             if book:job.update(equipment_book_id=book["id"],equipment_book_name=book["name"])
             self.jobs[job["id"]] = job
-            if kind == "command":
+            if kind in {"command","backup","backup_compare"}:
                 self.command_passwords[job["id"]] = supplied.get("root_password", "")
             try:
                 self._save(job)
@@ -368,6 +371,15 @@ class ManagementService:
 
     def _backup(self,*args,**kwargs):
         with getattr(self,"heavy_slots",nullcontext()):return backup_server(*args,**kwargs)
+
+    def baseline_configuration(self,job,row):
+        with self.lock:
+            baseline=self.jobs[job["options"]["baseline_job_id"]]
+            baseline_row=next((r for r in baseline["results"] if r["hostname"]==row["hostname"] and r.get("ip")==row["ip"] and r.get("os")==row["os"]),None)
+            if baseline_row:baseline_row=self._result(baseline_row)
+            artifact=next((a for a in baseline_row.get("result",{}).get("artifacts",[]) if a["name"]=="configuration_files"),None) if baseline_row else None
+            if not artifact:raise ValueError("기준 백업에 해당 장비·주소·OS의 설정 파일이 없습니다")
+            return artifact
 
     def _target(self,job,row):
         if row.get("transport") == "agent":
@@ -448,16 +460,15 @@ class ManagementService:
                 result["status"] = "completed" if result["exit_code"] == 0 else "failed"
             elif kind == "backup_compare":
                 from backup.compare import current_compare
-                with self.lock:
-                    baseline=self.jobs[job["options"]["baseline_job_id"]]
-                    baseline_row=next((r for r in baseline["results"] if r["hostname"]==row["hostname"] and r.get("ip")==row["ip"] and r.get("os")==row["os"]),None)
-                    if baseline_row:baseline_row=self._result(baseline_row)
-                    artifact=next((a for a in baseline_row.get("result",{}).get("artifacts",[]) if a["name"]=="configuration_files"),None) if baseline_row else None
-                    if not artifact:raise ValueError("기준 백업에 해당 장비·주소·OS의 설정 파일이 없습니다")
-                result=current_compare(client,server,host_config,self.backups,artifact,job["id"],lambda text:self._progress(job,text))
+                from engine.remote import capture_root
+                artifact=self.baseline_configuration(job,row)
+                runner=None if family=="windows" else lambda command:capture_root(client,command,login_password=password or "",root_password=self.command_passwords.get(job["id"],""),timeout=host_config.backup_timeout,max_bytes=host_config.max_capture_mb*1024*1024)
+                result=current_compare(client,server,host_config,self.backups,artifact,job["id"],lambda text:self._progress(job,text),runner=runner)
             elif kind == "backup":
+                from engine.remote import capture_root
+                runner=None if family=="windows" else lambda command:capture_root(client,command,login_password=password or "",root_password=self.command_passwords.get(job["id"],""),timeout=host_config.backup_timeout,max_bytes=host_config.max_capture_mb*1024*1024)
                 result = self._backup(client, server, host_config, self.backups, job["id"],
-                                       lambda text: self._progress(job, text))
+                                       lambda text: self._progress(job, text),runner=runner)
             elif kind == "connections":
                 result = collect_connections(client, family, self.config.ssh_timeout)
                 connections = result["connections"]
@@ -608,7 +619,7 @@ class ManagementService:
                 self._save(job)
             started=time.monotonic()
             for index,row in enumerate(targets):
-                if row.get("transport")=="agent":
+                if row.get("transport")=="agent" and job["kind"] not in {"backup","backup_compare"}:
                     try:
                         with self.lock:self.agents.prepare(job,row,index,len(targets))
                     except (ValueError,OSError):pass  # Per-target execution records the error.

@@ -575,10 +575,11 @@ class Console(QMainWindow):
         coverage = table(["Operating system", "Configuration files", "Command snapshots"])
         fill_table(coverage, [["Linux", "sudoers + sudoers.d, SSH, PAM, cron, network", "chage per account, sudo privileges, services, storage"],
                              ["AIX", "security, filesystems, inittab, SSH, sudoers", "lsuser expiry, sudo privileges, lsvg, lssrc, packages"],
-                             ["Windows (SSH)", "OpenSSH, hosts, GroupPolicy, scheduled tasks", "Local users, expiry, firewall, audit, patches"]])
+                             ["Windows agent 1.1 / SSH", "OpenSSH, hosts, GroupPolicy, scheduled tasks", "Local users, expiry, firewall, audit, patches"]])
         coverage.setMaximumHeight(175); body.addWidget(coverage)
-        actions = QHBoxLayout(); actions.addWidget(button("Back up ALL servers", lambda: self.start_job("backup", all_hosts=True), True))
-        actions.addWidget(button("Back up selected", lambda: self.start_job("backup"))); actions.addStretch(); body.addLayout(actions)
+        self.backup_root_password=QLineEdit(); self.backup_root_password.setEchoMode(QLineEdit.EchoMode.Password); self.backup_root_password.setPlaceholderText("선택: sudo 불가 시 su에 사용할 root 비밀번호 (작업 중 메모리에만 보관)"); body.addWidget(self.backup_root_password)
+        actions = QHBoxLayout(); actions.addWidget(button("Back up ALL servers", lambda: self.start_job("backup", all_hosts=True, options={"root_password":self.backup_root_password.text()}), True))
+        actions.addWidget(button("Back up selected", lambda: self.start_job("backup",options={"root_password":self.backup_root_password.text()}))); actions.addStretch(); body.addLayout(actions)
         history = QHBoxLayout()
         history.addWidget(button("Refresh backup history", lambda: self.load_backup_history(True)))
         history.addWidget(button("Load older backups", self.load_backup_history))
@@ -593,7 +594,7 @@ class Console(QMainWindow):
         row=self.backup_table.currentRow()
         if row<0 or row>=len(getattr(self,"backup_jobs",[])):
             self.status_line.setText("기준 백업을 목록에서 선택하고 대상 장비/장비록을 지정하세요.");return
-        self.start_job("backup_compare",options={"baseline_job_id":row_identity(self.backup_table,row)})
+        self.start_job("backup_compare",options={"baseline_job_id":row_identity(self.backup_table,row),"root_password":self.backup_root_password.text()})
 
     def build_activity(self):
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0)
@@ -1233,6 +1234,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.metric_values[2].setText("—"); self.progress.setValue(0)
         self.account_table.setRowCount(0)
         self.account_result_status.setText("Choose CLIENT targets and query the account list.")
+        self.backup_root_password.clear()
         self.command_results_table.setRowCount(0); self.command_details.clear()
         self.patch_table.setRowCount(0)
         self.patch_output.clear()
@@ -1405,6 +1407,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         def started(job):
             self.submission_pending = False
             self.active_job = job["id"]; self.loaded_job = None
+            if kind in {"backup","backup_compare"}:self.backup_root_password.clear()
             if kind == "command":
                 fill_table(self.command_results_table, [[host, "Queued", "", "", ""] for host in hosts])
                 self.command_details.setPlainText("Command submitted. Waiting for target results.")

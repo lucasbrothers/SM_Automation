@@ -8,7 +8,7 @@ import posixpath
 import re
 import tarfile
 from backup.profiles import LINUX_PATHS,AIX_PATHS,unix_archive,windows_files
-from engine.remote import capture,privileged
+from engine.remote import capture,privileged,powershell_diagnostics
 from monitoring.connections import os_family
 
 
@@ -76,19 +76,22 @@ def compare(old,new):
     return rows
 
 
-def current_compare(client,server,config,store,artifact,run_id,progress=None):
+def current_compare(client,server,config,store,artifact,run_id,progress=None,runner=None,windows_file_limit_mb=32):
     if artifact.get('status')!='completed':raise ValueError('Baseline configuration capture is incomplete; select a complete configuration artifact')
     path=artifact['path']
     if store.path(path).stat().st_size>128*1024*1024:raise ValueError('Baseline exceeds comparison bounds')
     old_content=store.read_bytes(path);family=os_family(server.os)
-    command=windows_files() if family=='windows' else privileged(unix_archive(AIX_PATHS if family=='aix' else LINUX_PATHS),config.privilege)
+    raw=unix_archive(AIX_PATHS if family=='aix' else LINUX_PATHS)
+    command=windows_files(windows_file_limit_mb) if family=='windows' else (raw if runner else privileged(raw,config.privilege))
     if progress:progress(server.hostname+': reading current configuration for comparison')
-    current=capture(client,command,timeout=config.backup_timeout,max_bytes=config.max_capture_mb*1024*1024)
-    unexpected=[line for line in current.stderr.splitlines() if line.strip() and not line.startswith('Missing optional path: ')]
+    current=runner(command) if runner else capture(client,command,timeout=config.backup_timeout,max_bytes=config.max_capture_mb*1024*1024)
+    diagnostic=powershell_diagnostics(current.stderr) if family=="windows" else current.stderr
+    unexpected=[line for line in diagnostic.splitlines() if line.strip() and not line.startswith('Missing optional path: ') and not re.fullmatch(r'Could not chdir to home directory .+: No such file or directory',line)]
     if current.exit_code or unexpected:raise ValueError('Current configuration capture incomplete; comparison refused')
     rows=compare(unpack(old_content,family=='windows'),unpack(current.stdout,family=='windows'))
     changes=[row for row in rows if row['status']!='unchanged']
-    result={'status':'completed','files':rows,'changed':len(changes),'total':len(rows),'baseline_path':path,'warnings':current.stderr,'scope':'Configuration files only; command snapshots and timestamps excluded'}
+    result={'status':'completed','files':rows,'changed':len(changes),'total':len(rows),'baseline_path':path,'warnings':diagnostic,'scope':'Configuration files only; command snapshots and timestamps excluded'}
     report_path='comparisons/'+run_id+'/'+server.hostname+'.json.enc'
+    if current.stderr!=diagnostic:store.write_json('comparisons/'+run_id+'/'+server.hostname+'.metadata.json.enc',{'stderr':current.stderr})
     store.write_json(report_path,result)
     return {key:value for key,value in result.items() if key!='files'} | {'files':[], 'report_path':report_path}

@@ -68,6 +68,14 @@ def main():
                 completed=service.jobs[job['id']]
                 assert completed['status']=='completed',completed
                 assert 'SM-agent-fixture' in completed['results'][0]['result']['stdout']
+                backup_id=uuid.uuid4().hex
+                service.jobs[backup_id]={'id':backup_id,'kind':'backup','status':'running'}
+                subjob={'id':backup_id,'kind':'backup_artifact','options':{'script':"Write-Output 'SM-agent-fixture'"}}
+                task_id=service.agents.prepare(subjob,inventory[0])
+                run('task')
+                artifact=service.data.read_json('agents/results/'+task_id+'.json.enc')
+                assert artifact['status']=='completed' and 'SM-agent-fixture' in artifact['result']['stdout']
+                service.jobs.pop(backup_id)
                 run('uninstall');assert service.agents.listing()[0]['status']=='uninstalled'
                 service.agents.revoke(identity,remove=True)
                 assert service.inventory()==[] and service.agents.listing()==[]
@@ -76,7 +84,7 @@ def main():
                 # Distribution file includes only this server's PUBLIC certificate fingerprint.
                 target=repo/'release/windows-client-setup-wsl.exe'
                 bind_installer(repo/'release/windows-client-base.exe',target,pin)
-                print('PASS: compiled Windows agent -> local WSL TLS signed auto-registration, CI, polling, PowerShell fixture result, uninstall notification and permanent revocation; no Windows service installed',flush=True)
+                print('PASS: compiled Windows agent -> local WSL TLS signed auto-registration, CI, polling, PowerShell/backup-artifact fixture results, uninstall notification and permanent revocation; no Windows service installed',flush=True)
             finally:server.shutdown();thread.join();server.server_close();service.close()
     finally:
         assert fixture.resolve().parent==(repo/'logs').resolve()

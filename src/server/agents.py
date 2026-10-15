@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import time
+import threading
 import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,7 @@ from shared.ci_schema import AUTO_FIELDS
 from ci.collector import windows_smt
 
 PRIVATE_NETWORKS = ['127.0.0.0/8','10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','::1/128','fc00::/7']
-SUPPORTED = {'ci_inventory','connections','command','transfer'}
+SUPPORTED = {'ci_inventory','connections','command','transfer','backup_artifact','backup'}
 
 
 def timestamp():
@@ -52,7 +53,7 @@ class AgentManager:
         self.service=service;self.store=service.data;self.lock=service.lock
         self.bindings=self.store.read_json('agents/bindings.json.enc',{})
         self.policy=self.store.read_json('agents/enrollment.json.enc',{'enabled':False,'networks':PRIVATE_NETWORKS,'expires_at':'','max_new':1000,'used':0})
-        self.cache={};self.challenges={};self.rates=defaultdict(deque);self.tasks={}
+        self.cache={};self.challenges={};self.rates=defaultdict(deque);self.tasks={};self.task_ready=threading.Condition(self.lock)
 
     def device(self,identity):
         identifier(identity)
@@ -138,7 +139,7 @@ class AgentManager:
         inventory=self.store.read_json('inventory.json.enc',[])
         host=next((r for r in inventory if r['hostname']==record['hostname']),None)
         if host is None:raise ValueError('Device was removed from inventory; revoke/re-enroll explicitly')
-        record={**record,'last_seen':timestamp(),'peer_ip':peer,'uninstalled':bool(data.get('uninstall',False)),'version':str(data.get('version',''))[:80]}
+        record={**record,'last_seen':timestamp(),'peer_ip':peer,'uninstalled':bool(data.get('uninstall',False)),'version':str(data.get('version',record.get('version','')))[:80]}
         observation=data.get('observation')
         if observation is not None:
             if not isinstance(observation,dict) or len(json.dumps(observation).encode())>256*1024:raise ValueError('Invalid CI observation')
@@ -155,7 +156,7 @@ class AgentManager:
         results=data.get('results',[])
         if not isinstance(results,list) or len(results)>1:raise ValueError('Return one device task result at a time')
         tasks=self.read_tasks(identity)
-        changed=False
+        changed=False;backup_ack=False
         for result in results:
             if not isinstance(result,dict):raise ValueError('Invalid task result')
             task=next((t for t in tasks if t['id']==result.get('id')),None)
@@ -163,13 +164,22 @@ class AgentManager:
             if task['state'] not in {'completed','expired','cancelled'}:
                 if task['state']!='issued':raise ValueError('Task was not issued')
                 if result.get('status') not in {'completed','failed'}:raise ValueError('Invalid task status')
-                limit=12*1024*1024 if task['kind']=='transfer' else 2*1024*1024
-                if len(json.dumps(result).encode())>limit:raise ValueError('Agent task result exceeds its limit')
+                limit=12*1024*1024 if task['kind'] in {'transfer','backup_artifact'} else 2*1024*1024
+                if len(json.dumps(result,ensure_ascii=False).encode())>limit:raise ValueError('Agent task result exceeds its limit')
                 if not isinstance(result.get('result',{}),dict):raise ValueError('Invalid agent result body')
                 result={**result,'error':str(result.get('error',''))[:1500]}
                 self.store.write_json('agents/results/'+task['id']+'.json.enc',result)
                 task.update(state='completed');changed=True
             ack.append(result['id'])
+            backup_ack=backup_ack or task['kind']=='backup_artifact'
+        if backup_ack and changed:
+            self.save_tasks(identity,tasks);changed=False;self.save(identity,record)
+            # Release the registry lock while the backup writer prepares its next artifact.
+            # This avoids a full 30-second idle poll between every read-only backup step.
+            self.task_ready.wait_for(lambda:any(t['state']=='pending' for t in self.read_tasks(identity)),timeout=.75)
+            record=self.device(identity)
+            if not record or record.get('revoked'):raise ValueError('Device is revoked')
+            tasks=self.read_tasks(identity)
         offered=None
         if not record['uninstalled']:
             for task in tasks:
@@ -276,12 +286,14 @@ class AgentManager:
         return {'id':identity,'status':'revoked','removed':bool(remove)}
 
     def task_id(self,job,row):
-        return hashlib.sha256((job['id']+'\0'+row['hostname']).encode()).hexdigest()[:32]
+        suffix=job.get('options',{}).get('script','') if job['kind']=='backup_artifact' else ''
+        return hashlib.sha256((job['id']+'\0'+row['hostname']+suffix).encode()).hexdigest()[:32]
 
     def prepare(self,job,row,index=0,total=1):
         identity=row['agent_id'];record=self.device(identity)
         if not record or record.get('revoked') or record.get('uninstalled'):raise ValueError('Windows agent is revoked or uninstalled')
-        if job['kind'] not in SUPPORTED:raise ValueError('Windows agent supports CI, connections, PowerShell commands and file transfer; this operation is not supported')
+        if job['kind'] not in SUPPORTED:raise ValueError('Windows agent does not support this operation')
+        if job['kind'] in {'backup','backup_artifact'} and record.get('version')!='1.1.0':raise ValueError('Windows backup requires CLIENT agent 1.1.0; run the updated installer on CLIENT to upgrade')
         if job['kind']=='command' and len(job['options'].get('command',''))>8000:raise ValueError('Windows agent command limit is 8000 characters')
         identity_task=self.task_id(job,row)
         tasks=self.read_tasks(identity)
@@ -299,10 +311,44 @@ class AgentManager:
         due=time.time()+job.get('spread_seconds',0)*index/max(1,total-1)
         task={'id':identity_task,'job_id':job['id'],'kind':job['kind'],'options':options,'state':'pending','not_before':due,'expires':due+180}
         tasks.append(task);self.save_tasks(identity,tasks)
+        with self.task_ready:self.task_ready.notify_all()
         return identity_task
+
+    def backup(self,job,row):
+        with self.lock:
+            if self.device(row["agent_id"]).get("version")!="1.1.0":raise ValueError("Windows backup requires CLIENT agent 1.1.0; run the updated installer to upgrade")
+        from core.inventory import ServerRecord
+        from backup.collector import backup_server
+        from engine.remote import CommandResult
+        from dataclasses import replace
+        config=replace(self.service.config,max_capture_mb=min(self.service.config.max_capture_mb,4))
+        runner=self.backup_runner(job,row)
+        with self.service.heavy_slots:
+            result=backup_server(None,ServerRecord(row['hostname'],row['ip'],row['os']),config,self.service.backups,job['id'],lambda text:self.service._progress(job,text),runner=runner,windows_file_limit_mb=2)
+        return {**row,'status':result['status'],'result':result}
+
+    def backup_runner(self,job,row):
+        from engine.remote import CommandResult
+        def runner(command):
+            script=base64.b64decode(command.rsplit(' ',1)[1],validate=True).decode('utf-16-le')
+            output=self.execute({**job,'kind':'backup_artifact','options':{'script':script}},row)
+            data=output.get('result',{})
+            if 'stdout' not in data:raise ValueError(output.get('error','Windows backup artifact failed'))
+            return CommandResult(data['stdout'].encode('utf-8'),str(data.get('stderr','')),int(data['exit_code']))
+        return runner
+
+    def compare_backup(self,job,row):
+        from core.inventory import ServerRecord
+        from backup.compare import current_compare
+        artifact=self.service.baseline_configuration(job,row)
+        with self.service.heavy_slots:
+            result=current_compare(None,ServerRecord(row['hostname'],row['ip'],row['os']),self.service.config,self.service.backups,artifact,job['id'],runner=self.backup_runner(job,row),windows_file_limit_mb=2)
+        return {**row,'status':'completed','result':result}
 
     def execute(self,job,row):
         try:
+            if job["kind"]=="backup":return self.backup(job,row)
+            if job["kind"]=="backup_compare":return self.compare_backup(job,row)
             with self.lock:
                 task_id=self.prepare(job,row)
             deadline=time.monotonic()+240

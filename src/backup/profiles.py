@@ -115,17 +115,19 @@ def commands(family: str) -> dict[str, str]:
         "audit_policy": "auditpol.exe /get /category:*",
         "local_policy": "net accounts; if($LASTEXITCODE -ne 0) { throw ('net accounts failed: ' + $LASTEXITCODE) }; reg.exe query HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies /s",
     }
-    return {name: powershell("$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); "
+    return {name: powershell("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); "
                             "$global:LASTEXITCODE=0; try { " + script +
                             "; if($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('Native command failed: ' + $LASTEXITCODE); exit 1 } "
                             "} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }")
             for name, script in scripts.items()}
 
 
-def windows_files() -> str:
+def windows_files(max_mb=32) -> str:
     """Capture configuration files as JSON/base64 without remote temp files."""
+    if type(max_mb) is not int or not 1<=max_mb<=32:raise ValueError("Invalid Windows configuration capture limit")
     return powershell(r"""
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new()
 $paths=@('C:\ProgramData\ssh','C:\Windows\System32\drivers\etc\hosts',
  'C:\Windows\System32\GroupPolicy','C:\Windows\System32\Tasks')
@@ -146,4 +148,4 @@ foreach($path in $paths) {
 foreach($warning in $warnings) { [Console]::Error.WriteLine($warning) }
 foreach($errorMessage in $errors) { [Console]::Error.WriteLine($errorMessage) }
 if($errors.Count -gt 0) { exit 1 }
-""")
+""".replace("32MB",str(max_mb)+"MB").replace("32 MiB",str(max_mb)+" MiB"))
