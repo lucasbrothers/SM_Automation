@@ -364,7 +364,7 @@ class AgentManager:
 
     def execute(self,job,row):
         try:
-            if job["kind"] in {"accounts","patches"}:
+            if job["kind"] in {"accounts","patches","monitoring"}:
                 from monitoring.windows_queries import query_script, parse_query
                 script=query_script(job["kind"],job["options"])
                 response=self.execute({**job,"kind":"command","options":{"command":script}},row)

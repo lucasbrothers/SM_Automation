@@ -315,3 +315,12 @@ AIX 05·06은 조회 전용이며 GUI와 SERVER에서 변경 요청 및 혼합 �
 기존 장비록·예약 자원 수집·조회 이력·표 정렬·CSV 경로를 유지하고 GUI 지원 안내/설치 ZIP 문서를 갱신한다. AIX 파서/서버 분기/변경 차단/GUI를 고정 응답으로 검증했으며 실제 AIX 장비 접속은 미실행이다. WSL 관련 16개 통과. 자동화 일시정지 및 사용자 results.csv 미추적 유지.
 
 최종 전체 검사 543 passed / 29 skipped, WSL AIX 관련 16 passed. 이전 실행의 임시 파일 교체 접근 오류는 단일 및 전체 재실행 모두 통과했다. 로컬 WSL SERVER 적용·재시작 및 설치 묶음 갱신 완료. AIX 실장비 검증 미실행.
+
+
+## 2026-10-15 Windows 08 Resources 지원
+
+Windows 기존 agent 명령 통로와 OpenSSH 경로에 고정 CIM 자원 조회를 연결했다. _Total CPU 사용률, OS 가시 물리 메모리(KiB→MiB), OS SystemDrive 논리 디스크, OS 현재 시각-LastBootUpTime을 수집한다. GUI는 Windows CPU %와 Linux/AIX Load를 구분하고 가동시간은 누적 시간·분·초로 표시한다. 누락·범위 초과·비유한 지표는 실패 처리한다. 데이터/표 구조는 기존 monitoring을 사용하여 장비록·예약·CSV·정렬·자동 조회를 유지한다. 정렬 시 메모리/디스크 막대와 호스트 대응도 함께 보존했다.
+
+현재 PC는 기존 hostname 대신 -agent- 식별자 접미사를 가진 등록 이름으로 online이었다. 사용자의 장비 목록을 변경하지 않고 해당 유일한 등록 대상으로 실행해 Windows CPU·물리 메모리·시스템 드라이브·가동시간 및 작업 이력 반환을 실제 검증했다. 에이전트 설치/교체·권한 설정 변경은 수행하지 않았다. AIX/RHEL 실장비 시험 미실행, 자동화 일시정지 및 사용자 results.csv 미추적 유지.
+
+검증: Windows 전체 556 passed / 29 skipped, WSL 자원 수집 관련 12 passed, 승인된 현재 Windows PC agent 실제 08 조회 PASS. 로컬 SERVER 적용 및 역할별 설치 ZIP 갱신 완료.

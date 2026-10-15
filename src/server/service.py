@@ -481,8 +481,11 @@ class ManagementService:
                 if family == "aix":
                     from monitoring.aix import resources
                     result=resources(client)
+                elif family == "windows":
+                    from monitoring.windows_queries import collect_query
+                    result=collect_query(client,"monitoring",{})
                 elif family == "linux":result = collect_linux_snapshot(client).to_dict()
-                else:raise ValueError("Resource monitoring supports Linux/AIX targets")
+                else:raise ValueError("Unsupported resource monitoring OS")
             elif kind == "security_apply":
                 with self.lock:
                     planned = next(item["result"] for item in self.jobs[job["options"]["plan_id"]]["results"] if item["hostname"] == row["hostname"])
@@ -629,7 +632,7 @@ class ManagementService:
                 self._save(job)
             started=time.monotonic()
             for index,row in enumerate(targets):
-                if row.get("transport")=="agent" and job["kind"] not in {"backup","backup_compare","accounts","patches"}:
+                if row.get("transport")=="agent" and job["kind"] not in {"backup","backup_compare","accounts","patches","monitoring"}:
                     try:
                         with self.lock:self.agents.prepare(job,row,index,len(targets))
                     except (ValueError,OSError):pass  # Per-target execution records the error.

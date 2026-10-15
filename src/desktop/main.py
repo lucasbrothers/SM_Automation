@@ -491,7 +491,7 @@ Linux/AIX 명령: SSH 셸 및 설정된 실행 권한.
 
 05 계정: Windows 로컬 계정 조회 전용 / Linux 조회·변경 / AIX 계정·그룹·잠금 조회 전용
 06 패치: Windows 설치 KB 조회 전용 / Linux 배포판별 조회·계획·적용 / AIX OS 수준·파일셋·임시 수정 조회 전용
-08 자원: Linux / AIX 지원. Linux 보안 정책: Linux 전용
+08 자원: Windows CPU·물리 메모리·시스템 디스크·가동시간 / Linux·AIX 지원. Linux 보안 정책: Linux 전용
 
 Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·드라이버 목록이 아닙니다.
 검증 완료 범위: 현재 Windows PC와 로컬 WSL. AIX/RHEL 실장비 검증은 미실행.
@@ -500,7 +500,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
 
     def build_resources(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
-        body.addWidget(label("Linux / AIX resource snapshots", "section"))
+        body.addWidget(label("Windows / Linux / AIX resource snapshots", "section"))
         actions = QHBoxLayout()
         actions.addWidget(button("Collect resources", lambda: self.start_job("monitoring"), True))
         self.resource_auto = QCheckBox("Refresh every 120 seconds while this console is open")
@@ -512,9 +512,9 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
         self.resource_auto.toggled.connect(auto); actions.addWidget(self.resource_auto); actions.addStretch()
         body.addLayout(actions)
         self.resource_updated = label("No resource snapshot loaded", "subtitle"); body.addWidget(self.resource_updated)
-        self.resource_table = table(["Server", "Load (1 / 5 / 15 min)", "Memory used", "Root disk used", "Uptime / status"])
+        self.resource_table = table(["Server", "Load (Linux/AIX) / CPU % (Windows)", "Memory used", "Root / Windows system disk used", "Uptime / status"])
         body.addWidget(self.resource_table, 1)
-        note = label("Linux / AIX 조회. AIX 메모리 사용량은 전체-무료(파일 캐시 포함), Linux available과 다릅니다. Load는 CPU 사용률이 아닙니다. 자동 조회는 다른 작업 완료 후 수행합니다.", "subtitle")
+        note = label("Windows: CPU 사용률·OS 물리 메모리·시스템 드라이브 조회. Linux/AIX: Load 조회. AIX 메모리 사용량은 전체-무료(파일 캐시 포함), Linux available과 다릅니다. Load는 CPU 사용률이 아닙니다. 자동 조회는 다른 작업 완료 후 수행합니다.", "subtitle")
         note.setWordWrap(True); body.addWidget(note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -534,8 +534,10 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
             memory = result.get("memory_mb", {}); filesystem = result.get("root_filesystem", {})
             total, used = memory.get("total", 0), memory.get("used", 0)
             percentage = round(100 * used / total) if total else 0
-            values.append([row["hostname"], " / ".join(f"{value:.2f}" for value in result.get("load_average", [])),
+            cpu = (f"CPU {result['cpu_percent']:.1f}%" if "cpu_percent" in result else " / ".join(f"{value:.2f}" for value in result.get("load_average", [])))
+            values.append([row["hostname"], cpu,
                            f"{percentage}% ({used:,} / {total:,} MiB)", filesystem.get("capacity", "Unavailable"), result.get("uptime", "Unavailable")])
+        sorting=self.resource_table.isSortingEnabled();self.resource_table.setSortingEnabled(False)
         fill_table(self.resource_table, values)
         for index, row in enumerate(rows):
             if row.get("status") != "completed":
@@ -548,6 +550,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
                 if value >= 90:
                     progress.setStyleSheet("QProgressBar::chunk { background: #d95f4a; }")
                 self.resource_table.setCellWidget(index, column, progress)
+        self.resource_table.setSortingEnabled(sorting)
         self.resource_updated.setText("Snapshot collected: " + (observed_at or "synthetic preview"))
 
     def build_network(self):
@@ -1150,7 +1153,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         if hasattr(self, "fit_timer"): self.fit_timer.start(80)
         if index == 8 and self.client and not self.demo:
             self.refresh_saved_commands()
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Accounts — Windows / Linux / AIX", "Patches — Windows / Linux / AIX", "Keep operations on schedule", "Watch Linux / AIX resources", "Commands and files — Windows / Linux / AIX", "CI 자산 관리 대시보드"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Accounts — Windows / Linux / AIX", "Patches — Windows / Linux / AIX", "Keep operations on schedule", "Windows / Linux / AIX resources", "Commands and files — Windows / Linux / AIX", "CI 자산 관리 대시보드"]
         self.title.setText(titles[index])
         descriptions = ["Windows · Linux · AIX 통합 관리 콘솔 | 중앙 SERVER에서 작업과 이력을 관리합니다.",
                         "Windows · Linux · AIX 장비의 TCP 연결을 중앙 SERVER에서 수집·보관합니다.",
@@ -1159,7 +1162,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                         "Windows·AIX 계정 조회 · Linux 계정 조회/변경. AIX는 그룹·잠금·만료 원본 값 포함.",
                         "Windows 설치된 KB 조회 · Linux 업데이트 조회/계획/적용. AIX 설치 파일셋·임시 수정 조회 지원.",
                         "Encrypted Linux schedules continue independently of your Windows console.",
-                        "Linux / AIX 부하·메모리·루트 디스크·가동시간을 SSH로 조회합니다.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console.", "장비록·개별 장비의 하드웨어, OS, 고객 및 서비스 정보를 관리합니다."]
+                        "Windows CPU·메모리·시스템 디스크 및 Linux/AIX 자원을 조회합니다.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console.", "장비록·개별 장비의 하드웨어, OS, 고객 및 서비스 정보를 관리합니다."]
         self.subtitle.setText(descriptions[index])
         if self.history_errors:
             self.subtitle.setText(f"Linux history recovery required: {len(self.history_errors)} unreadable records. New operations are disabled.")
