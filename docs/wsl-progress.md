@@ -866,3 +866,14 @@ SERVER 공개키 배포 작업에만 최초 SSH 호스트 키 자동 등록을 �
 승인된 기존 로컬 WSL에만 일회성 계정·loopback sshd·호스트 키·임시 known_hosts를 만들어 최초 신뢰 저장→공개키 배포→키 단독 재접속→키 불일치 차단을 검증했다. 기존 계정/호스트 키 파일은 변경하지 않았고 시험 계정/파일/sshd는 정리했다. Windows 수동 cmd ssh의 확인 창은 별도 known_hosts를 사용하므로 이 기능은 도구의 SERVER→CLIENT 배포 경로에 적용된다. 자동화 일시정지·사용자 results.csv 미추적 유지.
 
 최종 검증: 전체 562 passed / 30 skipped, WSL 호스트 키/SSH 관련 12 passed 및 실제 isolated loopback 공개키 배포 PASS. 신규 임시 계정 정리 완료. 역할별 설치 묶음 갱신.
+
+
+## 2026-10-15 독립 IP Ubuntu VM 준비 (관리자 실행 취소로 적용 대기)
+
+Windows 재부팅 완료, Hyper-V vmms Running. 기존 Ubuntu SERVER를 시작했고 sm-automation.service active 확인. WSL 두 배포판의 공유 네트워크를 개별 OS 독립 네트워크로 오인하지 않도록, 추가 CLIENT는 Hyper-V VM으로 구성하는 작업을 진행했다. 기존 WSL Ubuntu-Client와 사용자 데이터는 보존하며 현재 Stopped 상태다.
+
+Canonical Ubuntu noble cloud 이미지 공식 SHA256 확인, D:/WSL/Ubuntu-Client-VM/Ubuntu-Client-30G.vhdx 준비(virtual-size 32212254720, 실제 약 2.04GiB). 최초 qemu VHDX resize 미지원으로 작업용 qcow2를 30GiB 확장한 뒤 VHDX로 변환했고 잘못된 중간 디스크는 정리했다. seed.iso에는 SERVER의 기존 SSH 공개키만 포함, D25950/sds 키 로그인 및 sudo 설정을 준비했다. 비밀번호/개인키는 문서·Git·seed에 저장하지 않았다. qemu-utils/cloud-image-utils와 6개 의존 패키지 약 14.7MB 설치. WSL 외부 저장소 접속이 실패해 Windows에서 공식 Ubuntu 패키지를 가져오고 기존 APT 메타데이터 SHA256과 대조하여 dpkg로 설치했다. 기존 SERVER 서비스를 변경/재시작하지 않았다.
+
+VM/네트워크 생성 스크립트는 D:/WSL/VM-Setup/Create-Ubuntu-Client.ps1, 소스 사본 deploy/provision-ubuntu-client-vm.ps1. 문법 검사 완료이나 실행 검증 전이다. Windows UAC Start-Process RunAs가 '사용자가 작업을 취소했습니다'로 반환되어 VM/가상 스위치/IP는 아직 생성되지 않았다. 현재 공유 IP 문제는 미해결이며 허위 완료로 보고하지 않는다. 관리자 PowerShell에서 위 스크립트 실행이 필요하다. 현재 후보는 내부 스위치 SM-Test-Private, 게이트웨이 192.168.250.1/24, CLIENT 192.168.250.2, 2 CPU/시작 2GiB/동적 1~3GiB. 실행 후 VM 부팅·SSH·WSL SERVER 라우팅·NAT를 확인하고 장비 목록의 ubuntu-client를 새 IP/Ubuntu24.04/적절한 SSH 프로필로 갱신해야 한다. 이전 잘못 등록된 ubuntu-client는 현재 main WSL IP와 Ubuntu26.04/default 프로필을 가리키므로 검증 전 작업 실행 금지.
+
+원래 Windows agent 갱신 설치도 이전 UAC 취소로 남아 있으며 사용자 허용 없이 우회하지 않는다. 자동화 일시정지 및 사용자 results.csv 미추적을 유지한다. 상세 D:/WSL/VM-Setup/README-KO.md.
