@@ -52,6 +52,7 @@ def deploy(client,path):
                 except OSError:pass
         sftp.chmod(directory,0o700);sftp.chmod(target,0o600)
     probe=type(client)(client.hostname,client.ip,user=client.user,key_filename=path,port=client.port,timeout=client.timeout)
+    probe.key_only=True
     try:probe.connect()
     finally:probe.close()
-    return {"status":"completed","account":client.user,"public_key_installed":True,"already_present":present,"key_login_verified":True}
+    return {"status":"completed","account":client.user,"public_key_installed":True,"already_present":present,"key_login_verified":True,"host_key_registered":getattr(client,"host_key_registered",False),"host_key_fingerprint":getattr(client,"host_key_fingerprint","")}

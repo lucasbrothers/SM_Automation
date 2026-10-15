@@ -441,6 +441,7 @@ class ManagementService:
                                password=password,
                                key_filename=None if saved_credentials.get("password") else (Path(key_file).expanduser() if key_file else None),
                                port=saved_credentials.get("port", int(profile.get("port", self.config.ssh_port))), timeout=self.config.ssh_timeout)
+            client.accept_new_host_key = job["kind"] == "deploy_key"
             family = os_family(server.os)
             kind = job["kind"]
             if kind == "ci_inventory":

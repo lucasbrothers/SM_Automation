@@ -49,12 +49,19 @@ class SSHClient:
         self.key_filename = str(key_filename) if key_filename is not None else None
         self.port = port
         self._client: paramiko.SSHClient | None = None
+        self.key_only = False
+        self.accept_new_host_key = False
+        self.host_key_registered = False
+        self.host_key_fingerprint = ""
 
     def connect(self) -> None:
         """Open an SSH connection to the target host."""
         client = paramiko.SSHClient()
         client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        if self.accept_new_host_key:
+            from engine.hostkeys import AcceptNewHostKey
+            client.set_missing_host_key_policy(AcceptNewHostKey(Path.home()/".ssh"/"known_hosts",self))
+        else:client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
         kwargs: dict[str, object] = {
             "hostname": self.ip,
@@ -64,8 +71,8 @@ class SSHClient:
         }
         if self.key_filename is not None:
             kwargs["key_filename"] = self.key_filename
-        if self.password is not None:
-            kwargs["password"] = self.password
+        if self.password is not None:kwargs["password"] = self.password
+        if self.password is not None or self.key_only:
             kwargs["look_for_keys"] = False
             kwargs["allow_agent"] = False
 

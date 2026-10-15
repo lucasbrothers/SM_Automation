@@ -1434,10 +1434,11 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                 QMessageBox.warning(self, "Export failed", "Could not save the workbook.")
 
     def deploy_server_key(self):
-        if not self.checked_hosts() or not self.require_client():
-            return
-        if QMessageBox.question(self, "Deploy SERVER public key", "Install the SERVER public key in the selected CLIENT login accounts? Existing accounts and SSH host trust must already be configured.") == QMessageBox.Yes:
-            self.start_job("deploy_key")
+        if not self.require_client():return
+        from desktop.key_targets import PublicKeyTargetsDialog
+        dialog=PublicKeyTargetsDialog(self,self.servers,self.checked_hosts())
+        if dialog.exec()==QDialog.DialogCode.Accepted:
+            self.start_job("deploy_key",hosts_override=dialog.selected_hosts())
 
     def import_csv(self):
         if not self.require_client():
