@@ -232,6 +232,7 @@ class ManagementService:
         return row
 
     def _store_result(self,job,row):
+        if job["kind"] == "connections":row={**row,"observed_at":now()}
         if job["kind"] not in {"backup","backup_compare","connections","monitoring","ci_inventory"}:return row
         path="results/"+job["id"]+"/"+row["hostname"]+".json.enc"
         self.data.write_json(path,row)
@@ -242,6 +243,30 @@ class ManagementService:
 
     def _save(self, job):
         self.data.write_json(f"jobs/{job['id']}.json.enc", job)
+        if job["kind"]=="connections":self.connection_cache_index=None
+
+    def cached_connections(self,params):
+        offset=params.get("offset",0)
+        if type(offset) is not int or offset<0:raise ValueError("Invalid cache offset")
+        with self.lock:
+            if getattr(self,"connection_cache_index",None) is None:
+                index={}
+                for job in self.jobs.values():
+                    if job["kind"]!="connections":continue
+                    for row in job["results"]:
+                        key=tuple(row.get(k,"") for k in ("hostname","ip","os"))
+                        # Older data has no per-target observation time: label the job time explicitly.
+                        stamp=row.get("observed_at") or job.get("finished_at") or job.get("started_at") or job["created_at"]
+                        if key not in index or stamp>index[key][0]:index[key]=(stamp,row,not bool(row.get("observed_at")))
+                self.connection_cache_index=index
+            rows=[]
+            for host in self.inventory():
+                key=tuple(host.get(k,"") for k in ("hostname","ip","os"))
+                cached=self.connection_cache_index.get(key)
+                if cached:rows.append(cached)
+            if offset>=len(rows):return {"items":[],"total":len(rows)}
+            stamp,row,legacy=rows[offset]
+            return {"items":[{**self._result(row),"observed_at":stamp,"time_is_job_time":legacy}],"total":len(rows)}
 
     def equipment_book(self,identity):
         from server.equipment import get
@@ -713,6 +738,8 @@ class ManagementService:
                     "data_directory": str(self.config.data_directory), "backup_directory": str(self.config.backup_directory),
                     "inventory_count": len(self.inventory()), "encrypted": True,
                     "history_errors": self.history_errors, "operations_enabled": not self.history_errors}
+        if method == "connections.cached":
+            return self.cached_connections(params)
         if method == "inventory.list":
             return self.inventory()
         if method == "ssh.profiles":

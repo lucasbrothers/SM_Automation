@@ -41,7 +41,9 @@ def test_large_result_is_stored_separately_and_loaded_on_demand(tmp_path):
     row={'hostname':'lab','ip':'127.0.0.1','status':'completed','result':{'payload':'x'*1000000}}
     stored=service._store_result({'id':'a'*32,'kind':'connections'},row)
     assert 'result' not in stored and 'result_ref' in stored
-    assert service._result(stored)==row
+    loaded=service._result(stored)
+    assert loaded.pop("observed_at") == stored["observed_at"]
+    assert loaded==row
 
 
 def test_successful_auth_hash_cache_and_password_change(tmp_path,monkeypatch):

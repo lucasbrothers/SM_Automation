@@ -51,3 +51,22 @@ def test_thousand_hosts_render_only_current_page_and_keep_export_complete(monkey
     window.peer_search.setText('');window.update_map()
     assert len(window.filtered_connections)==1000
     window.close()
+
+
+def test_checkbox_only_switches_saved_results_and_displays_observation_time(monkeypatch):
+    from PySide6.QtCore import Qt
+    app=QApplication.instance() or QApplication([]);window=Console()
+    rows=snapshot(2,1)
+    for row in rows:row['observed_at']='2026-10-15T01:23:45+00:00'
+    window.remember_connections(rows)
+    window.set_inventory([{k:r[k] for k in ('hostname','ip','os')} for r in rows]+[{'hostname':'new-host','ip':'192.0.2.99','os':'Linux'}])
+    window.client=Mock()
+    window.check_all(False)
+    assert window.connection_results==[]
+    for r in range(window.target_table.rowCount()):
+        if window.target_table.item(r,0).data(Qt.ItemDataRole.UserRole)=='host-0001':window.target_table.item(r,0).setCheckState(Qt.CheckState.Checked)
+    assert [r['hostname'] for r in window.connection_results]==['host-0001']
+    assert '2026-10-15' in window.connection_table.item(0,4).text()
+    assert any('2026-10-15' in i.text() for i in window.graph.scene().items() if hasattr(i,'text'))
+    window.client.call.assert_not_called()
+    window.close()

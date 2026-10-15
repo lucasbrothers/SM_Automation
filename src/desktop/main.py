@@ -248,7 +248,7 @@ class Console(QMainWindow):
         self.setWindowTitle("SM Automation | Control Console")
         area = QApplication.primaryScreen().availableGeometry()
         self.resize(min(1460, area.width()-30), min(920, area.height()-40)); self.setMinimumSize(800, 540)
-        self.client = None; self.demo = demo; self.servers = []; self.equipment_books=[]; self.jobs = []; self.connection_results = []
+        self.client = None; self.demo = demo; self.servers = []; self.equipment_books=[]; self.jobs = []; self.connection_results = []; self.connection_cache = {}; self.connection_cache_loading=False
         self.active_job = None; self.loaded_job = None; self.poll_busy = False; self.epoch = 0
         self.backup_history = {}
         self.backup_history_offset = 0
@@ -543,8 +543,9 @@ class Console(QMainWindow):
         self.target_table.setColumnWidth(0, 30); self.target_table.horizontalHeader().hide()
         self.target_table.horizontalHeader().sortIndicatorChanged.connect(lambda *_: self.filter_servers(self.server_search.text()))
         self.target_table.itemChanged.connect(self.selection_changed); left.addWidget(self.target_table)
-        left.addWidget(button("Collect connections", lambda: self.start_job("connections"), True))
-        note = label("Linux executes netstat over SSH.\nOnly ESTABLISHED TCP peers\nare displayed.", "subtitle"); left.addWidget(note)
+        left.addWidget(button("새로 수집 (선택 장비 접속)", lambda: self.start_job("connections"), True))
+        left.addWidget(button("저장 결과 다시 불러오기",self.restore_connection_cache))
+        note = label("체크는 저장 결과만 표시합니다. 새로 수집 버튼만 장비에 접속합니다.\nLinux executes netstat over SSH.\nOnly ESTABLISHED TCP peers\nare displayed.", "subtitle"); left.addWidget(note)
         layout.addWidget(selection)
         right_frame, right = card()
         tools = QHBoxLayout(); tools.addWidget(label("Connection mind map", "section")); tools.addStretch()
@@ -559,7 +560,7 @@ class Console(QMainWindow):
         paging.addWidget(label("지도 페이지 (10대)")); paging.addWidget(self.map_page); right.addLayout(paging)
         self.graph = ConnectionMap(); self.graph.set_results([]); right.addWidget(self.graph, 1)
         right.addWidget(label("Blue = selected host / Green = peer / ↔ = TCP session / Local port ↔ peer port / Scroll to zoom, drag to pan", "subtitle"))
-        self.connection_table = table(["Source", "Local endpoint", "Connected peer", "Port"])
+        self.connection_table = table(["Source", "Local endpoint", "Connected peer", "Port", "조회 시각"])
         self.connection_table.setMaximumHeight(170); right.addWidget(self.connection_table)
         paging=QHBoxLayout(); self.connection_page=QSpinBox(); self.connection_page.setRange(1,1); self.connection_page.setKeyboardTracking(False); self.connection_page.valueChanged.connect(self.render_connection_table)
         self.connection_count=label("조회 0건", "subtitle"); self.connection_count.setWordWrap(True); paging.addWidget(self.connection_count); paging.addStretch(); paging.addWidget(label("표 페이지 (200건)")); paging.addWidget(self.connection_page); right.addLayout(paging)
@@ -1226,6 +1227,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.backup_history = {}; self.backup_history_offset = 0
         self.resource_auto.setChecked(False); self.resource_loaded_job = None
         self.resource_table.setRowCount(0); self.resource_updated.setText("No resource snapshot loaded")
+        self.connection_cache={}; self.connection_cache_loading=False
         self.connection_results = []; self.jobs = []
         self.set_inventory([]); self.update_map(); self.set_jobs([])
         self.metric_values[2].setText("—"); self.progress.setValue(0)
@@ -1251,7 +1253,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
             return
         client = self.client
         def loaded_inventory(rows):
-            self.set_inventory(rows);self.refresh_books()
+            self.set_inventory(rows);self.refresh_books();self.restore_connection_cache()
         self.work(lambda: client.call("inventory.list"), loaded_inventory)
         self.poll()
 
@@ -1327,6 +1329,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
             self.account_targets.setSortingEnabled(sorting); self.account_targets.blockSignals(False)
             self.update_account_review()
         self.select_all.blockSignals(True); self.select_all.setChecked(bool(self.servers) and len(hosts) == len(self.servers)); self.select_all.blockSignals(False)
+        if hasattr(self,"connection_page"):self.show_selected_connections()
 
     def check_all(self, checked):
         if self.active_book():return
@@ -1484,10 +1487,43 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                     client = self.client
                     self.work(lambda: client.results(active["id"]), lambda rows: self.display_patches(rows, active), quiet=True, on_error=result_failed)
 
+    def restore_connection_cache(self):
+        if not self.client or self.connection_cache_loading:return
+        self.connection_cache_loading=True;client=self.client
+        def load():
+            rows=[];offset=0
+            while True:
+                if client is not self.client:return rows
+                page=client.call("connections.cached",offset=offset);rows.extend(page["items"])
+                offset+=len(page["items"])
+                if offset>=page["total"] or not page["items"]:return rows
+        def loaded(rows):
+            self.connection_cache_loading=False
+            self.remember_connections(rows);self.show_selected_connections()
+        self.work(load,loaded,quiet=True,on_error=lambda:setattr(self,"connection_cache_loading",False))
+
+    def remember_connections(self,rows):
+        for row in rows:
+            key=tuple(row.get(k,"") for k in ("hostname","ip","os"))
+            old=self.connection_cache.get(key)
+            if old is None or row.get("observed_at","")>=old.get("observed_at",""):self.connection_cache[key]=row
+
+    def show_selected_connections(self):
+        hosts=set(self.checked_hosts());rows=[]
+        for host in self.servers:
+            if host['hostname'] not in hosts:continue
+            key=tuple(host.get(k,"") for k in ("hostname","ip","os"))
+            rows.append(self.connection_cache.get(key,{**host,"status":"not_collected"}))
+        self.connection_results=rows
+        self.metric_values[2].setText(str(sum(len(r.get("result",{}).get("connections",[])) for r in rows)))
+        self.update_map()
+
     def display_connections(self, rows):
+        self.remember_connections(rows)
         self.connection_results = rows
+        if self.servers:self.show_selected_connections()
         total = sum(len(row.get("result", {}).get("connections", [])) for row in rows)
-        self.metric_values[2].setText(str(total)); self.update_map(); self.navigate(1)
+        self.metric_values[2].setText(str(sum(len(r.get("result",{}).get("connections",[])) for r in self.connection_results))); self.update_map(); self.navigate(1)
         failures = sum(row["status"] == "failed" for row in rows)
         cancelled = sum(row["status"] == "cancelled" for row in rows)
         empty = sum(row["status"] == "completed" and not row.get("result", {}).get("connections")

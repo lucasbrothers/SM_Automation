@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from desktop.connection_view import snapshot_time
 
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QColor, QBrush, QPen, QFont, QPainterPath, QPainter, QPolygonF
@@ -95,6 +96,8 @@ class ConnectionMap(QGraphicsView):
                 notice.setBrush(QColor("#b45309"))
                 notice.setToolTip(warning)
                 notice.setPos(host[0], host[1] + 70)
+            host_time=self.scene().addSimpleText(snapshot_time(row),QFont("Segoe UI",8))
+            host_time.setBrush(QColor("#52657b"));host_time.setPos(host[0],host[1]-22)
             anchors.append(host)
             if row.get("status") == "failed":
                 node = self.card(660, y, "Collection failed", row.get("error", ""), "#d45850", 230)
@@ -102,7 +105,7 @@ class ConnectionMap(QGraphicsView):
             elif not shown:
                 cancelled = row.get("status") == "cancelled"
                 complete = row.get("status") == "completed" and not row.get("result", {}).get("truncated")
-                title = "No established connections" if complete else ("Collection cancelled" if cancelled else "Incomplete snapshot")
+                title = "저장 결과 없음 (새로 수집 필요)" if row.get("status")=="not_collected" else "No established connections" if complete else ("Collection cancelled" if cancelled else "Incomplete snapshot")
                 node = self.card(660, y, title,
                                  "Successful snapshot / 0 TCP peers" if complete else "No complete connection result",
                                  "#12a58b" if complete else "#b45309", 230)
