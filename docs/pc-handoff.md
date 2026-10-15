@@ -304,3 +304,14 @@ Windows 명령 작업은 실제 이력에서 completed였으며 기존 CLIENT의
 제품 설명을 Windows·Linux·AIX 통합 관리로 정리하고 docs/platform-support.md에 기능별 구현/제약/실장비 검증 범위를 명시했다. AIX 계정/패치 전용 메뉴 및 자원/보안 전 기능을 새로 구현했다는 의미는 아니다. 실제 검증은 승인된 현재 Windows PC와 WSL에 한정한다. 자동화 일시정지와 사용자 results.csv 미추적 유지.
 
 최종 검증: Windows 전체 526 passed / 29 skipped, 최종 상태 표시/지원 안내 관련 47 passed / 2 skipped, WSL 계정·패치·agent 관련 27 passed. 역할별 설치 ZIP 갱신 및 로컬 SERVER 재시작 적용 완료. UAC 취소로 현재 Windows 서비스 바이너리 갱신은 사용자 관리자 실행 필요.
+
+
+## 2026-10-15 AIX 05·06·08 조회 지원
+
+AIX native SSH 조회 어댑터를 추가했다. 05 lsuser -f 명시 속성으로 계정 UID·기본/보조 그룹·홈·셸·설명·잠금·만료 조회, 06 oslevel -s/lslpp -lc/emgr -l로 OS 수준·저장소별 설치 파일셋·임시 수정 조회, 08 uptime/vmstat -v/df -Pk로 부하·물리 메모리·루트 디스크·가동시간 조회를 연결했다. CLIENT에 Python/패키지를 설치하지 않고 각 명령 60초/4 MiB 제한을 적용했다.
+
+AIX 05·06은 조회 전용이며 GUI와 SERVER에서 변경 요청 및 혼합 대상 변경을 사전 차단한다. Windows 조회 전용·Linux 변경 기능은 유지한다. emgr 조회 실패는 파일셋 결과를 보존한 partial로 표시하고, 잘못된 필수 지표/출력은 실패로 처리한다. AIX 메모리는 4 KiB 페이지 기준 전체-무료(파일 캐시 포함)이며 Linux available과 다르다. Enabled는 account_locked 반대값으로 로그인 가능 여부의 전체 판정이 아니다. 만료는 AIX 원본값(0=없음)이고 패치 조회는 미설치 업데이트/APAR 전체 판정이 아니다.
+
+기존 장비록·예약 자원 수집·조회 이력·표 정렬·CSV 경로를 유지하고 GUI 지원 안내/설치 ZIP 문서를 갱신한다. AIX 파서/서버 분기/변경 차단/GUI를 고정 응답으로 검증했으며 실제 AIX 장비 접속은 미실행이다. WSL 관련 16개 통과. 자동화 일시정지 및 사용자 results.csv 미추적 유지.
+
+최종 전체 검사 543 passed / 29 skipped, WSL AIX 관련 16 passed. 이전 실행의 임시 파일 교체 접근 오류는 단일 및 전체 재실행 모두 통과했다. 로컬 WSL SERVER 적용·재시작 및 설치 묶음 갱신 완료. AIX 실장비 검증 미실행.

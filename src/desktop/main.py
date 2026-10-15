@@ -489,9 +489,9 @@ GUI = Windows 관리 콘솔
 Windows 명령: PowerShell / SYSTEM. 파일 전송은 현재 8 MiB 제한.
 Linux/AIX 명령: SSH 셸 및 설정된 실행 권한.
 
-05 계정: Windows 로컬 계정 조회 전용 / Linux 조회·변경 / AIX 전용 메뉴 미지원
-06 패치: Windows 설치 KB 조회 전용 / Linux 배포판별 조회·계획·적용 / AIX 전용 메뉴 미지원
-08 자원 및 Linux 보안 정책: Linux 전용
+05 계정: Windows 로컬 계정 조회 전용 / Linux 조회·변경 / AIX 계정·그룹·잠금 조회 전용
+06 패치: Windows 설치 KB 조회 전용 / Linux 배포판별 조회·계획·적용 / AIX OS 수준·파일셋·임시 수정 조회 전용
+08 자원: Linux / AIX 지원. Linux 보안 정책: Linux 전용
 
 Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·드라이버 목록이 아닙니다.
 검증 완료 범위: 현재 Windows PC와 로컬 WSL. AIX/RHEL 실장비 검증은 미실행.
@@ -500,7 +500,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
 
     def build_resources(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
-        body.addWidget(label("Linux resource snapshots", "section"))
+        body.addWidget(label("Linux / AIX resource snapshots", "section"))
         actions = QHBoxLayout()
         actions.addWidget(button("Collect resources", lambda: self.start_job("monitoring"), True))
         self.resource_auto = QCheckBox("Refresh every 120 seconds while this console is open")
@@ -514,7 +514,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
         self.resource_updated = label("No resource snapshot loaded", "subtitle"); body.addWidget(self.resource_updated)
         self.resource_table = table(["Server", "Load (1 / 5 / 15 min)", "Memory used", "Root disk used", "Uptime / status"])
         body.addWidget(self.resource_table, 1)
-        note = label("Targets follow Connection map selection. Automatic refresh waits while another job is running. Load is not CPU utilization.", "subtitle")
+        note = label("Linux / AIX 조회. AIX 메모리 사용량은 전체-무료(파일 캐시 포함), Linux available과 다릅니다. Load는 CPU 사용률이 아닙니다. 자동 조회는 다른 작업 완료 후 수행합니다.", "subtitle")
         note.setWordWrap(True); body.addWidget(note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -784,7 +784,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
 
     def build_accounts(self):
         page = QWidget(); layout = QVBoxLayout(page)
-        frame, body = card(); body.addWidget(label("Linux / Windows accounts", "section"))
+        frame, body = card(); body.addWidget(label("Windows / Linux / AIX accounts", "section"))
         self.account_tabs = QTabWidget()
         targets = QWidget(); targets.setObjectName("accountPage"); target_layout = QVBoxLayout(targets)
         target_layout.addWidget(label("Choose target servers. Selection is shared with Connection map."))
@@ -835,9 +835,9 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
                 }[name]
                 field.setEnabled(required); form.setRowVisible(field, required)
         self.account_action.currentIndexChanged.connect(update_fields); self.account_action.currentIndexChanged.connect(self.update_windows_query_controls); update_fields()
-        note = label("Windows: local accounts are read-only. Linux: New accounts have no password set. Delete retains the home directory. Changes require an encrypted backup.")
+        note = label("Windows/AIX: accounts are read-only. Linux: New accounts have no password set. Delete retains the home directory. Changes require an encrypted backup.")
         note.setWordWrap(True); operation_layout.addWidget(note); operation_layout.addStretch()
-        self.account_table = table(["Server", "Username", "UID / SID", "GID / Groups", "Comment", "Home", "Shell", "Full name", "Enabled", "Account expires", "Password expires", "Last login"])
+        self.account_table = table(["Server", "Username", "UID / SID", "GID / Groups", "Comment", "Home", "Shell", "Full name", "Enabled", "Account expires", "Password expires", "Last login", "Supplementary groups"])
         results = QWidget(); results_layout = QVBoxLayout(results)
         self.account_result_status = QLabel("Choose CLIENT targets and query the account list.")
         self.account_result_status.setWordWrap(True); results_layout.addWidget(self.account_result_status)
@@ -884,7 +884,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
             QMessageBox.warning(self, "Account export", "Could not save the file. Check the destination and permissions.")
 
     def run_accounts(self):
-        if self.has_windows_targets() and self.account_action.currentData() != "list":return
+        if self.has_readonly_account_patch_targets() and self.account_action.currentData() != "list":return
         options = {name: field.text().strip() for name, field in self.account_fields.items()}
         options["action"] = self.account_action.currentData()
         if options["action"] != "list":
@@ -899,7 +899,7 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
         values = []
         for row in rows:
             for account in row.get("result", {}).get("accounts", []):
-                values.append([row["hostname"], *[account.get(key, "") for key in ("username", "uid", "gid", "comment", "home", "shell", "full_name", "enabled", "account_expires", "password_expires", "last_logon")]])
+                values.append([row["hostname"], *[account.get(key, "") for key in ("username", "uid", "gid", "comment", "home", "shell", "full_name", "enabled", "account_expires", "password_expires", "last_logon", "groups")]])
         fill_table(self.account_table, values); self.navigate(4)
         notes = [row.get("result", {}).get("note", "") + " " + row.get("result", {}).get("warnings", "") for row in rows]
         failures = [row["hostname"] + ": " + row.get("error", row.get("message", row["status"]))
@@ -910,21 +910,21 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
 
     def build_patches(self):
         page = QWidget(); layout = QVBoxLayout(page); frame, body = card()
-        body.addWidget(label("Linux / Windows patches", "section"))
+        body.addWidget(label("Windows / Linux / AIX patches", "section"))
         help_text=label("① Connection map에서 CLIENT 선택 → ② 업데이트 조회 → ③ 패키지명(필요시 =버전) 입력 후 계획 미리보기 → ④ 대상·버전·의존성 검토 후 적용. 조회와 계획은 설치하지 않습니다.")
         help_text.setWordWrap(True);body.addWidget(help_text)
         body.addWidget(button("패치 동작·지원 범위 자세히 보기",self.show_patch_help))
         actions = QHBoxLayout()
-        actions.addWidget(button("Query Linux updates / Windows installed KB", self.query_patches))
+        actions.addWidget(button("Query Linux updates / Windows KB / AIX filesets", self.query_patches))
         self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("패키지명 또는 패키지명=버전, 공백으로 구분: openssh-server net-tools")
         actions.addWidget(self.patch_packages, 1)
         self.patch_plan_button=button("Preview patch plan", self.plan_patches, True); actions.addWidget(self.patch_plan_button); body.addLayout(actions)
-        self.patch_table = table(["Server", "Package / KB", "Installed / Windows date", "Planned version / Windows status", "Description", "Installed by"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
+        self.patch_table = table(["Server", "Package / KB", "Installed / Windows date", "Planned version / Windows·AIX status", "Description", "Installed by", "Source", "Type"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
         self.patch_output = QPlainTextEdit(); self.patch_output.setReadOnly(True); self.patch_output.setMinimumHeight(100); body.addWidget(self.patch_output, 1)
         self.patch_plan_id = None
         self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
         body.addWidget(self.patch_apply)
-        patch_note = label("Windows: installed KB query only (Get-HotFix/CBS), no changes. Linux Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
+        patch_note = label("Windows KB / AIX filesets and interim fixes: query only, no changes. Linux Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
         patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -956,7 +956,7 @@ CLIENT·버전·의존성·경고를 확인하세요. 계획 유효 시간은 1�
 지원·제약
 Debian/Ubuntu: APT 저장소 접근 또는 운영환경의 패키지 제공이 필요합니다.
 RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을 사용합니다.
-실제 RHEL 운영환경 검증은 아직 완료되지 않았습니다. AIX 패치는 지원하지 않습니다. Windows는 설치된 KB(Get-HotFix/CBS) 조회만 지원합니다.
+실제 RHEL 운영환경 검증은 아직 완료되지 않았습니다. AIX는 설치 파일셋·임시 수정 및 OS 수준 조회만 지원합니다. Windows는 설치된 KB(Get-HotFix/CBS) 조회만 지원합니다.
 백업은 설정/진단 보존이며 패키지 버전을 자동으로 되돌리는 전체 시스템 롤백이 아닙니다.
 대상별 성공·실패·출력은 결과 표/Activity에서 확인하고 CSV로 저장할 수 있습니다.
 07 예약은 수집·자원·보안 점검·백업용이며 패치 자동 적용 예약은 지원하지 않습니다.""")
@@ -967,12 +967,12 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.start_job("patches", options={"action": "list"})
 
     def plan_patches(self):
-        if self.has_windows_targets():return
+        if self.has_readonly_account_patch_targets():return
         self.patch_plan_id = None; self.patch_apply.setEnabled(False)
         self.start_job("patches", options={"action": "plan", "packages": self.patch_packages.text().split()})
 
     def apply_patches(self):
-        if self.has_windows_targets():return
+        if self.has_readonly_account_patch_targets():return
         if not self.patch_plan_id:
             return
         plan_id = self.patch_plan_id
@@ -986,7 +986,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         for row in rows:
             result = row.get("result", {})
             for package in result.get("packages", []):
-                values.append([row["hostname"], package["name"], package["installed"], package["candidate"], package.get("description",""), package.get("installed_by","")])
+                values.append([row["hostname"], package["name"], package["installed"], package["candidate"], package.get("description",""), package.get("installed_by",""), package.get("source",""), package.get("type","")])
             output.append(row["hostname"] + " / " + row["status"] + "\n" + row.get("error", result.get("output", "")))
             if result.get("note"):
                 output.append(result["note"])
@@ -997,7 +997,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         fill_table(self.patch_table, values); self.patch_output.setPlainText("\n\n".join(output)); self.navigate(5)
         if job.get("options", {}).get("action") == "plan" and job["status"] == "completed":
             self.patch_plan_id = job["id"]
-            self.patch_apply.setEnabled(not self.has_windows_targets() and bool(rows) and all(row.get("result", {}).get("apply_supported", True) for row in rows))
+            self.patch_apply.setEnabled(not self.has_readonly_account_patch_targets() and bool(rows) and all(row.get("result", {}).get("apply_supported", True) for row in rows))
 
     def build_schedules(self):
         self.schedules = [];self.edit_schedule_id=None;self.edit_schedule_hosts=[]
@@ -1150,16 +1150,16 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         if hasattr(self, "fit_timer"): self.fit_timer.start(80)
         if index == 8 and self.client and not self.demo:
             self.refresh_saved_commands()
-        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Accounts — Windows / Linux", "Patches — Windows / Linux", "Keep operations on schedule", "Watch your Linux resources", "Commands and files — Windows / Linux / AIX", "CI 자산 관리 대시보드"]
+        titles = ["Infrastructure overview", "Explore your connections", "Protect your configurations", "Every operation, in view", "Accounts — Windows / Linux / AIX", "Patches — Windows / Linux / AIX", "Keep operations on schedule", "Watch Linux / AIX resources", "Commands and files — Windows / Linux / AIX", "CI 자산 관리 대시보드"]
         self.title.setText(titles[index])
         descriptions = ["Windows · Linux · AIX 통합 관리 콘솔 | 중앙 SERVER에서 작업과 이력을 관리합니다.",
                         "Windows · Linux · AIX 장비의 TCP 연결을 중앙 SERVER에서 수집·보관합니다.",
                         "OS configuration files and account information, encrypted and retained on Linux.",
                         "Follow server-side jobs and inspect their results, even after reconnecting.",
-                        "Windows 로컬 계정 조회 · Linux 계정 조회/변경. AIX 계정 전용 조회는 현재 미지원.",
-                        "Windows 설치된 KB 조회 · Linux 업데이트 조회/계획/적용. AIX 패치 전용 조회는 현재 미지원.",
+                        "Windows·AIX 계정 조회 · Linux 계정 조회/변경. AIX는 그룹·잠금·만료 원본 값 포함.",
+                        "Windows 설치된 KB 조회 · Linux 업데이트 조회/계획/적용. AIX 설치 파일셋·임시 수정 조회 지원.",
                         "Encrypted Linux schedules continue independently of your Windows console.",
-                        "Linux collects load, memory and root disk observations over SSH.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console.", "장비록·개별 장비의 하드웨어, OS, 고객 및 서비스 정보를 관리합니다."]
+                        "Linux / AIX 부하·메모리·루트 디스크·가동시간을 SSH로 조회합니다.", "CLIENT = managed target; SERVER = Linux main server; GUI = this Windows console.", "장비록·개별 장비의 하드웨어, OS, 고객 및 서비스 정보를 관리합니다."]
         self.subtitle.setText(descriptions[index])
         if self.history_errors:
             self.subtitle.setText(f"Linux history recovery required: {len(self.history_errors)} unreadable records. New operations are disabled.")
@@ -1344,8 +1344,12 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         names=set(self.checked_hosts())
         return any(r["hostname"] in names and "win" in r.get("os","").lower() for r in self.servers)
 
+    def has_readonly_account_patch_targets(self):
+        names=set(self.checked_hosts())
+        return any(r["hostname"] in names and any(os in r.get("os", "").lower() for os in ("win","aix")) for r in self.servers)
+
     def update_windows_query_controls(self, *_):
-        windows=self.has_windows_targets()
+        windows=self.has_readonly_account_patch_targets()
         if hasattr(self,"account_run_button"):
             self.account_run_button.setEnabled(not windows or self.account_action.currentData()=="list")
         if hasattr(self,"patch_plan_button"):

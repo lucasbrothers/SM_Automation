@@ -79,3 +79,5 @@ Windows 클라이언트의 TLS 인증, 연결 수집, 자원 수집, 보안 감�
 이전 설계 대화는 [기록](docs/imported-central-os-conversation.md)으로 보존합니다.
 
 OS별 지원·제약은 [Windows·Linux·AIX 지원표](docs/platform-support.md)를 확인하세요. Windows 계정/설치 KB는 조회 전용입니다.
+
+AIX 05 계정·그룹·잠금·만료, 06 설치 파일셋·임시 수정·OS 수준, 08 부하·메모리·루트 디스크·가동시간 조회를 지원합니다. AIX 계정/패치 변경은 지원하지 않습니다. 실제 AIX 장비 검증은 미실행입니다.

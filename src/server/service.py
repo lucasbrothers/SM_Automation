@@ -289,8 +289,8 @@ class ManagementService:
             raise ValueError("A selected server is no longer in the inventory")
         targets = [indexed[name] for name in dict.fromkeys(names)]
         supplied = options or {}
-        if kind in {"accounts","patches"} and any(os_family(row["os"])=="windows" for row in targets) and supplied.get("action","list")!="list":
-            raise ValueError("Windows accounts and patches are read-only; select Linux targets for changes")
+        if kind in {"accounts","patches"} and any(os_family(row["os"]) in {"windows","aix"} for row in targets) and supplied.get("action","list")!="list":
+            raise ValueError("Windows/AIX accounts and patches are read-only; select Linux targets for changes")
         spread=supplied.get("spread_seconds",60 if len(targets)>50 else 0)
         if type(spread) is not int or not 0<=spread<=3600:raise ValueError("Spread must be 0–3600 seconds")
         options = (validate_options(supplied) if kind == "accounts" else
@@ -322,7 +322,7 @@ class ManagementService:
             if not isinstance(plan_id, str) or not re.fullmatch(r"[a-f0-9]{32}", plan_id):
                 raise ValueError("SSH apply requires a completed plan ID")
             options = {"plan_id": plan_id}
-        if ((kind in {"accounts", "patches"} and any(os_family(row["os"]) not in {"linux","windows"} for row in targets)) or (kind == "security_permissions" and any(os_family(row["os"]) != "linux" for row in targets))):
+        if ((kind in {"accounts", "patches"} and any(os_family(row["os"]) not in {"linux","windows","aix"} for row in targets)) or (kind == "security_permissions" and any(os_family(row["os"]) != "linux" for row in targets))):
             raise ValueError("Account and patch management currently support Linux targets")
         with self.lock:
             if kind == "security_apply":
@@ -478,9 +478,11 @@ class ManagementService:
                 result["connections"] = connections[:5000]
                 result["truncated"] = len(connections) > 5000
             elif kind == "monitoring":
-                if family != "linux":
-                    raise ValueError("Resource monitoring currently supports Linux targets")
-                result = collect_linux_snapshot(client).to_dict()
+                if family == "aix":
+                    from monitoring.aix import resources
+                    result=resources(client)
+                elif family == "linux":result = collect_linux_snapshot(client).to_dict()
+                else:raise ValueError("Resource monitoring supports Linux/AIX targets")
             elif kind == "security_apply":
                 with self.lock:
                     planned = next(item["result"] for item in self.jobs[job["options"]["plan_id"]]["results"] if item["hostname"] == row["hostname"])
@@ -524,6 +526,9 @@ class ManagementService:
                 except Exception as exc:
                     return {**row, "status": "failed", "error": str(exc)[:1500], "result": {"backup": before}}
                 result["backup"] = before
+            elif family == "aix" and kind in {"accounts","patches"}:
+                from monitoring.aix import accounts,patches
+                result=(accounts if kind=="accounts" else patches)(client,job["options"])
             elif family == "windows" and kind in {"accounts","patches"}:
                 from monitoring.windows_queries import collect_query
                 result=collect_query(client,kind,job["options"])
