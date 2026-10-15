@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QColor, QBrush, QPen, QFont, QPainterPath, QPainter, QPolygonF
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsDropShadowEffect
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene
 
 
 class ConnectionMap(QGraphicsView):
@@ -55,18 +55,19 @@ class ConnectionMap(QGraphicsView):
             item.setToolTip(ports)
 
     def set_results(self, results, query=""):
+        self.setUpdatesEnabled(False)
+        self.scene().setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
         self.scene().clear()
+        self.focus_point = None
         query = query.casefold().strip()
         rows = []
         for row in results:
             peers = defaultdict(list)
             for connection in row.get("result", {}).get("connections", []):
                 peer = connection["remote"]["address"]
-                searchable = " ".join([row["hostname"], row["ip"],
-                                       f"{connection['local']['address']}:{connection['local']['port']}",
-                                       peer, connection["remote"]["port"], f"{peer}:{connection['remote']['port']}"])
-                if query and query not in searchable.casefold():
-                    continue
+                if query:
+                    searchable = f"{row['hostname']} {row['ip']} {connection['local']['address']}:{connection['local']['port']} {peer}:{connection['remote']['port']}"
+                    if query not in searchable.casefold():continue
                 peers[peer].append(connection)
             if peers or not query or query in (row["hostname"] + " " + row["ip"]).casefold():
                 rows.append((row, peers))
@@ -74,7 +75,7 @@ class ConnectionMap(QGraphicsView):
             title = "No matching connections" if query else ("No established connections" if results else "No connection snapshot")
             subtitle = "Try another filter" if query else ("Collection returned no established TCP peers" if results else "Select servers and collect connections")
             self.card(80, 100, title, subtitle, "#2c6bed", 360)
-            self.fit_map(); return
+            self.fit_map(); self.setUpdatesEnabled(True); return
         y = 0
         anchors = []
         omitted = 0
@@ -114,6 +115,7 @@ class ConnectionMap(QGraphicsView):
                 captions = "\n".join(pairs)
                 self.edge(host, node, ports=captions)
             y += block_height + 45
+        self.focus_point = QPointF(anchors[0][0]+anchors[0][2]/2, anchors[0][1]+33)
         center = self.card(20, y / 2 - 55, "ESTABLISHED", f"{len(rows)} servers in view", "#8059d5", 205)
         for anchor in anchors:
             self.edge(center, anchor, "#acc4ef")
@@ -121,7 +123,12 @@ class ConnectionMap(QGraphicsView):
             notice = self.scene().addSimpleText(f"{omitted} peers hidden from map. Use the table or search to inspect them.")
             notice.setPos(20, y + 10)
         self.fit_map()
+        self.setUpdatesEnabled(True)
 
     def fit_map(self):
         self.scene().setSceneRect(self.scene().itemsBoundingRect().adjusted(-28, -28, 28, 28))
         self.fitInView(self.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        # Large snapshots must not shrink text into an invisible vertical stripe.
+        if self.transform().m11() < .5:
+            self.resetTransform(); self.scale(.65,.65)
+            self.centerOn(self.focus_point or self.scene().sceneRect().center())

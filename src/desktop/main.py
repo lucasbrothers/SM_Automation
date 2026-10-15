@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from desktop.client import ConnectionSettings, ServerClient
 from desktop.graph import ConnectionMap
+from desktop.connection_view import filter_snapshot, table_rows, table_page
 from desktop.theme import LIGHT_CONTROLS, light_palette
 from desktop.tables import enable_sorting, populate, row_identity, SortTreeItem
 
@@ -548,12 +549,21 @@ class Console(QMainWindow):
         right_frame, right = card()
         tools = QHBoxLayout(); tools.addWidget(label("Connection mind map", "section")); tools.addStretch()
         self.peer_search = QLineEdit(); self.peer_search.setPlaceholderText("Filter peer / port"); self.peer_search.setMaximumWidth(180)
-        self.peer_search.textChanged.connect(self.update_map); tools.addWidget(self.peer_search)
+        self.map_filter_timer=QTimer(self); self.map_filter_timer.setSingleShot(True); self.map_filter_timer.setInterval(250)
+        self.map_filter_timer.timeout.connect(self.update_map)
+        self.peer_search.textChanged.connect(lambda *_: self.map_filter_timer.start()); tools.addWidget(self.peer_search)
         tools.addWidget(button("Fit", lambda: self.graph.fit_map())); right.addLayout(tools)
+        topology_note=label("여러 서버는 서버별 연결을 함께 표시합니다. 공통 상대 노드를 합치는 교차 토폴로지는 아닙니다.","subtitle"); topology_note.setWordWrap(True); right.addWidget(topology_note)
+        paging=QHBoxLayout()
+        self.map_page=QSpinBox(); self.map_page.setRange(1,1); self.map_page.setKeyboardTracking(False); self.map_page.valueChanged.connect(self.render_connection_pages)
+        paging.addWidget(label("지도 페이지 (10대)")); paging.addWidget(self.map_page); right.addLayout(paging)
         self.graph = ConnectionMap(); self.graph.set_results([]); right.addWidget(self.graph, 1)
         right.addWidget(label("Blue = selected host / Green = peer / ↔ = TCP session / Local port ↔ peer port / Scroll to zoom, drag to pan", "subtitle"))
         self.connection_table = table(["Source", "Local endpoint", "Connected peer", "Port"])
         self.connection_table.setMaximumHeight(170); right.addWidget(self.connection_table)
+        paging=QHBoxLayout(); self.connection_page=QSpinBox(); self.connection_page.setRange(1,1); self.connection_page.setKeyboardTracking(False); self.connection_page.valueChanged.connect(self.render_connection_table)
+        self.connection_count=label("조회 0건", "subtitle"); self.connection_count.setWordWrap(True); paging.addWidget(self.connection_count); paging.addStretch(); paging.addWidget(label("표 페이지 (200건)")); paging.addWidget(self.connection_page); right.addLayout(paging)
+        self.map_generation=0; self.filtered_connections=[]
         layout.addWidget(right_frame, 1); self.pages.addWidget(page)
 
     def build_backup(self):
@@ -601,6 +611,9 @@ class Console(QMainWindow):
             if widget in (self.account_targets, self.target_table):
                 continue
             rows.append(["Table", *[widget.horizontalHeaderItem(c).text() for c in range(widget.columnCount())]])
+            if widget is getattr(self,"connection_table",None):
+                rows.extend(["",*values] for values in table_rows(self.filtered_connections))
+                continue
             for r in range(widget.rowCount()):
                 if not widget.isRowHidden(r):
                     rows.append(["", *[widget.item(r, c).text() if widget.item(r, c) else "" for c in range(widget.columnCount())]])
@@ -1486,16 +1499,26 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
                                  (" Large results limited to 5,000 connections per host." if truncated else ""))
 
     def update_map(self, *_):
-        query = self.peer_search.text().strip()
-        self.graph.set_results(self.connection_results, query)
-        rows = []
-        for row in self.connection_results:
-            for connection in row.get("result", {}).get("connections", []):
-                local, remote = connection["local"], connection["remote"]
-                values = [row["hostname"], f"{local['address']}:{local['port']}", remote["address"], remote["port"]]
-                if not query or query.casefold() in " ".join(values + [row["ip"], f"{remote['address']}:{remote['port']}"]).casefold():
-                    rows.append(values)
-        fill_table(self.connection_table, rows)
+        self.map_filter_timer.stop()
+        self.map_generation+=1; generation=self.map_generation
+        snapshot=self.connection_results; query=self.peer_search.text().strip()
+        def loaded(rows):
+            if generation!=self.map_generation:return
+            self.filtered_connections=rows
+            count=sum(len(row.get("result",{}).get("connections",[])) for row in rows)
+            self.map_page.blockSignals(True); self.map_page.setRange(1,max(1,(len(rows)+9)//10)); self.map_page.setValue(1); self.map_page.blockSignals(False)
+            self.connection_page.blockSignals(True); self.connection_page.setRange(1,max(1,(count+199)//200)); self.connection_page.setValue(1); self.connection_page.blockSignals(False)
+            self.connection_count.setText(f"조회 {len(rows):,}대 / {count:,}건 · CSV는 검색 결과 전체 저장 · 표 정렬은 현재 페이지")
+            self.render_connection_pages(); self.render_connection_table()
+        if not query:loaded(snapshot)
+        else:self.work(lambda:filter_snapshot(snapshot,query),loaded,quiet=True)
+
+    def render_connection_pages(self, *_):
+        start=(self.map_page.value()-1)*10
+        self.graph.set_results(self.filtered_connections[start:start+10], self.peer_search.text())
+
+    def render_connection_table(self, *_):
+        fill_table(self.connection_table,table_page(self.filtered_connections,self.connection_page.value()))
 
     def display_backup_comparison(self,rows,job):
         from desktop.backup_compare import ComparisonDialog
