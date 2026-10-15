@@ -324,3 +324,10 @@ Windows 기존 agent 명령 통로와 OpenSSH 경로에 고정 CIM 자원 조회
 현재 PC는 기존 hostname 대신 -agent- 식별자 접미사를 가진 등록 이름으로 online이었다. 사용자의 장비 목록을 변경하지 않고 해당 유일한 등록 대상으로 실행해 Windows CPU·물리 메모리·시스템 드라이브·가동시간 및 작업 이력 반환을 실제 검증했다. 에이전트 설치/교체·권한 설정 변경은 수행하지 않았다. AIX/RHEL 실장비 시험 미실행, 자동화 일시정지 및 사용자 results.csv 미추적 유지.
 
 검증: Windows 전체 556 passed / 29 skipped, WSL 자원 수집 관련 12 passed, 승인된 현재 Windows PC agent 실제 08 조회 PASS. 로컬 SERVER 적용 및 역할별 설치 ZIP 갱신 완료.
+
+
+## 2026-10-15 왼쪽 메뉴 정리
+
+왼쪽 주요 기능 01~10과 번호/순서는 보존하고, 밝은 배경·옅은 파란 선택 상태·일정한 간격으로 정리했다. 기존 하단 6개 연결/관리 버튼은 작은 설정 및 연결 메뉴 한 개로 통합했다. SERVER 연결/해제, CLIENT 접속 계정, SERVER GUI 계정, 공개키 배포, Windows CLIENT 설치/상태를 해당 메뉴에서 실행한다. Windows CLIENT 관리 동작은 QAction으로 옮기고 기존 관리자 역할 활성화 조건을 보존했다.
+
+90% 초기 배율·자동 맞춤·수동 배율 기능을 유지하며 메뉴 글자와 브랜드의 실제 크기에 따라 사이드바 폭을 계산해 60/90/140%에서 가로 잘림을 방지했다. 실제 Windows 폰트로 화면/설정 메뉴를 렌더링해 확인했다(logs/sidebar-clean-overview.png, logs/sidebar-settings-menu.png; 합성 데이터). GUI 관련 54개 검사 통과. 작업 실행/자격 증명 저장 방식은 바꾸지 않았다. 자동화 일시정지와 사용자 results.csv 미추적 유지.

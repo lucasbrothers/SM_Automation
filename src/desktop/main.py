@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QCheckBox, QProgressBar, QDialog, QFormLayout,
     QSpinBox, QDialogButtonBox, QFileDialog, QMessageBox, QPlainTextEdit, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget, QScrollArea, QInputDialog,
+    QTreeWidget, QTreeWidgetItem, QComboBox, QDateTimeEdit, QTabWidget, QScrollArea, QInputDialog, QMenu,
 )
 
 from desktop.client import ConnectionSettings, ServerClient
@@ -29,12 +29,22 @@ from desktop.tables import enable_sorting, populate, row_identity, SortTreeItem
 STYLE = """
 QWidget { font-family: 'Segoe UI'; font-size: 10pt; color: #23344c; }
 QMainWindow, QDialog, QMessageBox, #workspace { background: #f3f6fb; }
-#sidebar { background: #122139; }
-#sidebar QLabel { color: #c0cee2; background: transparent; }
-#sidebar QPushButton { color: #adbed5; text-align: left; background: transparent; border: none; padding: 13px 18px; border-radius: 8px; }
-#sidebar QPushButton:checked { color: white; background: #285fc5; }
-#sidebar QPushButton:hover { background: #253d60; }
-#brand { color: white; font-size: 20pt; font-weight: 700; }
+#sidebar { background: #ffffff; border-right: 1px solid #e0e7f0; }
+#sidebar QLabel { color: #718198; background: transparent; border: none; }
+#sidebar QPushButton { color: #465b75; text-align: left; background: transparent; border: 1px solid transparent; padding: 9px 12px; border-radius: 7px; font-size: 10pt; }
+#sidebar QPushButton:checked { color: #1954ae; background: #eaf2ff; border-color: #d8e6fb; font-weight: 600; }
+#sidebar QPushButton:hover { background: #f1f5fa; }
+#sidebar QPushButton:checked:hover { background: #e2edff; }
+#sidebar QLabel#brand { color: #233e64; font-size: 16pt; font-weight: 700; }
+#sidebar QLabel#navCaption { color: #8b99ac; font-size: 8pt; font-weight: 600; }
+#sidebar QLabel#serverStatus { color: #62758f; font-size: 9pt; }
+#sidebar QPushButton#settingsButton { color: #536b88; background: #f6f8fc; border: 1px solid #e3eaf3; font-size: 9pt; padding: 7px 10px; }
+#sidebar QPushButton#settingsButton:hover { background: #eaf1fa; border-color: #ccdbef; }
+#settingsMenu { background: white; color: #233e64; border: 1px solid #d8e1ee; padding: 6px; }
+#settingsMenu::item { padding: 9px 18px; border-radius: 5px; }
+#settingsMenu::item:selected { color: #1954ae; background: #eaf2ff; }
+#settingsMenu::item:disabled { color: #9aa8b8; }
+#settingsMenu::separator { height: 1px; background: #e6edf5; margin: 5px 8px; }
 #card { background: white; border: 1px solid #e0e7f0; border-radius: 12px; }
 #title { font-size: 23pt; font-weight: 700; color: #122139; }
 #subtitle { color: #77869c; }
@@ -269,25 +279,34 @@ class Console(QMainWindow):
         base = QWidget(); self.setCentralWidget(base)
         root = QHBoxLayout(base); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
         sidebar = QFrame(); sidebar.setObjectName("sidebar"); self.sidebar = sidebar
-        nav = QVBoxLayout(sidebar); nav.setContentsMargins(20, 28, 20, 24); nav.setSpacing(7)
-        nav.addWidget(label("SM /", "brand")); nav.addWidget(label("AUTOMATION", "subtitle")); nav.addSpacing(30)
+        nav = QVBoxLayout(sidebar); nav.setContentsMargins(14, 22, 14, 16); nav.setSpacing(4)
+        nav.addWidget(label("SM Automation", "brand"))
+        nav.addWidget(label("INFRASTRUCTURE CONSOLE", "navCaption")); nav.addSpacing(18)
+        nav.addWidget(label("WORKSPACE", "navCaption")); nav.addSpacing(4)
         self.nav_buttons = []
         for index, title in enumerate(["01   Overview", "02   Connection map", "03   Backups", "04   Activity", "05   Accounts", "06   Patches", "07   Schedules", "08   Resources", "09   Commands / Files", "10   CI / 자산"]):
             item = QPushButton(title); item.setCheckable(True)
             item.clicked.connect(lambda _, value=index: self.navigate(value)); nav.addWidget(item); self.nav_buttons.append(item)
-        nav.addStretch(); nav.addWidget(label("LINUX MAIN SERVER"))
-        self.server_badge = label("Not connected"); self.server_badge.setWordWrap(True); nav.addWidget(self.server_badge)
-        nav.addWidget(button("Connect server", self.connect_server))
-        nav.addWidget(button("Disconnect", self.disconnect_server))
-        nav.addWidget(button("CLIENT login settings", self.edit_client_credentials))
-        nav.addWidget(button("Deploy SERVER public key", self.deploy_server_key))
-        nav.addWidget(button("SERVER GUI account", self.edit_gui_account))
-        self.agent_setup_button=button("Windows CLIENT 설치 / 상태",self.agent_setup);nav.addWidget(self.agent_setup_button)
-        nav.addSpacing(20); nav.addWidget(label("Windows control console\nv0.2  /  Native desktop"))
+        nav.addStretch(1)
+        divider=QFrame();divider.setFrameShape(QFrame.Shape.HLine);divider.setStyleSheet("background:#e5ebf3;max-height:1px;border:0;")
+        nav.addWidget(divider);nav.addSpacing(8)
+        self.server_badge = label("Not connected", "serverStatus"); self.server_badge.setWordWrap(True); nav.addWidget(self.server_badge)
+        self.settings_menu=QMenu(self);self.settings_menu.setObjectName("settingsMenu")
+        self.settings_menu.addAction("SERVER 연결", self.connect_server)
+        self.settings_menu.addAction("연결 해제", self.disconnect_server)
+        self.settings_menu.addSeparator()
+        self.settings_menu.addAction("CLIENT 접속 계정 설정", self.edit_client_credentials)
+        self.settings_menu.addAction("SERVER GUI 계정 설정", self.edit_gui_account)
+        self.settings_menu.addAction("SERVER 공개키 배포", self.deploy_server_key)
+        self.settings_menu.addSeparator()
+        self.agent_setup_action=self.settings_menu.addAction("Windows CLIENT 설치 / 상태", self.agent_setup)
+        self.settings_button=QPushButton("설정 및 연결");self.settings_button.setObjectName("settingsButton")
+        self.settings_button.setToolTip("SERVER 연결 · 접속 계정 · 공개키 · Windows CLIENT 설치/상태")
+        self.settings_button.setMenu(self.settings_menu);nav.addWidget(self.settings_button)
         self.sidebar_scroll = QScrollArea(); self.sidebar_scroll.setWidgetResizable(True)
         self.sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.sidebar_scroll.setStyleSheet("QScrollArea {background:#122139;border:0;}")
-        self.sidebar_scroll.setFixedWidth(210); self.sidebar_scroll.setWidget(sidebar)
+        self.sidebar_scroll.setStyleSheet("QScrollArea {background:#ffffff;border:0;}")
+        self.sidebar_scroll.setFixedWidth(228); self.sidebar_scroll.setWidget(sidebar)
         root.addWidget(self.sidebar_scroll)
         workspace = QWidget(); workspace.setObjectName("workspace")
         self.workspace_scroll = QScrollArea(); self.workspace_scroll.setWidgetResizable(True)
@@ -373,6 +392,10 @@ class Console(QMainWindow):
             if spacing >= 0:
                 layout.setSpacing(round(spacing * scale))
             layout.setContentsMargins(*[round(value * scale) for value in layout.property("original_margins")])
+        margins=self.sidebar.layout().contentsMargins()
+        widest=max(item.sizeHint().width() for item in self.nav_buttons+[self.settings_button])
+        brand_width=self.sidebar.findChild(QLabel,"brand").sizeHint().width()
+        self.sidebar_scroll.setFixedWidth(max(216,widest+ margins.left()+margins.right()+22,brand_width+margins.left()+margins.right()+22))
         for widget in self.findChildren(QTableWidget):
             row_height = max(round(44 * scale), widget.fontMetrics().lineSpacing() + round(14 * scale) + 8)
             widget.verticalHeader().setDefaultSectionSize(row_height)
@@ -1217,7 +1240,7 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         role=status.get("role","admin");self.user_role=role
         self.connection_badge.setText("CONNECTED / TLS / " + role.upper())
         self.command_run_button.setEnabled(role == "admin")
-        self.agent_setup_button.setEnabled(role == "admin")
+        self.agent_setup_action.setEnabled(role == "admin")
         self.subtitle.setText(f"Execution: Linux main server   |   Data: {status['data_directory']}")
         self.history_errors = status.get("history_errors", [])
         self.subtitle.setToolTip("")

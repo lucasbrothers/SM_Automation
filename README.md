@@ -83,3 +83,5 @@ OS별 지원·제약은 [Windows·Linux·AIX 지원표](docs/platform-support.md
 AIX 05 계정·그룹·잠금·만료, 06 설치 파일셋·임시 수정·OS 수준, 08 부하·메모리·루트 디스크·가동시간 조회를 지원합니다. AIX 계정/패치 변경은 지원하지 않습니다. 실제 AIX 장비 검증은 미실행입니다.
 
 Windows 08 자원 조회(CPU 사용률·물리 메모리·시스템 디스크·가동시간)를 기존 에이전트로 지원합니다. CPU %와 Linux/AIX Load를 구분합니다.
+
+GUI 왼쪽 하단 **설정 및 연결**에서 SERVER 연결/해제·CLIENT 접속 계정·SERVER GUI 계정·공개키 배포·Windows CLIENT 설치/상태를 관리합니다. 주요 메뉴 01~10은 왼쪽에 유지합니다.
