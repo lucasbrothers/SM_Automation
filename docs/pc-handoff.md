@@ -372,4 +372,3 @@ ISO는 관리자 전용 mount loop,ro,nodev,nosuid,noexec, 안전한 mount ID �
 
 승인된 Hyper-V Ubuntu CLIENT에서 GUI 전송 프로토콜→SERVER, ISO 마운트/검색, 시험 패키지1.0 신규 설치→ISO의2.0 업그레이드(각 사전백업 완료), 다운그레이드 차단, 계획 후 SHA256 변경 시 적용 차단을 실제 검증했다. CLIENT 시험 패키지 제거 및 ISO 마운트 해제 완료. 실습 파일은 /srv/sm-automation/shared/patch-lab-5dfff076에 유지하며 Windows용 파일은 D:/WSL/VM-Setup/package-test/fixture-2.0.deb. 상세 D:/WSL/VM-Setup/patch-file-acceptance.json. 외부 저장소 접속 없이 수행했다. 자동화 일시정지 및 사용자 results.csv 미추적 유지.
 최종 검증: Windows 전체 577 passed / 31 skipped, WSL 파일·ISO 관련 15 passed. 역할별 설치 ZIP 갱신 완료.
-
