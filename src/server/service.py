@@ -565,7 +565,11 @@ class ManagementService:
                 if options["action"] == "list":
                     result = list_updates(client, mode)
                 elif options["action"] == "plan":
-                    result = make_plan(client, options["packages"], mode)
+                    if options.get("files"):
+                        from patch.local_files import make_plan as file_plan
+                        result = file_plan(client, options["files"], mode)
+                    else:
+                        result = make_plan(client, options["packages"], mode)
                 else:
                     with self.lock:
                         plan = next(item["result"] for item in self.jobs[options["plan_id"]]["results"] if item["hostname"] == row["hostname"])
@@ -723,6 +727,9 @@ class ManagementService:
             from server.commands import library
             with self.lock:
                 return library(self.data, method, params)
+        if method.startswith("media."):
+            from server.media import handle
+            return handle(method, params)
         if method.startswith("file."):
             from server.files import gui_transfer
             return gui_transfer(method, params)

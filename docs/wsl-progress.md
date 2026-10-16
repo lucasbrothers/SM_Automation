@@ -887,3 +887,12 @@ SERVER의 보호된 SSH 프로필 ubuntu-client-vm을 만들고 ubuntu-client �
 실제 작업 10건(계정, 자원, CI, root 명령, 패치 조회, 연결 지도, 백업, 양방향 전송 각1건, 백업 비교)이 모두 completed다. 백업12개 항목 모두 성공했고 전송은 실제 내용과 SHA256까지 대조했다. 시험 파일은 정리했다. 최초 연결/백업 실패 원인은 cloud 이미지의 netstat 누락이었으며 공식 net-tools 패키지를 서명된 APT 메타데이터의 SHA256과 대조해 설치한 뒤 재검증했다. 상세 결과 D:/WSL/VM-Setup/acceptance.json.
 
 제한: Linux 환경에서 외부 Ubuntu 저장소 직접 접속이 실패한다(Windows 다운로드는 성공). 패치 조회는 기존 메타데이터로 검증했으며 실제 업데이트 설치 및 인터넷 NAT 정상 동작을 완료로 판정하지 않는다. 별도 네트워크 점검이 필요하다. 자동화는 일시정지 유지, 사용자 results.csv는 미추적 유지. Windows agent 갱신 설치의 이전 대기 상태는 이번 VM 검증과 별개다.
+
+## 2026-10-16 GUI/SERVER 패치 파일 선택 및 읽기 전용 ISO 검색
+
+06 Patches에 GUI DEB/RPM 업로드, SERVER 폴더 다중 선택, GUI/SERVER ISO 읽기 전용 마운트 및 파일명 검색을 추가했다. 파일 선택은 기존 패키지명 계획보다 우선하며 비우면 기존 방식이다. SERVER→CLIENT는 제한 없는 스트리밍/청크 전송으로 임시 파일을 준비하고 root 전용 디렉터리에 복사 후 SHA256을 검증한다. 계획에는 원본 파일 SHA256·대상 패키지 상태·시뮬레이션 출력을 기록한다. 적용 때 파일/상태/계획 불일치·다운그레이드·제거를 차단하고 기존 대상/유효기간/백업 검사를 유지한다. APT는 저장소와 메타데이터를 격리한 로컬 파일 설치, RPM은 신뢰된 서명과 rpm -U --test 후 로컬 설치다. 신규 설치도 지원한다. 최초 APT --no-download는 로컬 파일 획득을 막아 실제 적용 오류가 발생했으며 저장소 격리 방식으로 수정 후 실제 설치/업그레이드를 재검증했다.
+
+ISO는 관리자 전용 mount loop,ro,nodev,nosuid,noexec, 안전한 mount ID 및 마운트 해제를 제공한다. 검색은 10초/10만항목/1000결과 제한. Windows ISO 파일은 검색만 가능하며 WIM/ESD는 OS 이미지다. 기존 Windows/AIX 변경 차단 유지. Ubuntu live ISO가 전체 저장소를 포함하지 않는 점과 의존 패키지 준비 방법을 GUI와 docs/patch-files-iso.md에 안내했다. RPM 실장비 검증은 미실행.
+
+승인된 Hyper-V Ubuntu CLIENT에서 GUI 전송 프로토콜→SERVER, ISO 마운트/검색, 시험 패키지1.0 신규 설치→ISO의2.0 업그레이드(각 사전백업 완료), 다운그레이드 차단, 계획 후 SHA256 변경 시 적용 차단을 실제 검증했다. CLIENT 시험 패키지 제거 및 ISO 마운트 해제 완료. 실습 파일은 /srv/sm-automation/shared/patch-lab-5dfff076에 유지하며 Windows용 파일은 D:/WSL/VM-Setup/package-test/fixture-2.0.deb. 상세 D:/WSL/VM-Setup/patch-file-acceptance.json. 외부 저장소 접속 없이 수행했다. 자동화 일시정지 및 사용자 results.csv 미추적 유지.
+최종 검증: Windows 전체 577 passed / 31 skipped, WSL 파일·ISO 관련 15 passed. 역할별 설치 ZIP 갱신 완료.

@@ -945,12 +945,21 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
         self.patch_packages = QLineEdit(); self.patch_packages.setPlaceholderText("패키지명 또는 패키지명=버전, 공백으로 구분: openssh-server net-tools")
         actions.addWidget(self.patch_packages, 1)
         self.patch_plan_button=button("Preview patch plan", self.plan_patches, True); actions.addWidget(self.patch_plan_button); body.addLayout(actions)
+        files = QHBoxLayout()
+        self.patch_files = QLineEdit(); self.patch_files.setPlaceholderText("SERVER .deb / .rpm 경로 (여러 파일은 | 로 구분). 비워두면 패키지명 사용")
+        files.addWidget(self.patch_files, 1)
+        files.addWidget(button("GUI 파일 선택", self.select_patch_files))
+        files.addWidget(button("SERVER 파일 선택", self.select_server_patch_files))
+        files.addWidget(button("ISO 패키지 검색", self.browse_patch_iso))
+        body.addLayout(files)
         self.patch_table = table(["Server", "Package / KB", "Installed / Windows date", "Planned version / Windows·AIX status", "Description", "Installed by", "Source", "Type"]); self.patch_table.setMinimumHeight(150); body.addWidget(self.patch_table, 2)
         self.patch_output = QPlainTextEdit(); self.patch_output.setReadOnly(True); self.patch_output.setMinimumHeight(100); body.addWidget(self.patch_output, 1)
         self.patch_plan_id = None
         self.patch_apply = button("Apply reviewed plan", self.apply_patches, True); self.patch_apply.setEnabled(False)
+        self.patch_files.textChanged.connect(self.invalidate_patch_plan)
+        self.patch_packages.textChanged.connect(self.invalidate_patch_plan)
         body.addWidget(self.patch_apply)
-        patch_note = label("Windows KB / AIX filesets and interim fixes: query only, no changes. Linux Debian/Ubuntu and RHEL/DNF: reviewed plans and backed-up apply. RHEL requires prepared signed RPMs. No automatic reboot.")
+        patch_note = label("파일 모드: GUI 업로드 / SERVER 파일 / ISO에서 DEB·서명된 RPM 선택 → 계획 → 백업 후 설치. 의존 파일도 함께 준비하세요. Windows·AIX는 조회 전용. ISO는 읽기 전용이며 Windows WIM/ESD는 OS 이미지로 패치 설치 대상이 아닙니다. 자동 재부팅 없음.")
         patch_note.setWordWrap(True); body.addWidget(patch_note)
         layout.addWidget(frame); self.pages.addWidget(page)
 
@@ -969,8 +978,22 @@ Windows KB는 Get-HotFix/CBS 기록이며 미설치 업데이트·전체 앱·�
 입력 칸에 설치된 패키지명을 공백으로 구분해 입력합니다.
 예: openssh-server net-tools / 특정 버전: 패키지명=버전
 입력한 패키지와 의존성 변경을 시뮬레이션하고 정확한 버전의 계획을 저장합니다.
-신규 패키지를 직접 선택하거나 하위 버전으로 내리는 작업은 거부합니다.
+패키지명 모드는 설치된 패키지만 선택하며 하위 버전으로 내리는 작업은 거부합니다.
 계획 단계는 패키지를 실제 설치하지 않습니다.
+
+파일 / ISO 모드
+GUI 파일 선택은 Windows의 DEB/RPM을 SERVER로 업로드합니다.
+SERVER 파일 선택은 Linux SERVER 폴더에서 파일을 고릅니다.
+ISO 패키지 검색은 GUI 또는 SERVER의 ISO를 SERVER에 읽기 전용 마운트합니다.
+ISO 안의 DEB/RPM을 검색·다중 선택한 후 계획 미리보기를 실행하세요.
+파일 모드는 신규 설치 및 업그레이드를 지원하며 저장소에 접속하지 않습니다.
+의존 패키지는 CLIENT에 이미 설치되어 있거나 함께 선택해야 합니다.
+계획 때 SHA256과 패키지 상태를 기록하며 변경되면 적용을 거부합니다.
+DEB 파일은 신뢰할 수 있는 원본에서 준비하세요. RPM은 신뢰된 서명도 확인합니다.
+ISO 경로로 만든 계획을 적용하기 전에는 마운트를 해제하지 마세요.
+ISO 마운트 해제 버튼으로 분리할 수 있으며 SERVER 재부팅 후에는 다시 마운트하세요.
+Ubuntu live ISO에는 전체 저장소가 없을 수 있습니다.
+Windows ISO의 WIM/ESD는 OS 이미지이며 Windows 설치/패치 변경은 지원하지 않습니다.
 
 3. 검토 후 적용 (Apply reviewed plan)
 모든 대상의 계획이 성공하고 적용을 지원할 때 버튼이 활성화됩니다.
@@ -992,10 +1015,114 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
         self.patch_plan_id = None; self.patch_apply.setEnabled(False)
         self.start_job("patches", options={"action": "list"})
 
+    def invalidate_patch_plan(self):
+        self.patch_plan_id = None
+        self.patch_apply.setEnabled(False)
+
     def plan_patches(self):
         if self.has_readonly_account_patch_targets():return
         self.patch_plan_id = None; self.patch_apply.setEnabled(False)
-        self.start_job("patches", options={"action": "plan", "packages": self.patch_packages.text().split()})
+        options = {"action": "plan", "packages": self.patch_packages.text().split()}
+        if self.patch_files.text().strip():
+            options["files"] = [p.strip() for p in self.patch_files.text().split('|') if p.strip()]
+        self.start_job("patches", options=options)
+
+    def upload_patch_sources(self, paths, done):
+        if not self.client: return
+        client = self.client
+        def upload():
+            import uuid
+            from desktop.transfers import Transfers
+            destination = '/srv/sm-automation/shared/patch-' + uuid.uuid4().hex
+            client.call('file.mkdir', path=destination)
+            import tempfile
+            with tempfile.TemporaryDirectory() as directory:
+                transfer = Transfers(client, Path(directory)/'transfer.json')
+                result = transfer.run({'side':'local','files':[{'path':p} for p in paths]}, '', destination, lambda message: None, lambda:False)
+                if transfer.state.get('job'):
+                    raise RuntimeError(result)
+            return [destination+'/'+Path(p).name for p in paths]
+        self.status_line.setText('패치/ISO 파일을 Linux SERVER로 업로드하는 중…')
+        self.work(upload, done)
+
+    def select_patch_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, '패치 파일 선택', '', 'Linux packages (*.deb *.rpm)')
+        if paths:
+            self.upload_patch_sources(paths, lambda files:self.patch_files.setText(' | '.join(files)))
+
+    def select_server_patch_files(self):
+        if not self.client: return
+        client=self.client
+        dialog=QDialog(self); dialog.setWindowTitle('Linux SERVER 패키지 선택'); dialog.resize(900,550)
+        layout=QVBoxLayout(dialog); path=QLineEdit('/srv/sm-automation/shared'); layout.addWidget(path)
+        listing=table(['이름','크기(bytes)','종류']);layout.addWidget(listing)
+        listing.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        listing.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        current={'path':path.text(),'entries':{}}
+        def loaded(result):
+            current['path']=result['path'];current['entries']={r['name']:r for r in result['entries']}
+            fill_table(listing,[[r['name'],r.get('size',0),'폴더' if r['directory'] else '파일'] for r in result['entries'] if r['directory'] or r['name'].endswith(('.deb','.rpm'))])
+        def query():self.work(lambda:client.call('file.list',path=path.text()),loaded)
+        def enter(row,column):
+            name=listing.item(row,0).text()
+            if current['entries'][name]['directory']:
+                path.setText(current['path'].rstrip('/')+'/'+name);query()
+        listing.cellDoubleClicked.connect(enter)
+        layout.addWidget(button('경로 조회',query));path.returnPressed.connect(query)
+        def parent():
+            import posixpath
+            path.setText(posixpath.dirname(current['path'].rstrip('/')) or '/');query()
+        layout.addWidget(button('상위 폴더',parent))
+        def select():
+            rows=sorted({index.row() for index in listing.selectedIndexes()})
+            names=[listing.item(row,0).text() for row in rows if listing.item(row,2).text()=='파일']
+            if names:
+                self.patch_files.setText(' | '.join(current['path'].rstrip('/')+'/'+name for name in names));dialog.accept()
+        layout.addWidget(button('선택한 패키지 사용',select,True));layout.addWidget(button('닫기',dialog.reject))
+        query();dialog.exec()
+
+    def browse_patch_iso(self):
+        if not self.client: return
+        choice, ok = QInputDialog.getItem(self, 'ISO 위치', 'ISO 파일이 있는 위치', ['Linux SERVER', 'Windows GUI'], 0, False)
+        if not ok: return
+        def mount(path):
+            client = self.client
+            self.work(lambda:client.call('media.mount', path=path), self.show_iso_packages)
+        if choice == 'Windows GUI':
+            path, _ = QFileDialog.getOpenFileName(self, 'ISO 선택', '', 'ISO image (*.iso)')
+            if path:self.upload_patch_sources([path], lambda files:mount(files[0]))
+        else:
+            path, ok = QInputDialog.getText(self, 'SERVER ISO', 'Linux SERVER ISO 절대 경로')
+            if ok and path: mount(path)
+
+    def show_iso_packages(self, media):
+        client = self.client
+        dialog = QDialog(self); dialog.setWindowTitle('ISO 패키지 검색 — 읽기 전용'); dialog.resize(1000,600)
+        layout = QVBoxLayout(dialog)
+        note = label('DEB/RPM 선택 → 계획 미리보기 → 백업 후 적용. 필요한 의존 패키지도 함께 선택하세요. Windows ISO의 WIM/ESD 및 설치 파일은 조회만 지원합니다.')
+        note.setWordWrap(True); layout.addWidget(note)
+        search = QLineEdit(); search.setPlaceholderText('파일명 검색'); layout.addWidget(search)
+        listing = table(['파일명','크기(bytes)','SERVER 경로','설치 지원']); layout.addWidget(listing)
+        listing.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        listing.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        status = label(''); layout.addWidget(status)
+        def loaded(result):
+            fill_table(listing, [[r['name'],r['size'],r['path'],'Linux' if r['install_supported'] else '조회만'] for r in result['entries']])
+            status.setText(('결과 최대 1000개/검색 범위 초과: 검색어를 좁히세요. ' if result['truncated'] else '') + result['note'])
+        def query():
+            self.work(lambda:client.call('media.packages', id=media['id'], query=search.text()), loaded)
+        layout.addWidget(button('검색', query)); search.returnPressed.connect(query)
+        def select():
+            rows = sorted({index.row() for index in listing.selectedIndexes()})
+            paths = [listing.item(row,2).text() for row in rows if listing.item(row,3).text()=='Linux']
+            if not paths: return
+            self.patch_files.setText(' | '.join(paths)); dialog.accept()
+        layout.addWidget(button('선택한 패키지로 계획 준비', select, True))
+        def unmount():
+            self.work(lambda:client.call('media.unmount', id=media['id']), lambda result:dialog.reject())
+        layout.addWidget(button('ISO 마운트 해제', unmount))
+        layout.addWidget(button('닫기 (계획/적용을 위해 마운트 유지)', dialog.reject))
+        query(); dialog.exec()
 
     def apply_patches(self):
         if self.has_readonly_account_patch_targets():return
@@ -1014,6 +1141,8 @@ RHEL/DNF: 서버에 준비한 서명된 RPM과 검토된 로컬 적용 계획을
             for package in result.get("packages", []):
                 values.append([row["hostname"], package["name"], package["installed"], package["candidate"], package.get("description",""), package.get("installed_by",""), package.get("source",""), package.get("type","")])
             output.append(row["hostname"] + " / " + row["status"] + "\n" + row.get("error", result.get("output", "")))
+            for package_file in result.get('files', []):
+                output.append(package_file['path'] + '\nSHA256: ' + package_file['sha256'])
             if result.get("note"):
                 output.append(result["note"])
             if result.get("warnings"):

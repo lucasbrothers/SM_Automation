@@ -13,6 +13,11 @@ def validate_options(options):
     action = options.get("action", "list")
     result = {"action": action}
     if action == "plan":
+        if options.get("files"):
+            from patch.local_files import validate_files
+            result["files"] = validate_files(options["files"])
+            result["packages"] = []
+            return result
         packages = options.get("packages")
         if not isinstance(packages, list) or not 1 <= len(packages) <= 50:
             raise ValueError("Select between 1 and 50 installed packages")
@@ -112,6 +117,9 @@ def make_plan(client, packages, mode):
 
 
 def apply_plan(client, plan, mode):
+    if plan.get("files"):
+        from patch.local_files import apply_plan as apply_files
+        return apply_files(client, plan, mode)
     expected = plan.get("manager", "apt")
     if expected not in {"apt", "dnf"} or package_manager(client) != expected:
         raise ValueError("Package manager changed since planning; create a fresh plan")
