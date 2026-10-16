@@ -353,3 +353,13 @@ Canonical Ubuntu noble cloud 이미지 공식 SHA256 확인, D:/WSL/Ubuntu-Clien
 VM/네트워크 생성 스크립트는 D:/WSL/VM-Setup/Create-Ubuntu-Client.ps1, 소스 사본 deploy/provision-ubuntu-client-vm.ps1. 문법 검사 완료이나 실행 검증 전이다. Windows UAC Start-Process RunAs가 '사용자가 작업을 취소했습니다'로 반환되어 VM/가상 스위치/IP는 아직 생성되지 않았다. 현재 공유 IP 문제는 미해결이며 허위 완료로 보고하지 않는다. 관리자 PowerShell에서 위 스크립트 실행이 필요하다. 현재 후보는 내부 스위치 SM-Test-Private, 게이트웨이 192.168.250.1/24, CLIENT 192.168.250.2, 2 CPU/시작 2GiB/동적 1~3GiB. 실행 후 VM 부팅·SSH·WSL SERVER 라우팅·NAT를 확인하고 장비 목록의 ubuntu-client를 새 IP/Ubuntu24.04/적절한 SSH 프로필로 갱신해야 한다. 이전 잘못 등록된 ubuntu-client는 현재 main WSL IP와 Ubuntu26.04/default 프로필을 가리키므로 검증 전 작업 실행 금지.
 
 원래 Windows agent 갱신 설치도 이전 UAC 취소로 남아 있으며 사용자 허용 없이 우회하지 않는다. 자동화 일시정지 및 사용자 results.csv 미추적을 유지한다. 상세 D:/WSL/VM-Setup/README-KO.md.
+
+## 2026-10-16 Ubuntu 독립 IP 적용 및 실제 관리 검증 완료
+
+사용자가 관리자 프로비저닝을 실행한 뒤 Hyper-V Ubuntu-Client 부팅을 확인했다. 기존 SERVER는 WSL Ubuntu(172.22.194.8, Ubuntu26.04), 새 CLIENT는 별도 Hyper-V Ubuntu-Client(192.168.250.2/24, Ubuntu24.04.5 LTS)다. 내부 스위치 SM-Test-Private와 Windows 게이트웨이 192.168.250.1을 사용한다. VM은 2 CPU, 시작2GiB/동적1~3GiB, 가상 디스크30GiB이며 cloud-init done 및 SSH22를 검증했다. 기존 WSL Ubuntu-Client와 데이터는 삭제하지 않고 중지 상태로 보존한다. 앞선 관리자 실행 대기 상태는 해소되었다.
+
+SERVER의 보호된 SSH 프로필 ubuntu-client-vm을 만들고 ubuntu-client 인벤토리를 새 주소/Ubuntu24.04/해당 프로필로 수정했다. D25950 공개키 로그인과 sudo root 실행을 확인했다. 비밀번호/개인키는 Git이나 문서에 저장하지 않았다. 프로필 반영을 위해 활성 작업이 없음을 확인한 뒤 SERVER 서비스를 재시작했다.
+
+실제 작업 10건(계정, 자원, CI, root 명령, 패치 조회, 연결 지도, 백업, 양방향 전송 각1건, 백업 비교)이 모두 completed다. 백업12개 항목 모두 성공했고 전송은 실제 내용과 SHA256까지 대조했다. 시험 파일은 정리했다. 최초 연결/백업 실패 원인은 cloud 이미지의 netstat 누락이었으며 공식 net-tools 패키지를 서명된 APT 메타데이터의 SHA256과 대조해 설치한 뒤 재검증했다. 상세 결과 D:/WSL/VM-Setup/acceptance.json.
+
+제한: Linux 환경에서 외부 Ubuntu 저장소 직접 접속이 실패한다(Windows 다운로드는 성공). 패치 조회는 기존 메타데이터로 검증했으며 실제 업데이트 설치 및 인터넷 NAT 정상 동작을 완료로 판정하지 않는다. 별도 네트워크 점검이 필요하다. 자동화는 일시정지 유지, 사용자 results.csv는 미추적 유지. Windows agent 갱신 설치의 이전 대기 상태는 이번 VM 검증과 별개다.
